@@ -1,0 +1,271 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
+<title>ASTROINFORME</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,500;1,6..96,500&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+Symbols:wght@400&family=Noto+Sans+Symbols+2&display=swap">
+<style>
+/* Layout: una columna de trabajo (formulario → ficha técnica → informe), como una hoja de cálculo astronómica impresa */
+:root {
+  --bg: #eceeea; --panel: #f7f8f5; --ink: #1c2230; --muted: #5d6573; --line: #c9cdc6;
+  --accent: #8a5a12; --hard: #9b2d36; --soft: #2f6a63; --warn-bg: #f3e7cf; --bad-bg: #f2d9da; --ok-bg: #dbe8e3;
+  --f-display: "Bodoni Moda", "Didot", Georgia, serif;
+  --f-body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --f-glyph: "Noto Sans Symbols", "Noto Sans Symbols 2", "Segoe UI Symbol", "Apple Symbols", serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11151c; --panel: #181d26; --ink: #e3e5e0; --muted: #98a0ad; --line: #2c3340;
+  --accent: #d6a752; --hard: #e07a82; --soft: #7cc0b5; --warn-bg: #3a2f1a; --bad-bg: #3d2226; --ok-bg: #1d3330; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #11151c; --panel: #181d26; --ink: #e3e5e0; --muted: #98a0ad; --line: #2c3340;
+  --accent: #d6a752; --hard: #e07a82; --soft: #7cc0b5; --warn-bg: #3a2f1a; --bad-bg: #3d2226; --ok-bg: #1d3330; color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 16px; line-height: 1.5; }
+.wrap { max-width: 980px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 500; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.1rem, 6vw, 3.2rem); letter-spacing: 0.02em; line-height: 1; }
+h2 { font-size: 1.55rem; }
+h3 { font-size: 1.15rem; }
+p { margin: 0; }
+.eyebrow { font-family: var(--f-data); font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.muted { color: var(--muted); } .small { font-size: 0.86rem; }
+header.top { display: grid; gap: 10px; border-bottom: 1px solid var(--ink); padding-bottom: 18px; }
+header.top .lede { max-width: 62ch; color: var(--muted); }
+#engine-state { font-family: var(--f-data); font-size: 0.75rem; color: var(--muted); }
+#engine-state[data-ok="1"]::before { content: "● "; color: var(--soft); }
+#engine-state[data-ok="0"]::before { content: "● "; color: var(--hard); }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 20px; display: grid; gap: 16px; min-width: 0; }
+form { display: grid; gap: 18px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 18px; }
+label.f { display: grid; gap: 4px; font-size: 0.9rem; font-weight: 600; min-width: 0; }
+label.f .hint { font-weight: 400; color: var(--muted); font-size: 0.8rem; }
+input, select, textarea { font: inherit; font-weight: 400; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 9px 10px; min-width: 0; width: 100%; box-sizing: border-box; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input:disabled { opacity: 0.45; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 0.9rem; }
+.check input { width: auto; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+.row > * { min-width: 0; }
+.btn { font: inherit; font-weight: 600; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 3px; cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--ink); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+#place-results { display: grid; gap: 4px; max-height: 320px; overflow: auto; }
+.place-opt { text-align: left; font: inherit; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; cursor: pointer; display: grid; }
+.place-opt:hover { border-color: var(--accent); }
+.place-opt .pn { font-weight: 600; } .place-opt .pm { font-size: 0.8rem; color: var(--muted); font-family: var(--f-data); }
+#place-chosen { border-left: 3px solid var(--accent); padding: 6px 12px; display: grid; gap: 2px; }
+#pc-coords { font-family: var(--f-data); font-size: 0.82rem; color: var(--muted); }
+.note { padding: 10px 12px; border-radius: 3px; font-size: 0.92rem; }
+.note.bad { background: var(--bad-bg); } .note.warn { background: var(--warn-bg); } .note.ok { background: var(--ok-bg); }
+#ambig { display: grid; gap: 8px; }
+details > summary { cursor: pointer; font-weight: 600; }
+details[open] > summary { margin-bottom: 10px; }
+
+/* resultado */
+.r-head { display: grid; gap: 6px; }
+#r-meta { font-family: var(--f-data); font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
+#r-big3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.b3 { display: grid; gap: 2px; padding: 12px 14px 12px 0; }
+.b3 + .b3 { border-left: 1px solid var(--line); padding-left: 14px; }
+@media (max-width: 640px) { .b3 + .b3 { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); } }
+.b3 .lab { font-family: var(--f-data); font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.b3 .val { font-family: var(--f-display); font-size: 1.3rem; }
+.uns { color: var(--accent); font-family: var(--f-data); }
+.r-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 760px) { .r-grid { grid-template-columns: minmax(0, 1fr); } }
+#wheel { max-width: 440px; width: 100%; margin: 0 auto; }
+.wheel-svg { width: 100%; height: auto; display: block; }
+.w-ring { fill: none; stroke: var(--ink); stroke-width: 0.8; }
+.w-tick { stroke: var(--muted); stroke-width: 0.6; }
+.w-cusp { stroke: var(--line); stroke-width: 0.8; }
+.w-axis { stroke: var(--ink); stroke-width: 1.4; }
+.w-sign { fill: var(--muted); font-family: var(--f-glyph); font-size: 15px; }
+.w-house { fill: var(--muted); font-family: var(--f-data); font-size: 9px; }
+.w-angle { fill: var(--accent); font-family: var(--f-data); font-size: 10px; font-weight: 500; }
+.w-body { fill: var(--ink); font-family: var(--f-glyph); font-size: 17px; }
+.w-body.r { fill: var(--accent); }
+.w-hard { stroke: var(--hard); stroke-width: 1; }
+.w-soft { stroke: var(--soft); stroke-width: 1; }
+.w-qx { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 3; }
+.tbl-wrap { overflow-x: auto; min-width: 0; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th { text-align: left; font-family: var(--f-data); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--ink); padding: 4px 8px 4px 0; }
+td { border-bottom: 1px solid var(--line); padding: 5px 8px 5px 0; vertical-align: top; }
+td.num { font-family: var(--f-data); font-size: 0.84rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gl { font-family: var(--f-glyph); }
+tr.wide td { color: var(--muted); }
+@media (max-width: 520px) { #t-pos { font-size: 0.82rem; } #t-pos td:first-child { white-space: nowrap; } #t-pos td.num { font-size: 0.76rem; } #t-pos th, #t-pos td { padding-right: 6px; } }
+tr.tight td:first-child { font-weight: 600; }
+dl#t-struct { margin: 0; display: grid; }
+.srow { display: grid; grid-template-columns: minmax(120px, 30%) minmax(0, 1fr); gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+@media (max-width: 520px) { .srow { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+.srow dt { font-weight: 600; font-size: 0.9rem; }
+.srow dd { margin: 0; font-size: 0.92rem; overflow-wrap: anywhere; }
+.d-note { display: block; }
+#r-warn { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+#r-warn code, #prov { font-family: var(--f-data); font-size: 0.75rem; }
+#sens ul { margin: 6px 0 0; padding-left: 18px; }
+textarea#payload-view { font-family: var(--f-data); font-size: 0.75rem; min-height: 220px; }
+
+/* estado de autonomía */
+.auto-tbl td:first-child { width: 58%; }
+.pill { display: inline-block; font-family: var(--f-data); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+.pill.ok { background: var(--ok-bg); } .pill.no { background: var(--bad-bg); } .pill.ext { background: var(--warn-bg); }
+.interp-box { border: 1px dashed var(--line); padding: 16px; border-radius: 4px; display: grid; gap: 12px; }
+.rep-sec { display: grid; gap: 10px; max-width: 68ch; }
+.rep-sec h3 { margin-top: 14px; }
+.rep-sec p { line-height: 1.6; }
+.art-section { max-width: 420px; }
+.art-section img, .art-section video { max-height: 420px; }
+#audit-out ul { margin: 8px 0; padding-left: 18px; display: grid; gap: 4px; }
+#report-out { display: grid; gap: 8px; }
+header.top { grid-template-columns: minmax(0, 1fr) auto; align-items: end; column-gap: 28px; }
+.top-text { display: grid; gap: 10px; min-width: 0; }
+.hero-col { display: grid; gap: 6px; justify-items: end; }
+@media (max-width: 640px) { header.top { grid-template-columns: minmax(0, 1fr); } .hero-col { justify-items: start; } }
+.art { margin: 0; display: grid; gap: 4px; min-width: 0; }
+.art img, .art video { display: block; width: 100%; height: auto; background: var(--panel); }
+.art figcaption { font-size: 0.72rem; color: var(--muted); font-style: italic; }
+.art-hero { width: min(240px, 60vw); }
+.art-hero img, .art-hero video { aspect-ratio: 1 / 1; }
+.art-wait { width: min(180px, 50vw); }
+.art-eyes { width: min(200px, 100%); }
+.r-head-row { display: flex; flex-wrap: wrap; gap: 16px 24px; justify-content: space-between; align-items: end; }
+.r-head-row .r-head { flex: 1 1 320px; min-width: 0; }
+.art-wide { max-width: 640px; }
+.art-wide img { aspect-ratio: 2 / 1; }
+.linkbtn { font: inherit; font-size: 0.8rem; background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; }
+footer a, .credit a { color: var(--accent); }
+.credit { font-size: 0.86rem; color: var(--ink); }
+footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 14px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="top-text">
+      <span class="eyebrow">Astrología psicológica · cálculo natal</span>
+      <h1>ASTROINFORME</h1>
+      <p class="lede">Calcula la carta natal con Swiss Ephemeris directamente en este dispositivo: posiciones, casas Placidus, aspectos, estructura de la carta y sensibilidad a la hora. Los datos no se envían a ningún servidor.</p>
+      <span id="engine-state">Cargando el motor de cálculo…</span>
+    </div>
+    <div class="hero-col">
+      <figure id="fig-hero" class="art art-hero" hidden></figure>
+      <button type="button" class="linkbtn" id="btn-hero-anim" hidden>Ver portada animada</button>
+    </div>
+  </header>
+
+  <section class="panel" aria-labelledby="h-datos">
+    <h2 id="h-datos">Datos de nacimiento</h2>
+    <form id="birth-form" novalidate>
+      <div class="grid2">
+        <label class="f">Nombre de pila <span class="hint">Opcional. Solo para el encabezado.</span><input id="fname" autocomplete="off" placeholder="Ana"></label>
+        <label class="f">Idioma del informe <span class="hint">Se registra en el contrato de datos.</span>
+          <select id="lang"><option value="es">Español (voseo)</option><option value="de">Deutsch (du)</option><option value="en">English</option></select></label>
+        <label class="f">Fecha <span class="hint">Calendario gregoriano, 1800–2399.</span><input id="bdate" type="date" min="1800-01-01" max="2399-12-31" required></label>
+        <label class="f">Hora local del acta <input id="btime" type="time" step="60"></label>
+        <label class="f">Precisión de la hora
+          <select id="prec"><option value="EXACT">Exacta (±4 min)</option><option value="PM15" selected>Aproximada ±15 min</option><option value="PM30">Aproximada ±30 min</option><option value="PM60">Aproximada ±60 min</option><option value="UNKNOWN">Desconocida</option></select></label>
+      </div>
+
+      <div class="grid2">
+        <div style="display:grid;gap:8px;min-width:0">
+          <label class="f" for="place-q">Lugar de nacimiento <span class="hint">Ciudad o pueblo de más de 1000 habitantes. Para distinguir homónimos: «Córdoba, Argentina».</span></label>
+          <div class="row"><input id="place-q" autocomplete="off" placeholder="Buenos Aires" style="flex:1 1 180px"><button type="button" class="btn ghost" id="place-form-btn">Buscar</button></div>
+          <div id="place-results" hidden></div>
+          <div id="place-chosen" hidden><strong id="pc-label"></strong><span id="pc-coords"></span></div>
+        </div>
+        <div style="display:grid;gap:10px;min-width:0;align-content:start">
+          <label class="f">Zona horaria (IANA) <span class="hint">Se completa con el lugar. Cambiala solo si sabés que corresponde otra.</span><input id="tz" list="tz-list" autocomplete="off" placeholder="America/Argentina/Buenos_Aires"><datalist id="tz-list"></datalist></label>
+          <label class="check"><input type="checkbox" id="use-manual-offset"> Cargar el desfase horario a mano</label>
+          <label class="f" id="manual-offset-row" hidden>Desfase respecto de UTC <span class="hint">Ejemplo: -3, +1, -3:30. Reemplaza la base de zonas.</span><input id="manual-offset" placeholder="-3"></label>
+          <label class="check"><input type="checkbox" id="manual-coords-toggle"> Cargar coordenadas a mano</label>
+          <div id="manual-coords" hidden style="display:grid;gap:8px">
+            <div class="row"><input id="mc-lat" inputmode="decimal" placeholder="Latitud, sur negativa: -34.6037" style="flex:1 1 150px"><input id="mc-lon" inputmode="decimal" placeholder="Longitud, oeste negativa: -58.3816" style="flex:1 1 150px"></div>
+            <div class="row"><input id="mc-label" placeholder="Nombre del lugar (opcional)" style="flex:1 1 180px"><button type="button" class="btn ghost" id="mc-apply">Usar coordenadas</button></div>
+          </div>
+        </div>
+      </div>
+
+      <figure id="fig-wait" class="art art-wait" hidden></figure>
+      <div id="ambig" class="note warn" hidden></div>
+      <div id="form-error" class="note bad" hidden></div>
+      <div class="row"><button type="submit" class="btn">Calcular la carta</button><button type="button" class="btn ghost" id="btn-example">Ver un ejemplo</button></div>
+    </form>
+  </section>
+
+  <section id="result" hidden style="display:grid;gap:28px">
+    <div class="panel">
+      <div class="r-head-row">
+        <div class="r-head">
+          <span class="eyebrow">Ficha técnica calculada</span>
+          <h2 id="r-title">Carta natal</h2>
+          <p id="r-meta"></p>
+        </div>
+        <figure id="fig-eyes" class="art art-eyes" hidden></figure>
+      </div>
+      <div id="r-big3"></div>
+      <div id="r-warn-box" class="note warn" hidden><ul id="r-warn"></ul></div>
+      <div class="r-grid">
+        <div id="wheel"></div>
+        <div class="tbl-wrap"><table id="t-pos"></table></div>
+      </div>
+      <div class="r-grid">
+        <div style="display:grid;gap:8px;min-width:0"><h3>Aspectos</h3><p class="small muted">Política orbes_v1: cinco mayores y quincuncio. En negrita, orbe hasta 2°; atenuados, más de 5°.</p><div class="tbl-wrap"><table id="t-asp"></table></div></div>
+        <div style="display:grid;gap:14px;min-width:0">
+          <div id="houses-block" style="display:grid;gap:8px"><h3>Casas</h3><p class="small muted">Sistema: <span id="houses-sys"></span>. Regencias modernas con co-regentes tradicionales.</p><div class="tbl-wrap"><table id="t-houses"></table></div></div>
+        </div>
+      </div>
+      <div style="display:grid;gap:8px"><h3>Estructura de la carta</h3><dl id="t-struct"></dl></div>
+      <div style="display:grid;gap:8px"><h3>Sensibilidad a la hora</h3><div id="sens" class="small"></div></div>
+      <p id="prov" class="muted"></p>
+    </div>
+
+    <div class="panel" aria-labelledby="h-interp">
+      <span class="eyebrow">Informe psicológico</span>
+      <h2 id="h-interp">Interpretación</h2>
+      <div id="interp-missing" class="interp-box">
+        <p><strong>El motor interpretativo no está conectado en esta versión.</strong> Redactar el informe requiere un modelo de lenguaje con la calidad que exige el protocolo de ASTROINFORME, y hoy no existe una forma gratuita de ejecutarlo para cualquier persona sin cuenta ni clave de pago. Esta página no genera textos automáticos de reemplazo.</p>
+        <p class="small muted">Mientras tanto podés llevarte la carta calculada completa en formato de datos (JSON).</p>
+        <div class="row"><button type="button" class="btn ghost" id="btn-copy-json">Copiar datos (JSON)</button></div>
+      </div>
+      <div id="interp-connected" class="interp-box" hidden>
+        <p id="interp-conn-text">Motor interpretativo conectado. Se envía solo la carta calculada (nombre de pila opcional, sin apellido).</p>
+        <div class="row"><button type="button" class="btn" id="btn-interp">Generar el informe</button></div>
+        <p id="demo-note" class="note warn" hidden><strong>Simulación.</strong> El texto que aparece fue redactado fuera de la app y se carga como si lo devolviera el motor interpretativo; la espera es simulada. La auditoría técnica sí es real: compara las referencias del informe con la carta calculada en esta página.</p>
+        <label class="f" id="demo-which-row" hidden>Informe a cargar<select id="demo-which"></select></label>
+        <p id="interp-status" class="muted" hidden></p>
+        <figure id="fig-reader" class="art art-wide" hidden></figure>
+        <div id="audit-out" class="note" hidden></div>
+        <div id="report-out" hidden></div>
+        <figure id="fig-closure" class="art art-wide" hidden></figure>
+      </div>
+      <details><summary>Ver el contrato de datos (astroinforme.chart/v1)</summary><textarea id="payload-view" readonly aria-label="Datos calculados en JSON"></textarea></details>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-auto">
+    <h2 id="h-auto">Qué funciona por sí solo</h2>
+    <div class="tbl-wrap"><table class="auto-tbl">
+      <tbody>
+        <tr><td>Cálculo de posiciones (Sol a Plutón, Quirón, Nodo verdadero) con Swiss Ephemeris 2.10.03</td><td><span class="pill ok">Autónomo</span></td></tr>
+        <tr><td>Casas Placidus (Porfirio en latitudes polares), Ascendente y Medio Cielo</td><td><span class="pill ok">Autónomo</span></td></tr>
+        <tr><td>Aspectos, configuraciones, regencias, elementos, hemisferios</td><td><span class="pill ok">Autónomo</span></td></tr>
+        <tr><td>Zona horaria histórica, horas repetidas o inexistentes</td><td><span class="pill ok">Autónomo</span></td></tr>
+        <tr><td>Búsqueda de ciudades (lista GeoNames incluida en la página)</td><td><span class="pill ok">Autónomo</span></td></tr>
+        <tr><td>Sensibilidad de la carta a la precisión de la hora</td><td><span class="pill ok">Autónomo</span></td></tr>
+        <tr><td>Redacción del informe psicológico</td><td><span class="pill no">No conectado</span></td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <footer>
+    <p class="credit">Ilustraciones: <a href="https://barbaragutierrez.art" target="_blank" rel="noopener">Bárbara Gutiérrez</a></p>
+    <p>Cálculo: Swiss Ephemeris de Astrodienst AG, versión WebAssembly @swisseph/browser (AGPL-3.0). Lugares: GeoNames (CC BY 4.0) vía all-the-cities. Zonas: tz-lookup (CC0) y la base IANA del navegador.</p>
+    <p>Tropical, geocéntrico, posiciones aparentes, convención de Astro.com. Prototipo privado, uso no comercial.</p>
+  </footer>
+</div>
+<script type="module" src="app.js"></script>
+
+</body></html>
