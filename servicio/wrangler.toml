@@ -13,4 +13,4 @@ ALLOWED_ORIGINS = "https://barbara-netizen.github.io"
 
 [[kv_namespaces]]
 binding = "ASTRO_KV"
-id = "REEMPLAZAR_POR_EL_ID_DEL_NAMESPACE"
+id = "3fe6f27f5f3844df8f90d1e9790291da"
