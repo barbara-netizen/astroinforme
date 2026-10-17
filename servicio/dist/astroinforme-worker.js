@@ -154,6 +154,9 @@ Le\xE9 la carta calculada que sigue y devolv\xE9 SOLO un objeto JSON, sin texto 
  "mito": {"nombre": "\u2026", "por_que": "\u2026"}
 }
 Us\xE1 exclusivamente los datos del JSON. Nada de memoria ni c\xE1lculos propios. Si la hora es desconocida, no uses casas ni \xE1ngulos.
+Antes de elegir los temas, revis\xE1 chart.derived.configurations (cuadraturas en T, grandes cruces, yods, grandes tr\xEDgonos) y
+chart.derived.angular: toda configuraci\xF3n calculada y todo planeta a menos de 3\xB0 de un \xE1ngulo debe figurar en "temas" o, si decid\xEDs
+no desarrollarlo, en una nota breve dentro de "contradicciones" que explique por qu\xE9 pesa menos en esta carta.
 
 CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;

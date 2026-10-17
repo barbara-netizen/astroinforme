@@ -22,6 +22,9 @@ Leé la carta calculada que sigue y devolvé SOLO un objeto JSON, sin texto ante
  "mito": {"nombre": "…", "por_que": "…"}
 }
 Usá exclusivamente los datos del JSON. Nada de memoria ni cálculos propios. Si la hora es desconocida, no uses casas ni ángulos.
+Antes de elegir los temas, revisá chart.derived.configurations (cuadraturas en T, grandes cruces, yods, grandes trígonos) y
+chart.derived.angular: toda configuración calculada y todo planeta a menos de 3° de un ángulo debe figurar en "temas" o, si decidís
+no desarrollarlo, en una nota breve dentro de "contradicciones" que explique por qué pesa menos en esta carta.
 
 CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
