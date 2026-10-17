@@ -461,7 +461,7 @@ function renderReport(rep) {
   out.replaceChildren();
   out.lang = rep.language || "";
   for (const s of rep.sections) {
-    const sec = document.createElement("section"); sec.className = "rep-sec";
+    const sec = document.createElement("section"); sec.className = "rep-sec" + (s.id === "dedication" ? " rep-dedication" : "");
     const h = document.createElement("h3"); h.textContent = s.heading; sec.append(h);
     const paras = String(s.body_markdown).split(/\n{2,}/);
     paras.forEach((p, i) => {

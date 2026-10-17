@@ -56,7 +56,7 @@ function auditReport(report, payload) {
 
 // src/style.js
 var CONTRAST = {
-  es: [/\bno\s(?!(?:s[oó]lo|solamente|[uú]nicamente)\b)(?![^.;:!?]{0,80}\bsino\s+tambi[eé]n\b)[^.;:!?]{1,80}?\bsino\b/gi, /\besto no significa\b/gi],
+  es: [/\bno\s(?!(?:s[oó]lo|solamente|[uú]nicamente)\b)(?![^.;:!?]{0,80}\bsino\s+tambi[eé]n\b)[^.;:!?]{1,80}?\bsino\b/gi, /\besto no significa\b/gi, /\bno significa\b[^.!?]{1,100}?[;:,]\s*significa\b/gi],
   de: [/\bnicht\s(?!nur\b)(?![^.;:!?]{0,80}\bsondern\s+auch\b)[^.;:!?]{1,80}?\bsondern\b/gi, /\bdas bedeutet nicht\b/gi],
   en: [/\bnot\s(?!only\b|just\b|merely\b)[^.;:!?]{1,60}?,\s*but\b/gi, /\bisn['’]t about\b[^.;:!?]{1,60}?\bit['’]s about\b/gi, /\bthis doesn['’]t mean\b/gi]
 };
@@ -166,7 +166,7 @@ Devolv\xE9 SOLO un objeto JSON v\xE1lido, sin texto antes ni despu\xE9s, con est
  "schema": "astroinforme.report/v1",
  "language": "${lang}",
  "title": "\u2026",
- "sections": [{"id": "opening|identity|emotional|central_conflict|saturn|desire|relationships|roots|vocation|neptune|shadow|transformation|resources|synthesis|myth", "heading": "\u2026", "body_markdown": "p\xE1rrafos separados por una l\xEDnea en blanco"}],
+ "sections": [{"id": "opening|identity|emotional|central_conflict|saturn|desire|relationships|roots|vocation|neptune|shadow|transformation|resources|synthesis|myth|dedication", "heading": "\u2026", "body_markdown": "p\xE1rrafos separados por una l\xEDnea en blanco"}],
  "technical_references_used": [
    {"type": "position", "body": "SUN", "sign": "AQUARIUS", "deg": "9\xB029'", "house": 4},
    {"type": "angle", "angle": "ASC", "sign": "SCORPIO", "deg": "5\xB042'"},

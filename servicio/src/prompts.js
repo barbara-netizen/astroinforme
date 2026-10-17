@@ -35,7 +35,7 @@ Devolvé SOLO un objeto JSON válido, sin texto antes ni después, con esta form
  "schema": "astroinforme.report/v1",
  "language": "${lang}",
  "title": "…",
- "sections": [{"id": "opening|identity|emotional|central_conflict|saturn|desire|relationships|roots|vocation|neptune|shadow|transformation|resources|synthesis|myth", "heading": "…", "body_markdown": "párrafos separados por una línea en blanco"}],
+ "sections": [{"id": "opening|identity|emotional|central_conflict|saturn|desire|relationships|roots|vocation|neptune|shadow|transformation|resources|synthesis|myth|dedication", "heading": "…", "body_markdown": "párrafos separados por una línea en blanco"}],
  "technical_references_used": [
    {"type": "position", "body": "SUN", "sign": "AQUARIUS", "deg": "9°29'", "house": 4},
    {"type": "angle", "angle": "ASC", "sign": "SCORPIO", "deg": "5°42'"},
