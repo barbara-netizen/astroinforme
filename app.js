@@ -377,7 +377,11 @@ function renderInterpretationChrome() {
   $("#interp-conn-text").hidden = !!CONFIG.demo;
   $("#demo-which-row").hidden = !CONFIG.demo;
   $("#code-row").hidden = !(serviceUrl() && CONFIG.requireCode);
-  if (CONFIG.demo && !$("#demo-which").options.length) $("#demo-which").innerHTML = CONFIG.demoReports.map((r) => `<option value="${esc(r.file)}">${esc(r.label)}</option>`).join("");
+  if (CONFIG.demo) {
+    const reports = state.demoReports || CONFIG.demoReports || [];
+    const sig = reports.map((r) => r.file).join("|");
+    if ($("#demo-which").dataset.sig !== sig) { $("#demo-which").innerHTML = reports.map((r) => `<option value="${esc(r.file)}">${esc(r.label)}</option>`).join(""); $("#demo-which").dataset.sig = sig; }
+  }
   $("#btn-interp").textContent = t(CONFIG.demo ? "btn.interpDemo" : "btn.interp");
   const pill = $("#pill-interp");
   pill.className = "pill " + (serviceUrl() ? "ok" : "no");
@@ -445,7 +449,7 @@ class ServiceError extends Error { constructor(key, params) { super(key); this.k
 async function obtainReport() {
   if (CONFIG.demo) {
     await new Promise((r) => setTimeout(r, 4000)); // espera simulada
-    const which = ($("#demo-which") && $("#demo-which").value) || CONFIG.demoReports[0].file;
+    const which = ($("#demo-which") && $("#demo-which").value) || (state.demoReports || CONFIG.demoReports)[0].file;
     return { report: (await import("./" + which)).DEMO_REPORT };
   }
   const code = ($("#access-code").value || "").trim();
@@ -563,7 +567,23 @@ function loadExample() {
 
 init();
 ensureEngine().catch(() => { });
-if (CONFIG.demo && CONFIG.demoBirth) {
+// demostración con varias cartas de prueba: un selector arriba del formulario
+function loadDemoCase(c) {
+  $("#fname").value = c.first; $("#bdate").value = c.date; $("#btime").value = c.time || ""; $("#prec").value = c.precision;
+  $("#btime").disabled = c.precision === "UNKNOWN";
+  $("#manual-coords-toggle").checked = true; $("#manual-coords").hidden = false;
+  $("#mc-lat").value = c.lat; $("#mc-lon").value = c.lon; $("#mc-label").value = c.placeLabel;
+  $("#mc-apply").click();
+  state.demoReports = c.reports;
+  ensureEngine().then(() => calculate()).catch(() => { });
+}
+if (CONFIG.demo && CONFIG.demoCases) {
+  const wrap = document.createElement("label"); wrap.className = "f demo-case";
+  wrap.innerHTML = `<span>Carta de prueba</span><select id="demo-case">${CONFIG.demoCases.map((c, i) => `<option value="${i}">${esc(c.label)}</option>`).join("")}</select>`;
+  $("#birth-form").prepend(wrap);
+  $("#demo-case").addEventListener("change", (e) => loadDemoCase(CONFIG.demoCases[+e.target.value]));
+  loadDemoCase(CONFIG.demoCases[0]);
+} else if (CONFIG.demo && CONFIG.demoBirth) {
   const d = CONFIG.demoBirth;
   $("#fname").value = d.first; $("#bdate").value = d.date; $("#btime").value = d.time; $("#prec").value = d.precision;
   $("#manual-coords-toggle").checked = true; $("#manual-coords").hidden = false;
