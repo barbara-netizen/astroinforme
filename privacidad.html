@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ASTROINFORME · Privacidad</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+:root { --bg: #eceeea; --panel: #f7f8f5; --ink: #1c2230; --muted: #5d6573; --line: #c9cdc6; --accent: #8a5a12;
+  --f-display: "Bodoni Moda", Georgia, serif; --f-body: "Source Sans 3", system-ui, sans-serif; --f-data: "IBM Plex Mono", ui-monospace, monospace; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #11151c; --panel: #181d26; --ink: #e3e5e0; --muted: #98a0ad; --line: #2c3340; --accent: #d6a752; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #11151c; --panel: #181d26; --ink: #e3e5e0; --muted: #98a0ad; --line: #2c3340; --accent: #d6a752; color-scheme: dark }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 var(--f-body); }
+.wrap { max-width: 44rem; margin: 0 auto; padding: 28px max(16px, env(safe-area-inset-right, 0px)) 64px max(16px, env(safe-area-inset-left, 0px)); }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--ink); padding-bottom: 12px; }
+.top a { font-family: var(--f-data); font-size: 0.78rem; letter-spacing: 0.08em; color: var(--ink); }
+nav.langs { display: flex; gap: 10px; }
+nav.langs a[aria-current="true"] { color: var(--accent); text-decoration: none; }
+h1, h2 { font-family: var(--f-display); font-weight: 500; line-height: 1.2; }
+h1 { font-size: clamp(1.9rem, 6vw, 2.6rem); margin: 24px 0 4px; }
+h2 { font-size: 1.25rem; margin: 28px 0 6px; }
+p, li { max-width: 68ch; }
+ul { padding-left: 20px; }
+.date { font-family: var(--f-data); font-size: 0.78rem; color: var(--muted); }
+a { color: var(--accent); }
+section[lang] { display: none; }
+section[lang].on { display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="./" id="back">← ASTROINFORME</a><nav class="langs" aria-label="Idioma / Sprache / Language"><a href="#es" data-l="es">ES</a><a href="#de" data-l="de">DE</a><a href="#en" data-l="en">EN</a></nav></div>
+
+  <section lang="es">
+    <h1>Privacidad</h1>
+    <p class="date">Actualizado el 17 de octubre de 2026</p>
+
+    <h2>Quién es responsable</h2>
+    <p>ASTROINFORME es un proyecto personal y gratuito de Bárbara Gutiérrez, Buenos Aires, Argentina. Contacto: <a href="https://barbaragutierrez.art" target="_blank" rel="noopener">barbaragutierrez.art</a>.</p>
+
+    <h2>El cálculo de la carta</h2>
+    <p>El nombre, la fecha, la hora y el lugar de nacimiento se procesan solamente en tu dispositivo. La página descarga una vez el programa de cálculo, las efemérides y la lista de ciudades; tus datos no viajan a ningún servidor para calcular la carta.</p>
+
+    <h2>Alojamiento de la página</h2>
+    <p>La página está alojada en GitHub Pages (GitHub, Inc., Estados Unidos). Al abrirla, GitHub registra la dirección IP de quien la visita por razones de seguridad. Las tipografías y las ilustraciones se sirven desde el mismo sitio. ASTROINFORME no usa cookies propias, herramientas de analítica ni publicidad.</p>
+
+    <h2>Lo que se guarda en tu navegador</h2>
+    <p>El idioma elegido y, si cargaste uno, el código de acceso se guardan en el almacenamiento local de tu navegador para la próxima visita. Podés borrarlos eliminando los datos de este sitio en tu navegador.</p>
+
+    <h2>Si pedís el informe escrito</h2>
+    <p>El informe lo redacta un modelo de lenguaje. Para eso, la página envía a un servicio propio de ASTROINFORME, alojado en Cloudflare Workers (Cloudflare, Inc., Estados Unidos):</p>
+    <ul>
+      <li>la carta calculada: posiciones, casas, aspectos y la precisión declarada de la hora;</li>
+      <li>el idioma del informe y el tratamiento gramatical elegido;</li>
+      <li>el nombre de pila, solo si lo cargaste.</li>
+    </ul>
+    <p>La fecha, la hora y el lugar de nacimiento no salen de tu dispositivo. El servicio reenvía esos datos a la API de Claude (Anthropic, PBC, Estados Unidos) y te devuelve el informe; no lo guarda. Según sus condiciones vigentes, Anthropic no usa los datos de la API para entrenar sus modelos y los borra dentro de los 30 días, salvo excepciones legales o de seguridad descritas en su <a href="https://privacy.claude.com/" target="_blank" rel="noopener">centro de privacidad</a>.</p>
+    <p>Para limitar la cantidad de informes por persona, el servicio guarda durante dos días un resumen criptográfico irreversible de tu dirección IP, nunca la dirección misma. También guarda totales de uso del mes (cantidad de informes y gasto estimado), sin datos personales.</p>
+
+    <h2>Verificación anti-robots</h2>
+    <p>Si la página muestra una verificación de Cloudflare Turnstile, Cloudflare procesa datos técnicos de tu navegador y tu dirección IP para distinguir personas de programas automáticos. Más información en el <a href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noopener">anexo de privacidad de Turnstile</a>.</p>
+
+    <h2>Tus derechos</h2>
+    <p>ASTROINFORME no guarda informes ni datos de nacimiento asociados a tu persona. Si querés consultar algo sobre tus datos, escribí al contacto indicado arriba. Si vivís en la Unión Europea, también podés presentar una reclamación ante la autoridad de protección de datos de tu país.</p>
+
+    <h2>Alcance del informe</h2>
+    <p>ASTROINFORME ofrece una lectura simbólica de la carta natal desde la astrología psicológica. No es un diagnóstico ni un consejo profesional, y no reemplaza la atención psicológica o médica.</p>
+  </section>
+
+  <section lang="de">
+    <h1>Datenschutz</h1>
+    <p class="date">Stand: 17. Oktober 2026</p>
+
+    <h2>Verantwortlich</h2>
+    <p>ASTROINFORME ist ein privates, kostenloses Projekt von Bárbara Gutiérrez, Buenos Aires, Argentinien. Kontakt: <a href="https://barbaragutierrez.art" target="_blank" rel="noopener">barbaragutierrez.art</a>.</p>
+
+    <h2>Berechnung des Horoskops</h2>
+    <p>Name, Geburtsdatum, Uhrzeit und Geburtsort werden ausschließlich auf deinem Gerät verarbeitet. Die Seite lädt einmalig das Rechenprogramm, die Ephemeriden und die Ortsliste herunter; für die Berechnung werden deine Daten an keinen Server gesendet.</p>
+
+    <h2>Hosting</h2>
+    <p>Die Seite wird über GitHub Pages bereitgestellt (GitHub, Inc., USA). Beim Aufruf speichert GitHub aus Sicherheitsgründen die IP-Adresse. Schriften und Illustrationen werden von derselben Website geladen. ASTROINFORME verwendet keine eigenen Cookies, keine Analysewerkzeuge und keine Werbung.</p>
+
+    <h2>Was in deinem Browser gespeichert wird</h2>
+    <p>Die gewählte Sprache und, falls du einen eingegeben hast, der Zugangscode werden im lokalen Speicher deines Browsers für den nächsten Besuch gespeichert. Du kannst sie löschen, indem du die Websitedaten in deinem Browser entfernst.</p>
+
+    <h2>Wenn du den schriftlichen Bericht anforderst</h2>
+    <p>Den Bericht verfasst ein Sprachmodell. Dafür sendet die Seite an einen eigenen ASTROINFORME-Dienst bei Cloudflare Workers (Cloudflare, Inc., USA):</p>
+    <ul>
+      <li>das berechnete Horoskop: Positionen, Häuser, Aspekte und die angegebene Genauigkeit der Uhrzeit;</li>
+      <li>die Sprache des Berichts und die gewählte grammatische Form;</li>
+      <li>den Vornamen, nur wenn du ihn eingegeben hast.</li>
+    </ul>
+    <p>Geburtsdatum, Uhrzeit und Geburtsort verlassen dein Gerät nicht. Der Dienst leitet diese Daten an die Claude-API (Anthropic, PBC, USA) weiter und gibt dir den Bericht zurück; er speichert ihn nicht. Nach den derzeitigen Bedingungen verwendet Anthropic API-Daten nicht zum Training seiner Modelle und löscht sie innerhalb von 30 Tagen, mit den rechtlichen und sicherheitsbezogenen Ausnahmen, die im <a href="https://privacy.claude.com/" target="_blank" rel="noopener">Datenschutzcenter</a> beschrieben sind.</p>
+    <p>Um die Zahl der Berichte pro Person zu begrenzen, speichert der Dienst zwei Tage lang einen nicht umkehrbaren kryptografischen Hashwert deiner IP-Adresse, nie die Adresse selbst. Außerdem speichert er monatliche Nutzungssummen (Zahl der Berichte, geschätzte Kosten) ohne personenbezogene Daten.</p>
+
+    <h2>Schutz vor automatisierten Zugriffen</h2>
+    <p>Wenn die Seite eine Prüfung mit Cloudflare Turnstile anzeigt, verarbeitet Cloudflare technische Daten deines Browsers und deine IP-Adresse, um Menschen von automatisierten Programmen zu unterscheiden. Mehr dazu im <a href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noopener">Turnstile-Datenschutzanhang</a>.</p>
+
+    <h2>Deine Rechte</h2>
+    <p>ASTROINFORME speichert keine Berichte und keine Geburtsdaten, die dir zugeordnet werden können. Für Fragen zu deinen Daten wende dich an den oben genannten Kontakt. Du hast außerdem das Recht, dich bei einer Datenschutz-Aufsichtsbehörde zu beschweren.</p>
+
+    <h2>Charakter des Berichts</h2>
+    <p>ASTROINFORME bietet eine symbolische Lesart des Geburtshoroskops aus Sicht der psychologischen Astrologie. Sie ist keine Diagnose und keine fachliche Beratung und ersetzt keine psychologische oder ärztliche Behandlung.</p>
+  </section>
+
+  <section lang="en">
+    <h1>Privacy</h1>
+    <p class="date">Updated 17 October 2026</p>
+
+    <h2>Who is responsible</h2>
+    <p>ASTROINFORME is a personal, free project by Bárbara Gutiérrez, Buenos Aires, Argentina. Contact: <a href="https://barbaragutierrez.art" target="_blank" rel="noopener">barbaragutierrez.art</a>.</p>
+
+    <h2>Calculating the chart</h2>
+    <p>Your name, date, time and place of birth are processed only on your device. The page downloads the calculation program, the ephemeris and the list of places once; your data is not sent to any server to calculate the chart.</p>
+
+    <h2>Hosting</h2>
+    <p>The page is hosted on GitHub Pages (GitHub, Inc., United States). When you open it, GitHub logs the visitor's IP address for security purposes. Fonts and illustrations are served from the same site. ASTROINFORME uses no cookies of its own, no analytics and no advertising.</p>
+
+    <h2>What is stored in your browser</h2>
+    <p>The language you chose and, if you entered one, the access code are kept in your browser's local storage for your next visit. You can remove them by clearing this site's data in your browser.</p>
+
+    <h2>If you request the written report</h2>
+    <p>The report is written by a language model. For that, the page sends to ASTROINFORME's own service on Cloudflare Workers (Cloudflare, Inc., United States):</p>
+    <ul>
+      <li>the calculated chart: positions, houses, aspects and the stated accuracy of the birth time;</li>
+      <li>the report language and the chosen grammatical gender;</li>
+      <li>your first name, only if you entered it.</li>
+    </ul>
+    <p>The date, time and place of birth never leave your device. The service forwards this data to the Claude API (Anthropic, PBC, United States) and returns the report to you; it does not store it. Under its current terms, Anthropic does not use API data to train its models and deletes it within 30 days, with the legal and safety exceptions described in its <a href="https://privacy.claude.com/" target="_blank" rel="noopener">privacy center</a>.</p>
+    <p>To limit the number of reports per person, the service keeps an irreversible cryptographic hash of your IP address for two days, never the address itself. It also keeps monthly usage totals (number of reports, estimated cost) without personal data.</p>
+
+    <h2>Anti-bot check</h2>
+    <p>If the page shows a Cloudflare Turnstile check, Cloudflare processes technical data from your browser and your IP address to tell people apart from automated programs. See the <a href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noopener">Turnstile privacy addendum</a>.</p>
+
+    <h2>Your rights</h2>
+    <p>ASTROINFORME does not store reports or birth data linked to you. For any question about your data, write to the contact above. If you live in the European Union, you can also lodge a complaint with your data protection authority.</p>
+
+    <h2>What the report is</h2>
+    <p>ASTROINFORME offers a symbolic reading of the birth chart from the perspective of psychological astrology. It is not a diagnosis or professional advice, and it does not replace psychological or medical care.</p>
+  </section>
+</div>
+<script>
+(function () {
+  var langs = ["es", "de", "en"];
+  function pick() {
+    var h = (location.hash || "").slice(1).toLowerCase(), l = langs.indexOf(h) >= 0 ? h : null;
+    if (!l) { try { l = localStorage.getItem("astroinforme.lang"); } catch (e) { } }
+    if (langs.indexOf(l) < 0) { l = (navigator.language || "es").slice(0, 2).toLowerCase(); if (langs.indexOf(l) < 0) l = "es"; }
+    document.documentElement.lang = l;
+    document.querySelectorAll("section[lang]").forEach(function (s) { s.classList.toggle("on", s.lang === l); });
+    document.querySelectorAll("nav.langs a").forEach(function (a) { a.setAttribute("aria-current", a.dataset.l === l ? "true" : "false"); });
+    document.getElementById("back").href = "./#" + l;
+    document.title = "ASTROINFORME · " + { es: "Privacidad", de: "Datenschutz", en: "Privacy" }[l];
+  }
+  window.addEventListener("hashchange", pick); pick();
+})();
+</script>
+</body>
+</html>

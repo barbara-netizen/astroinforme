@@ -1,7 +1,6 @@
 <title>ASTROINFORME</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,500;1,6..96,500&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+Symbols:wght@400&family=Noto+Sans+Symbols+2&display=swap">
+<link rel="stylesheet" href="fonts.css">
 <style>
 /* Layout: una columna de trabajo (formulario → ficha técnica → informe), como una hoja de cálculo astronómica impresa */
 :root {
@@ -145,6 +144,23 @@ footer a, .credit a { color: var(--accent); }
 .credit { font-size: 0.86rem; color: var(--ink); }
 footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 14px; }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+.save-box { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 14px; }
+.disclaimer { max-width: 68ch; }
+#ts-box { min-height: 65px; }
+@media print {
+  :root { --bg: #fff; --panel: #fff; --ink: #000; --muted: #444; --line: #bbb; color-scheme: light; }
+  body { background: #fff; font-size: 11pt; }
+  .wrap { padding: 0; gap: 14px; max-width: none; }
+  .hero-col, .top-bar .langsel, #engine-state, section[aria-labelledby="h-datos"], section[aria-labelledby="h-auto"],
+  .btn, .row, details, #interp-missing, #interp-conn-text, #interp-status, #interp-unavail, #code-row, #ts-box, #demo-note, #demo-which-row,
+  .art, .save-box { display: none !important; }
+  .panel { border: 0; padding: 0; }
+  .interp-box { border: 0; padding: 0; }
+  .rep-sec { max-width: none; break-inside: auto; }
+  .rep-sec h3 { break-after: avoid; }
+  table, .srow { break-inside: avoid; }
+  a { color: inherit; text-decoration: none; }
+}
 </style>
 
 <div class="wrap">
@@ -171,6 +187,8 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
         <label class="f"><span data-i18n="f.fname">Nombre de pila</span> <span class="hint" data-i18n="f.fname.hint">Opcional. Solo para el encabezado.</span><input id="fname" autocomplete="off" placeholder="Ana" data-i18n-ph="f.fname.ph"></label>
         <label class="f"><span data-i18n="f.lang">Idioma del informe</span> <span class="hint" data-i18n="f.lang.hint">Se registra en el contrato de datos.</span>
           <select id="lang"><option value="es">Español (voseo)</option><option value="de">Deutsch (du)</option><option value="en">English</option></select></label>
+        <label class="f"><span data-i18n="f.gender">Tratamiento en el informe</span> <span class="hint" data-i18n="f.gender.hint">Opcional.</span>
+          <select id="gender"><option value="UNSPECIFIED" data-i18n="gender.UNSPECIFIED">Sin indicar (formas sin género)</option><option value="FEMININE" data-i18n="gender.FEMININE">Femenino</option><option value="MASCULINE" data-i18n="gender.MASCULINE">Masculino</option><option value="NEUTRAL" data-i18n="gender.NEUTRAL">Neutro</option></select></label>
         <label class="f"><span data-i18n="f.date">Fecha</span> <span class="hint" data-i18n="f.date.hint">Calendario gregoriano, 1800–2399.</span><input id="bdate" type="date" min="1800-01-01" max="2399-12-31" required></label>
         <label class="f"><span data-i18n="f.time">Hora local del acta</span> <input id="btime" type="time" step="60"></label>
         <label class="f"><span data-i18n="f.prec">Precisión de la hora</span>
@@ -233,6 +251,7 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
     <div class="panel" aria-labelledby="h-interp">
       <span class="eyebrow" data-i18n="i.eyebrow">Informe psicológico</span>
       <h2 id="h-interp" data-i18n="i.h">Interpretación</h2>
+      <p class="small muted disclaimer" data-i18n="disclaimer"></p>
       <div id="interp-missing" class="interp-box">
         <p data-i18n-html="i.missing"><strong>El motor interpretativo no está conectado en esta versión.</strong></p>
         <p class="small muted" data-i18n="i.missing2">Mientras tanto podés llevarte la carta calculada completa en formato de datos (JSON).</p>
@@ -240,7 +259,9 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
       </div>
       <div id="interp-connected" class="interp-box" hidden>
         <p id="interp-conn-text" data-i18n="i.conn">Motor interpretativo conectado. Se envía solo la carta calculada (nombre de pila opcional, sin apellido).</p>
-        <label class="f" id="code-row" hidden><span data-i18n="f.code">Código de acceso</span> <span class="hint" data-i18n="f.code.hint">Te lo da quien administra ASTROINFORME.</span><input id="access-code" autocomplete="off" autocapitalize="characters" spellcheck="false" style="max-width:16rem"></label>
+        <p id="interp-unavail" class="note warn" hidden data-i18n="i.unavailable"></p>
+        <label class="f" id="code-row" hidden><span id="code-label" data-i18n="f.code">Código de acceso</span> <span class="hint" id="code-hint" data-i18n="f.code.hint">Te lo da quien administra ASTROINFORME.</span><input id="access-code" autocomplete="off" autocapitalize="characters" spellcheck="false" style="max-width:16rem"></label>
+        <div id="ts-box" hidden></div>
         <div class="row"><button type="button" class="btn" id="btn-interp" data-i18n="btn.interp">Generar el informe</button></div>
         <p id="demo-note" class="note warn" hidden data-i18n-html="demo.note"><strong>Simulación.</strong></p>
         <label class="f" id="demo-which-row" hidden><span data-i18n="demo.which">Informe a cargar</span><select id="demo-which"></select></label>
@@ -249,6 +270,11 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
         <div id="audit-out" class="note" hidden></div>
         <div id="report-out" hidden></div>
         <figure id="fig-closure" class="art art-wide" hidden></figure>
+      </div>
+      <div class="save-box">
+        <h3 data-i18n="save.h">Guardar</h3>
+        <p class="small muted" data-i18n="save.note"></p>
+        <div class="row"><button type="button" class="btn ghost" id="btn-print" data-i18n="btn.print">Imprimir o guardar en PDF</button><button type="button" class="btn ghost" id="btn-download" data-i18n="btn.download">Descargar (archivo HTML)</button></div>
       </div>
       <details><summary data-i18n="i.contract">Ver el contrato de datos (astroinforme.chart/v1)</summary><textarea id="payload-view" readonly aria-label="Datos calculados en JSON" data-i18n-aria="i.contract.aria"></textarea></details>
     </div>
@@ -274,7 +300,8 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
     <p class="credit"><span data-i18n="footer.credit">Ilustraciones:</span> <a href="https://barbaragutierrez.art" target="_blank" rel="noopener">Bárbara Gutiérrez</a></p>
     <p data-i18n="footer.calc"></p>
     <p data-i18n="footer.conv"></p>
-    <p><a href="https://github.com/barbara-netizen/astroinforme" target="_blank" rel="noopener" data-i18n="footer.code">Código fuente</a> · AGPL-3.0</p>
+    <p data-i18n="disclaimer"></p>
+    <p><a href="privacidad.html" id="privacy-link" data-i18n="footer.privacy">Privacidad</a> · <a href="https://github.com/barbara-netizen/astroinforme" target="_blank" rel="noopener" data-i18n="footer.code">Código fuente</a> · AGPL-3.0</p>
   </footer>
 </div>
 <script type="module" src="app.js"></script>

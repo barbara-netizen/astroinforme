@@ -54,8 +54,95 @@ function auditReport(report, payload) {
   return { ok: issues.length === 0, total: checked.length + issues.length, verified: checked.length, issues };
 }
 
+// src/style.js
+var CONTRAST = {
+  es: [/\bno\s(?![^.;:!?]{0,80}\bsino\s+tambi[eé]n\b)[^.;:!?]{1,80}?\bsino\b/gi, /\besto no significa\b/gi],
+  de: [/\bnicht\s(?![^.;:!?]{0,80}\bsondern\s+auch\b)[^.;:!?]{1,80}?\bsondern\b/gi, /\bdas bedeutet nicht\b/gi],
+  en: [/\bnot\s(?!only\b|just\b|merely\b)[^.;:!?]{1,60}?,\s*but\b/gi, /\bisn['’]t about\b[^.;:!?]{1,60}?\bit['’]s about\b/gi, /\bthis doesn['’]t mean\b/gi]
+};
+var CONTRAST_MAX = 1;
+var CLICHES = {
+  es: [
+    /\ben un mundo (?:que|donde|en el que)\b/gi,
+    /\bviaje (?:interior|del alma|de autodescubrimiento)\b/gi,
+    /\btu (?:verdadero|aut[eé]ntico) (?:yo|ser)\b/gi,
+    /\bni[ñn][oa] interior\b/gi,
+    /\bel universo (?:te|nos)\b/gi,
+    /\bdespertar espiritual\b/gi,
+    /\bvibraci[oó]n(?:es)?\b/gi,
+    /\benerg[ií]as? (?:c[oó]smicas?|positivas?|negativas?)\b/gi,
+    /\bbrillar con luz propia\b/gi,
+    /\bsin lugar a dudas\b/gi,
+    /\blos astros (?:te |nos )?(?:dicen|indican|anuncian|predicen)\b/gi,
+    /\bestá escrito\b/gi,
+    /\btu destino\b/gi,
+    /\babraz(?:ar|á|a) (?:tu|tus) (?:sombra|heridas?)\b/gi,
+    /\btrastorno\b/gi
+  ],
+  de: [
+    /\bin einer welt,? in der\b/gi,
+    /\binnere reise\b/gi,
+    /\bdein wahres selbst\b/gi,
+    /\binneres kind\b/gi,
+    /\bdas universum\b/gi,
+    /\bspirituelles erwachen\b/gi,
+    /\bschwingung(?:en)?\b/gi,
+    /\bkosmische energie\b/gi,
+    /\bdein schicksal\b/gi,
+    /\bdie sterne (?:sagen|zeigen)\b/gi,
+    /\bst[öo]rung\b/gi
+  ],
+  en: [
+    /\bin a world (?:where|that)\b/gi,
+    /\binner journey\b/gi,
+    /\bjourney of self-discovery\b/gi,
+    /\byour true self\b/gi,
+    /\binner child\b/gi,
+    /\bthe universe (?:is|wants|has)\b/gi,
+    /\bspiritual awakening\b/gi,
+    /\bvibrations?\b/gi,
+    /\bcosmic energ(?:y|ies)\b/gi,
+    /\byour destiny\b/gi,
+    /\bthe stars (?:say|tell|show)\b/gi,
+    /\bembrace your (?:shadow|wounds?)\b/gi,
+    /\bdisorder\b/gi
+  ]
+};
+var snippet = (text, i, len) => text.slice(Math.max(0, i - 30), Math.min(text.length, i + len + 30)).replace(/\s+/g, " ").trim();
+function findAll(text, regexes) {
+  const hits = [];
+  for (const re of regexes) {
+    re.lastIndex = 0;
+    let m;
+    while (m = re.exec(text)) hits.push({ i: m.index, s: m[0] });
+  }
+  return hits.sort((a, b) => a.i - b.i);
+}
+function styleCheck(report) {
+  const lang = CONTRAST[report && report.language] ? report.language : "es";
+  const text = (report.sections || []).map((s) => `${s.heading || ""}
+${s.body_markdown || ""}`).join("\n\n");
+  const issues = [];
+  const contrast = findAll(text, CONTRAST[lang]);
+  if (contrast.length > CONTRAST_MAX) issues.push({ kind: "contrast_formula", count: contrast.length, examples: contrast.slice(0, 6).map((h) => snippet(text, h.i, h.s.length)) });
+  const cl = findAll(text, CLICHES[lang]);
+  if (cl.length) issues.push({ kind: "cliche", count: cl.length, examples: cl.slice(0, 8).map((h) => snippet(text, h.i, h.s.length)) });
+  return { ok: issues.length === 0, issues };
+}
+function describeStyle(style) {
+  return style.issues.map((i) => i.kind === "contrast_formula" ? `- La f\xF3rmula de contraste \xABno X, sino Y\xBB (o \xABesto no significa\u2026\xBB) aparece ${i.count} veces; el protocolo pide no usarla como recurso habitual. Reescrib\xED esos pasajes afirmando directamente la interpretaci\xF3n. Ejemplos:
+${i.examples.map((e) => `  \xAB\u2026${e}\u2026\xBB`).join("\n")}` : `- Frases hechas o lenguaje de hor\xF3scopo, autoayuda o diagn\xF3stico (${i.count}). Reemplazalas por una formulaci\xF3n precisa y propia de esta carta. Ejemplos:
+${i.examples.map((e) => `  \xAB\u2026${e}\u2026\xBB`).join("\n")}`).join("\n");
+}
+
 // src/prompts.js
 var IDIOMA = { es: "espa\xF1ol rioplatense, con voseo", de: "alem\xE1n, tuteando (du)", en: "ingl\xE9s" };
+var TRATAMIENTO = {
+  FEMININE: "Cuando el idioma exija concordancia de g\xE9nero para referirse a la persona, us\xE1 el femenino.",
+  MASCULINE: "Cuando el idioma exija concordancia de g\xE9nero para referirse a la persona, us\xE1 el masculino.",
+  NEUTRAL: "La persona prefiere un tratamiento neutro: no uses marcas de g\xE9nero gramatical para referirte a ella. Eleg\xED construcciones que no las requieran (por ejemplo, \xABten\xE9s tendencia a\u2026\xBB en lugar de \xABsos propenso/propensa a\u2026\xBB). No uses \xABe\xBB, \xABx\xBB ni \xAB@\xBB como desinencias.",
+  UNSPECIFIED: "No sab\xE9s el g\xE9nero de la persona: no uses marcas de g\xE9nero gramatical para referirte a ella. Eleg\xED construcciones que no las requieran (por ejemplo, \xABten\xE9s tendencia a\u2026\xBB en lugar de \xABsos propenso/propensa a\u2026\xBB). No uses \xABe\xBB, \xABx\xBB ni \xAB@\xBB como desinencias."
+};
 var PROMPT_ANALISIS = (carta) => `FASE A \u2014 AN\xC1LISIS ESTRUCTURAL (no es el informe).
 Le\xE9 la carta calculada que sigue y devolv\xE9 SOLO un objeto JSON, sin texto antes ni despu\xE9s, con esta forma:
 {
@@ -70,9 +157,10 @@ Us\xE1 exclusivamente los datos del JSON. Nada de memoria ni c\xE1lculos propios
 
 CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
-var PROMPT_INFORME = ({ idioma, lang, nombre, analisis, carta }) => `FASE B \u2014 REDACCI\xD3N DEL INFORME.
+var PROMPT_INFORME = ({ idioma, lang, nombre, tratamiento, analisis, carta }) => `FASE B \u2014 REDACCI\xD3N DEL INFORME.
 Redact\xE1 el informe natal completo siguiendo el protocolo, en ${idioma}, en segunda persona, a partir del an\xE1lisis estructural
 y de la carta calculada. ${nombre}
+${tratamiento}
 Devolv\xE9 SOLO un objeto JSON v\xE1lido, sin texto antes ni despu\xE9s, con esta forma (contrato astroinforme.report/v1):
 {
  "schema": "astroinforme.report/v1",
@@ -94,13 +182,17 @@ ${analisis}
 
 CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
-var PROMPT_CORRECCION = ({ problemas, informe, carta }) => `FASE C \u2014 CORRECCI\xD3N T\xC9CNICA.
-La auditor\xEDa autom\xE1tica compar\xF3 las referencias t\xE9cnicas de tu informe con la carta calculada y encontr\xF3 estos problemas:
+var PROMPT_CORRECCION = ({ problemas, estilo, informe, carta }) => `FASE C \u2014 CORRECCI\xD3N.
+${problemas ? `La auditor\xEDa t\xE9cnica compar\xF3 las referencias de tu informe con la carta calculada y encontr\xF3 estos problemas:
 ${problemas}
 
-Correg\xED el informe: cambi\xE1 solo los pasajes que dependen de esos datos, para que digan lo que efectivamente figura en la carta
-calculada, o quit\xE1 la afirmaci\xF3n si el dato no existe o no es fiable. Manten\xE9 el resto del texto. Actualiz\xE1
-technical_references_used en consecuencia. Devolv\xE9 SOLO el objeto JSON completo corregido (contrato astroinforme.report/v1).
+Correg\xED esos pasajes para que digan lo que efectivamente figura en la carta calculada, o quit\xE1 la afirmaci\xF3n si el dato no
+existe o no es fiable. Actualiz\xE1 technical_references_used en consecuencia.
+` : ""}${estilo ? `
+El control de estilo encontr\xF3 esto:
+${estilo}
+` : ""}
+Cambi\xE1 solo los pasajes se\xF1alados y manten\xE9 el resto del texto. Devolv\xE9 SOLO el objeto JSON completo corregido (contrato astroinforme.report/v1).
 
 INFORME A CORREGIR:
 ${informe}
@@ -109,7 +201,7 @@ CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
 
 // src/worker.js
-var SERVICE_VERSION = "1.0";
+var SERVICE_VERSION = "1.1";
 var DEFAULT_MODEL = "claude-opus-5-5";
 var DEFAULT_ORIGINS = "https://barbara-netizen.github.io";
 var PRICES = {
@@ -124,7 +216,7 @@ function corsHeaders(request, env) {
   const origin = request.headers.get("origin") || "";
   const allowed = (env.ALLOWED_ORIGINS || DEFAULT_ORIGINS).split(",").map((s) => s.trim()).filter(Boolean);
   const ok = allowed.includes("*") || allowed.includes(origin);
-  return ok ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
+  return ok ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code, x-turnstile-token", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
 }
 function parseCodes(s) {
   const out = {};
@@ -135,6 +227,27 @@ function parseCodes(s) {
   return out;
 }
 var monthKey = (d = /* @__PURE__ */ new Date()) => `month:${d.toISOString().slice(0, 7)}`;
+var dayKey = (d = /* @__PURE__ */ new Date()) => `day:${d.toISOString().slice(0, 10)}`;
+var GENDERS = ["FEMININE", "MASCULINE", "NEUTRAL", "UNSPECIFIED"];
+async function visitorId(ip, salt) {
+  const data = new TextEncoder().encode(`${salt || "astroinforme"}|${ip || "?"}`);
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
+  return [...h.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function verifyTurnstile(secret, token, ip) {
+  if (!token) return false;
+  const form = new FormData();
+  form.append("secret", secret);
+  form.append("response", token);
+  if (ip) form.append("remoteip", ip);
+  try {
+    const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: form });
+    const b = await r.json();
+    return !!(b && b.success);
+  } catch (e) {
+    return false;
+  }
+}
 function costUSD(usage, model) {
   const p = PRICES[model] || PRICES[DEFAULT_MODEL];
   return ((usage.input_tokens || 0) * p.in + (usage.output_tokens || 0) * p.out + (usage.cache_creation_input_tokens || 0) * p.cache_write + (usage.cache_read_input_tokens || 0) * p.cache_read) / 1e6;
@@ -146,7 +259,7 @@ function extractJSON(text) {
   return JSON.parse(t.slice(i, j + 1));
 }
 function validChart(p) {
-  return p && p.schema === "astroinforme.chart/v1" && p.chart && Array.isArray(p.chart.bodies) && p.chart.bodies.length >= 10 && Array.isArray(p.chart.aspects) && p.birth && typeof p.birth.time_precision === "string" && p.request && ["es", "de", "en"].includes(p.request.report_language);
+  return p && p.schema === "astroinforme.chart/v1" && p.chart && Array.isArray(p.chart.bodies) && p.chart.bodies.length >= 10 && Array.isArray(p.chart.aspects) && p.birth && typeof p.birth.time_precision === "string" && p.request && ["es", "de", "en"].includes(p.request.report_language) && (p.request.address_gender == null || GENDERS.includes(p.request.address_gender));
 }
 function chartForModel(p) {
   return {
@@ -189,30 +302,36 @@ async function callClaude(env, { system, user, maxTokens }) {
   const text = (body.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
   return { text, usage: body.usage || {}, stop: body.stop_reason, model };
 }
-async function interpret(env, payload, protocol) {
+async function interpret(env, payload, protocol, spent = { usd: 0 }) {
   const model = env.MODEL || DEFAULT_MODEL;
   const carta = JSON.stringify(chartForModel(payload));
   const lang = payload.request.report_language;
   const nombre = payload.person && payload.person.first_name ? `La persona se llama ${payload.person.first_name}; us\xE1 solo ese nombre de pila si hace falta.` : "";
-  let usd = 0;
+  const tratamiento = TRATAMIENTO[payload.request.address_gender] || TRATAMIENTO.UNSPECIFIED;
   const a = await callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta), maxTokens: 6e3 });
-  usd += costUSD(a.usage, model);
+  spent.usd += costUSD(a.usage, model);
   const analisis = extractJSON(a.text);
-  const b = await callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, analisis: JSON.stringify(analisis), carta }), maxTokens: 16e3 });
-  usd += costUSD(b.usage, model);
+  const b = await callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 16e3 });
+  spent.usd += costUSD(b.usage, model);
   let report = extractJSON(b.text);
   let audit = auditReport(report, payload);
+  let style = styleCheck(report);
   let corrected = false;
-  if (!audit.ok) {
-    const c = await callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: describeIssues(audit), informe: JSON.stringify(report), carta }), maxTokens: 16e3 });
-    usd += costUSD(c.usage, model);
-    report = extractJSON(c.text);
-    audit = auditReport(report, payload);
-    corrected = true;
+  if (!audit.ok || !style.ok) {
+    const c = await callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: audit.ok ? "" : describeIssues(audit), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 16e3 });
+    spent.usd += costUSD(c.usage, model);
+    const fixed = extractJSON(c.text);
+    const fixedAudit = auditReport(fixed, payload);
+    if (fixedAudit.ok || !audit.ok) {
+      report = fixed;
+      audit = fixedAudit;
+      style = styleCheck(fixed);
+      corrected = true;
+    }
   }
   report.engine = { model, protocol_version: "ASTROINFORME", service: SERVICE_VERSION };
-  report.audit = { all_references_present_in_chart: audit.ok, verified: audit.verified, total: audit.total, corrected };
-  return { report, audit, usd };
+  report.audit = { all_references_present_in_chart: audit.ok, verified: audit.verified, total: audit.total, corrected, style_issues: style.issues.map((i) => ({ kind: i.kind, count: i.count })) };
+  return { report, audit, usd: spent.usd };
 }
 async function kvGetJSON(kv, key, fallback) {
   try {
@@ -227,12 +346,21 @@ var worker_default = {
     const cors = corsHeaders(request, env);
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    const requireCode = env.REQUIRE_CODE !== "false";
+    const cap = +(env.MONTHLY_USD_LIMIT || 15);
     if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
       const protocolOk = !!(env.PROTOCOL || env.ASTRO_KV && await env.ASTRO_KV.get("protocol"));
+      const month2 = env.ASTRO_KV ? await kvGetJSON(env.ASTRO_KV, monthKey(), { usd: 0 }) : { usd: 0 };
+      const day = env.ASTRO_KV ? +await env.ASTRO_KV.get(dayKey()) || 0 : 0;
+      const configured = !!(env.ANTHROPIC_API_KEY && protocolOk && env.ASTRO_KV);
       return json({
         service: "astroinforme",
         version: SERVICE_VERSION,
         model: env.MODEL || DEFAULT_MODEL,
+        access: requireCode ? "code" : "public",
+        turnstile: !!env.TURNSTILE_SECRET,
+        // «available»: si hoy se puede pedir un informe (sin revelar el gasto)
+        available: configured && month2.usd < cap && (requireCode || day < +(env.DAILY_LIMIT || 8)),
         configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, kv: !!env.ASTRO_KV, codes: Object.keys(parseCodes(env.ACCESS_CODES)).length }
       }, 200, cors);
     }
@@ -249,21 +377,34 @@ var worker_default = {
       return json({ error: "bad_request" }, 400, cors);
     }
     if (!validChart(payload)) return json({ error: "bad_request" }, 400, cors);
+    const kv = env.ASTRO_KV;
+    const ip = request.headers.get("cf-connecting-ip") || "";
+    if (env.TURNSTILE_SECRET && !await verifyTurnstile(env.TURNSTILE_SECRET, request.headers.get("x-turnstile-token"), ip)) return json({ error: "bot_check" }, 403, cors);
     const codes = parseCodes(env.ACCESS_CODES);
-    const requireCode = env.REQUIRE_CODE !== "false";
     const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
+    const useCode = requireCode || !!code;
     let limit = null, used = 0;
-    if (requireCode) {
+    if (useCode) {
       if (!code) return json({ error: "code_required" }, 401, cors);
       if (!(code in codes)) return json({ error: "code_invalid" }, 403, cors);
       limit = codes[code];
-      used = +await env.ASTRO_KV.get("used:" + code) || 0;
+      used = +await kv.get("used:" + code) || 0;
       if (used >= limit) return json({ error: "quota_exhausted", remaining: 0 }, 403, cors);
     }
     const mk = monthKey();
-    const month = await kvGetJSON(env.ASTRO_KV, mk, { reports: 0, usd: 0, failed: 0 });
-    const cap = +(env.MONTHLY_USD_LIMIT || 15);
+    const month = await kvGetJSON(kv, mk, { reports: 0, usd: 0, failed: 0 });
     if (month.usd >= cap) return json({ error: "budget_exhausted" }, 429, cors);
+    let vKey = null, vUsed = 0, dKey = null, dUsed = 0;
+    if (!useCode) {
+      dKey = dayKey();
+      dUsed = +await kv.get(dKey) || 0;
+      if (dUsed >= +(env.DAILY_LIMIT || 8)) return json({ error: "daily_limit" }, 429, cors);
+      vKey = `v:${dKey.slice(4)}:${await visitorId(ip, env.VISITOR_SALT || env.ANTHROPIC_API_KEY)}`;
+      vUsed = +await kv.get(vKey) || 0;
+      if (vUsed >= +(env.VISITOR_DAILY_LIMIT || 1)) return json({ error: "visitor_limit" }, 429, cors);
+      await kv.put(vKey, String(vUsed + 1), { expirationTtl: 172800 });
+      await kv.put(dKey, String(dUsed + 1), { expirationTtl: 172800 });
+    }
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();
     const enc = new TextEncoder();
@@ -273,8 +414,9 @@ var worker_default = {
     }, KEEPALIVE_MS);
     const work = (async () => {
       let out;
+      const spent = { usd: 0 };
       try {
-        const { report, audit, usd } = await interpret(env, payload, protocol);
+        const { report, audit, usd } = await interpret(env, payload, protocol, spent);
         const strict = env.AUDIT_STRICT !== "false";
         month.usd = +(month.usd + usd).toFixed(4);
         if (!audit.ok && strict) {
@@ -282,15 +424,27 @@ var worker_default = {
           out = { error: "audit_failed" };
         } else {
           month.reports += 1;
-          if (requireCode) {
+          if (useCode) {
             used += 1;
-            await env.ASTRO_KV.put("used:" + code, String(used));
+            await kv.put("used:" + code, String(used));
           }
-          out = { report, remaining: requireCode ? Math.max(0, limit - used) : null };
+          out = { report, remaining: useCode ? Math.max(0, limit - used) : null };
         }
-        await env.ASTRO_KV.put(mk, JSON.stringify(month));
+        await kv.put(mk, JSON.stringify(month));
       } catch (e) {
         out = { error: "upstream" };
+        if (spent.usd) {
+          month.usd = +(month.usd + spent.usd).toFixed(4);
+          month.failed += 1;
+          await kv.put(mk, JSON.stringify(month)).catch(() => {
+          });
+        }
+        if (vKey) {
+          await kv.put(vKey, String(vUsed), { expirationTtl: 172800 }).catch(() => {
+          });
+          await kv.put(dKey, String(dUsed), { expirationTtl: 172800 }).catch(() => {
+          });
+        }
       }
       clearInterval(keep);
       await writer.write(enc.encode(JSON.stringify(out)));

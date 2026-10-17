@@ -7,21 +7,28 @@
 //
 // Configuración (Cloudflare → Worker → Settings → Variables and Secrets):
 //   ANTHROPIC_API_KEY   secreto. Clave de la API del workspace «astroinforme».
-//   ACCESS_CODES        texto. Códigos por persona con su límite: "ANA-7K2:3, PEDRO-9X4:2".
+//   ACCESS_CODES        secreto. Códigos por persona con su límite: "ANA-7K2:3, PEDRO-9X4:2".
 //   MODEL               opcional. Por defecto claude-opus-5-5.
 //   MONTHLY_USD_LIMIT   opcional. Tope de gasto mensual del servicio en dólares (por defecto 15).
 //   ALLOWED_ORIGINS     opcional. Orígenes permitidos, separados por coma (por defecto la app en GitHub Pages).
-//   REQUIRE_CODE        opcional. "false" para no pedir código (no recomendado).
+//   REQUIRE_CODE        opcional. "false" = acceso público: cualquiera puede pedir un informe, con límite por visitante
+//                       y por día (un código válido sigue funcionando con su propio cupo). Por defecto "true".
+//   VISITOR_DAILY_LIMIT opcional. Informes por visitante por día en acceso público (por defecto 1).
+//   DAILY_LIMIT         opcional. Informes por día para todo el servicio en acceso público (por defecto 8).
+//   TURNSTILE_SECRET    secreto opcional. Si existe, exige la verificación anti-robots de Cloudflare Turnstile.
+//   VISITOR_SALT        secreto opcional. Sal para anonimizar la IP del visitante (si falta, se usa la clave de la API).
 //   AUDIT_STRICT        opcional. "false" para entregar aunque la auditoría falle (con la auditoría adjunta).
 //   PROTOCOL            opcional. Alternativa al KV si el protocolo cabe en 5 KB (no cabe: usar KV).
 // Enlace KV (Settings → Bindings → KV namespace): nombre de variable ASTRO_KV.
 //   Clave "protocol": texto completo del protocolo interpretativo.
-//   El servicio guarda ahí "used:<CÓDIGO>" y "month:<AAAA-MM>".
+//   El servicio guarda ahí "used:<CÓDIGO>", "month:<AAAA-MM>", "day:<AAAA-MM-DD>" y "v:<AAAA-MM-DD>:<hash>".
+//   La IP del visitante nunca se guarda: solo un resumen criptográfico con sal, que vence a los dos días.
 
 import { auditReport } from "../../audit.js";
-import { IDIOMA, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION } from "./prompts.js";
+import { styleCheck, describeStyle } from "./style.js";
+import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION } from "./prompts.js";
 
-export const SERVICE_VERSION = "1.0";
+export const SERVICE_VERSION = "1.1";
 const DEFAULT_MODEL = "claude-opus-5-5";
 const DEFAULT_ORIGINS = "https://barbara-netizen.github.io";
 // Precios por millón de tokens (USD), https://platform.claude.com/docs/en/about-claude/pricing (16-10-2026)
@@ -40,7 +47,7 @@ export function corsHeaders(request, env) {
   const origin = request.headers.get("origin") || "";
   const allowed = (env.ALLOWED_ORIGINS || DEFAULT_ORIGINS).split(",").map((s) => s.trim()).filter(Boolean);
   const ok = allowed.includes("*") || allowed.includes(origin);
-  return ok ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
+  return ok ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code, x-turnstile-token", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
 }
 
 export function parseCodes(s) {
@@ -53,6 +60,24 @@ export function parseCodes(s) {
 }
 
 const monthKey = (d = new Date()) => `month:${d.toISOString().slice(0, 7)}`;
+const dayKey = (d = new Date()) => `day:${d.toISOString().slice(0, 10)}`;
+const GENDERS = ["FEMININE", "MASCULINE", "NEUTRAL", "UNSPECIFIED"];
+
+/** Resumen anónimo del visitante: SHA-256 de la IP con sal, recortado. La IP no se guarda. */
+export async function visitorId(ip, salt) {
+  const data = new TextEncoder().encode(`${salt || "astroinforme"}|${ip || "?"}`);
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
+  return [...h.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export async function verifyTurnstile(secret, token, ip) {
+  if (!token) return false;
+  const form = new FormData(); form.append("secret", secret); form.append("response", token); if (ip) form.append("remoteip", ip);
+  try {
+    const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: form });
+    const b = await r.json(); return !!(b && b.success);
+  } catch (e) { return false; }
+}
 
 export function costUSD(usage, model) {
   const p = PRICES[model] || PRICES[DEFAULT_MODEL];
@@ -70,7 +95,8 @@ export function extractJSON(text) {
 export function validChart(p) {
   return p && p.schema === "astroinforme.chart/v1" && p.chart && Array.isArray(p.chart.bodies) && p.chart.bodies.length >= 10 &&
     Array.isArray(p.chart.aspects) && p.birth && typeof p.birth.time_precision === "string" && p.request &&
-    ["es", "de", "en"].includes(p.request.report_language);
+    ["es", "de", "en"].includes(p.request.report_language) &&
+    (p.request.address_gender == null || GENDERS.includes(p.request.address_gender));
 }
 
 // Solo se envían a Claude los datos astrológicos y el nombre de pila: nunca fecha, hora ni lugar.
@@ -110,30 +136,33 @@ export async function callClaude(env, { system, user, maxTokens }) {
 }
 
 /** Flujo completo: análisis → redacción → auditoría → (corrección) → auditoría. */
-export async function interpret(env, payload, protocol) {
+export async function interpret(env, payload, protocol, spent = { usd: 0 }) {
   const model = env.MODEL || DEFAULT_MODEL;
   const carta = JSON.stringify(chartForModel(payload));
   const lang = payload.request.report_language;
   const nombre = payload.person && payload.person.first_name ? `La persona se llama ${payload.person.first_name}; usá solo ese nombre de pila si hace falta.` : "";
-  let usd = 0;
+  const tratamiento = TRATAMIENTO[payload.request.address_gender] || TRATAMIENTO.UNSPECIFIED;
   const a = await callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta), maxTokens: 6000 });
-  usd += costUSD(a.usage, model);
+  spent.usd += costUSD(a.usage, model);
   const analisis = extractJSON(a.text);
-  const b = await callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, analisis: JSON.stringify(analisis), carta }), maxTokens: 16000 });
-  usd += costUSD(b.usage, model);
+  const b = await callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 16000 });
+  spent.usd += costUSD(b.usage, model);
   let report = extractJSON(b.text);
   let audit = auditReport(report, payload);
+  let style = styleCheck(report);
   let corrected = false;
-  if (!audit.ok) {
-    const c = await callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: describeIssues(audit), informe: JSON.stringify(report), carta }), maxTokens: 16000 });
-    usd += costUSD(c.usage, model);
-    report = extractJSON(c.text);
-    audit = auditReport(report, payload);
-    corrected = true;
+  // una sola corrección, que atiende a la vez los problemas técnicos y los de estilo
+  if (!audit.ok || !style.ok) {
+    const c = await callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: audit.ok ? "" : describeIssues(audit), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 16000 });
+    spent.usd += costUSD(c.usage, model);
+    const fixed = extractJSON(c.text);
+    const fixedAudit = auditReport(fixed, payload);
+    // si la corrección solo era de estilo y rompió la parte técnica, se conserva la versión anterior
+    if (fixedAudit.ok || !audit.ok) { report = fixed; audit = fixedAudit; style = styleCheck(fixed); corrected = true; }
   }
   report.engine = { model, protocol_version: "ASTROINFORME", service: SERVICE_VERSION };
-  report.audit = { all_references_present_in_chart: audit.ok, verified: audit.verified, total: audit.total, corrected };
-  return { report, audit, usd };
+  report.audit = { all_references_present_in_chart: audit.ok, verified: audit.verified, total: audit.total, corrected, style_issues: style.issues.map((i) => ({ kind: i.kind, count: i.count })) };
+  return { report, audit, usd: spent.usd };
 }
 
 // ---------------------------------------------------------------- handler
@@ -145,9 +174,17 @@ export default {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
+    const requireCode = env.REQUIRE_CODE !== "false";
+    const cap = +(env.MONTHLY_USD_LIMIT || 15);
     if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
       const protocolOk = !!(env.PROTOCOL || (env.ASTRO_KV && (await env.ASTRO_KV.get("protocol"))));
+      const month = env.ASTRO_KV ? await kvGetJSON(env.ASTRO_KV, monthKey(), { usd: 0 }) : { usd: 0 };
+      const day = env.ASTRO_KV ? +(await env.ASTRO_KV.get(dayKey())) || 0 : 0;
+      const configured = !!(env.ANTHROPIC_API_KEY && protocolOk && env.ASTRO_KV);
       return json({ service: "astroinforme", version: SERVICE_VERSION, model: env.MODEL || DEFAULT_MODEL,
+        access: requireCode ? "code" : "public", turnstile: !!env.TURNSTILE_SECRET,
+        // «available»: si hoy se puede pedir un informe (sin revelar el gasto)
+        available: configured && month.usd < cap && (requireCode || day < +(env.DAILY_LIMIT || 8)),
         configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, kv: !!env.ASTRO_KV, codes: Object.keys(parseCodes(env.ACCESS_CODES)).length } }, 200, cors);
     }
     if (request.method !== "POST") return json({ error: "bad_request" }, 405, cors);
@@ -163,22 +200,39 @@ export default {
     let payload; try { payload = JSON.parse(raw); } catch (e) { return json({ error: "bad_request" }, 400, cors); }
     if (!validChart(payload)) return json({ error: "bad_request" }, 400, cors);
 
-    // código de acceso y cupo
+    const kv = env.ASTRO_KV;
+    const ip = request.headers.get("cf-connecting-ip") || "";
+
+    // verificación anti-robots (si está configurada)
+    if (env.TURNSTILE_SECRET && !(await verifyTurnstile(env.TURNSTILE_SECRET, request.headers.get("x-turnstile-token"), ip))) return json({ error: "bot_check" }, 403, cors);
+
+    // código de acceso y cupo; en acceso público, un código válido usa su propio cupo
     const codes = parseCodes(env.ACCESS_CODES);
-    const requireCode = env.REQUIRE_CODE !== "false";
     const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
+    const useCode = requireCode || !!code;
     let limit = null, used = 0;
-    if (requireCode) {
+    if (useCode) {
       if (!code) return json({ error: "code_required" }, 401, cors);
       if (!(code in codes)) return json({ error: "code_invalid" }, 403, cors);
       limit = codes[code];
-      used = +(await env.ASTRO_KV.get("used:" + code)) || 0;
+      used = +(await kv.get("used:" + code)) || 0;
       if (used >= limit) return json({ error: "quota_exhausted", remaining: 0 }, 403, cors);
     }
     const mk = monthKey();
-    const month = await kvGetJSON(env.ASTRO_KV, mk, { reports: 0, usd: 0, failed: 0 });
-    const cap = +(env.MONTHLY_USD_LIMIT || 15);
+    const month = await kvGetJSON(kv, mk, { reports: 0, usd: 0, failed: 0 });
     if (month.usd >= cap) return json({ error: "budget_exhausted" }, 429, cors);
+
+    // acceso público: límite por visitante y por día; se reserva antes de llamar a Claude
+    let vKey = null, vUsed = 0, dKey = null, dUsed = 0;
+    if (!useCode) {
+      dKey = dayKey(); dUsed = +(await kv.get(dKey)) || 0;
+      if (dUsed >= +(env.DAILY_LIMIT || 8)) return json({ error: "daily_limit" }, 429, cors);
+      // la sal es secreta: sin ella no se puede reconstruir la IP a partir del resumen
+      vKey = `v:${dKey.slice(4)}:${await visitorId(ip, env.VISITOR_SALT || env.ANTHROPIC_API_KEY)}`; vUsed = +(await kv.get(vKey)) || 0;
+      if (vUsed >= +(env.VISITOR_DAILY_LIMIT || 1)) return json({ error: "visitor_limit" }, 429, cors);
+      await kv.put(vKey, String(vUsed + 1), { expirationTtl: 172800 });
+      await kv.put(dKey, String(dUsed + 1), { expirationTtl: 172800 });
+    }
 
     // respuesta en flujo: espacios cada 10 s para que la conexión no se considere inactiva; al final, el JSON
     const { readable, writable } = new TransformStream();
@@ -187,8 +241,9 @@ export default {
     const keep = setInterval(() => { writer.write(enc.encode(" ")).catch(() => { }); }, KEEPALIVE_MS);
     const work = (async () => {
       let out;
+      const spent = { usd: 0 };
       try {
-        const { report, audit, usd } = await interpret(env, payload, protocol);
+        const { report, audit, usd } = await interpret(env, payload, protocol, spent);
         const strict = env.AUDIT_STRICT !== "false";
         month.usd = +(month.usd + usd).toFixed(4);
         if (!audit.ok && strict) {
@@ -196,12 +251,16 @@ export default {
           out = { error: "audit_failed" };
         } else {
           month.reports += 1;
-          if (requireCode) { used += 1; await env.ASTRO_KV.put("used:" + code, String(used)); }
-          out = { report, remaining: requireCode ? Math.max(0, limit - used) : null };
+          if (useCode) { used += 1; await kv.put("used:" + code, String(used)); }
+          out = { report, remaining: useCode ? Math.max(0, limit - used) : null };
         }
-        await env.ASTRO_KV.put(mk, JSON.stringify(month));
+        await kv.put(mk, JSON.stringify(month));
       } catch (e) {
         out = { error: "upstream" };
+        // lo gastado antes del error también cuenta para el tope del mes
+        if (spent.usd) { month.usd = +(month.usd + spent.usd).toFixed(4); month.failed += 1; await kv.put(mk, JSON.stringify(month)).catch(() => { }); }
+        // si la API falló, el visitante puede volver a intentar
+        if (vKey) { await kv.put(vKey, String(vUsed), { expirationTtl: 172800 }).catch(() => { }); await kv.put(dKey, String(dUsed), { expirationTtl: 172800 }).catch(() => { }); }
       }
       clearInterval(keep);
       await writer.write(enc.encode(JSON.stringify(out)));

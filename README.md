@@ -81,10 +81,11 @@ Obra de Bárbara Gutiérrez (https://barbaragutierrez.art), integrada según las
 - Swiss Ephemeris y `@swisseph/browser`: AGPL-3.0. Si la página se publica para otras personas, la AGPL exige ofrecerles el código fuente completo. Esta carpeta es ese código: alcanza con publicarla tal cual (en GitHub Pages el repositorio público ya cumple esa función) y conservar `LICENSE-swisseph-browser.txt`. Para uso comercial sin abrir el código hace falta la licencia profesional de Astrodienst. Esto es una lectura de la licencia, no asesoramiento legal.
 - Ilustraciones (`assets/`): © Bárbara Gutiérrez, todos los derechos reservados. No están cubiertas por la AGPL ni por ninguna otra licencia de este repositorio.
 - GeoNames: CC BY 4.0 (atribución en el pie de la página). tz-lookup: CC0.
+- Tipografías (`fonts/`): Bodoni Moda, Source Sans 3, IBM Plex Mono, Noto Sans Symbols y Noto Sans Symbols 2, SIL Open Font License 1.1 (textos en `fonts/LICENSE-*.txt`), archivos de Fontsource.
 
 ## Privacidad
 
-Los datos de nacimiento no salen del navegador. La página solo descarga sus propios archivos y las tipografías de Google Fonts. No guarda nada.
+Los datos de nacimiento no salen del navegador. La página solo descarga sus propios archivos, incluidas las tipografías (`fonts/`, sin Google Fonts). En el navegador guarda únicamente el idioma elegido y, si se cargó, el código de acceso. Al pedir un informe se envía al servicio una carta reducida, sin fecha, hora ni lugar. Detalle para visitantes en `privacidad.html` (es/de/en).
 
 ## Limitaciones conocidas
 

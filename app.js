@@ -150,7 +150,7 @@ function readForm() {
     const sign = m[1] === "-" ? -1 : 1; const hrs = parseFloat(m[2]); const mins = m[3] ? +m[3] : 0;
     manual = sign * Math.round(hrs * 60 + mins);
   }
-  return { first: $("#fname").value.trim(), lang: $("#lang").value, y, mo, d: dd, h, mi, prec, zone, manual };
+  return { first: $("#fname").value.trim(), lang: $("#lang").value, gender: $("#gender").value || "UNSPECIFIED", y, mo, d: dd, h, mi, prec, zone, manual };
 }
 
 function fmtOffset(min) { const s = min < 0 ? "−" : "+"; const a = Math.abs(min); return `UTC${s}${Math.floor(a / 60)}${a % 60 ? ":" + String(a % 60).padStart(2, "0") : ""}`; }
@@ -215,7 +215,7 @@ function buildPayload(f, opt, source, chart, warnings) {
     generated_at: new Date().toISOString(),
     engine: { name: "ASTROINFORME web", version: E.ENGINE_VERSION, ephemeris: chart.ephemeris, aspect_policy: chart.aspect_policy },
     person: { first_name: f.first || null },
-    request: { kind: "NATAL_FULL_REPORT", report_language: f.lang, address: f.lang === "de" ? "du" : f.lang === "es" ? "voseo" : "you", include_myth: true },
+    request: { kind: "NATAL_FULL_REPORT", report_language: f.lang, address: f.lang === "de" ? "du" : f.lang === "es" ? "voseo" : "you", address_gender: f.gender, include_myth: true },
     birth: {
       local_date: `${f.y}-${pad(f.mo)}-${pad(f.d)}`,
       local_time: f.prec === "UNKNOWN" ? null : `${pad(f.h)}:${pad(f.mi)}`,
@@ -369,6 +369,30 @@ function wheelSVG(chart) {
 
 // ---------- interpretación (desacoplada) ----------
 const serviceUrl = () => (CONFIG.interpreterUrl || "").trim();
+const publicAccess = () => CONFIG.requireCode === false;
+// estado del servicio (GET /health): si hoy quedan informes disponibles
+async function checkService() {
+  if (!serviceUrl() || CONFIG.demo) return;
+  try { const r = await fetch(new URL("health", serviceUrl()), { cache: "no-store" }); state.health = await r.json(); }
+  catch (e) { state.health = null; }
+  renderInterpretationChrome();
+}
+// verificación anti-robots (Cloudflare Turnstile), solo si hay clave de sitio configurada
+const ts = { loading: null, widget: null, token: null };
+function loadTurnstile() {
+  if (!CONFIG.turnstileSiteKey || !serviceUrl() || CONFIG.demo) return;
+  if (!ts.loading) ts.loading = new Promise((ok, fail) => {
+    const sc = document.createElement("script");
+    sc.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"; sc.async = true;
+    sc.onload = ok; sc.onerror = fail; document.head.append(sc);
+  });
+  ts.loading.then(() => {
+    if (ts.widget !== null || !window.turnstile) return;
+    const box = $("#ts-box"); box.hidden = false;
+    ts.widget = window.turnstile.render(box, { sitekey: CONFIG.turnstileSiteKey, language: L.getLang(), callback: (tok) => { ts.token = tok; }, "expired-callback": () => { ts.token = null; }, "error-callback": () => { ts.token = null; } });
+  }).catch(() => { });
+}
+function resetTurnstile() { ts.token = null; try { if (ts.widget !== null && window.turnstile) window.turnstile.reset(ts.widget); } catch (e) { } }
 function renderInterpretationChrome() {
   const connected = !!serviceUrl() || !!CONFIG.demo;
   $("#interp-connected").hidden = !connected;
@@ -376,7 +400,12 @@ function renderInterpretationChrome() {
   $("#demo-note").hidden = !CONFIG.demo;
   $("#interp-conn-text").hidden = !!CONFIG.demo;
   $("#demo-which-row").hidden = !CONFIG.demo;
-  $("#code-row").hidden = !(serviceUrl() && CONFIG.requireCode);
+  $("#code-row").hidden = !serviceUrl() || !!CONFIG.demo;
+  $("#code-label").dataset.i18n = publicAccess() ? "f.code.opt" : "f.code"; $("#code-label").textContent = t($("#code-label").dataset.i18n);
+  $("#code-hint").dataset.i18n = publicAccess() ? "f.code.hintOpt" : "f.code.hint"; $("#code-hint").textContent = t($("#code-hint").dataset.i18n);
+  const unavailable = !!(state.health && state.health.available === false);
+  $("#interp-unavail").hidden = !unavailable;
+  $("#btn-interp").disabled = unavailable && !($("#access-code").value || "").trim();
   if (CONFIG.demo) {
     const reports = state.demoReports || CONFIG.demoReports || [];
     const sig = reports.map((r) => r.file).join("|");
@@ -390,6 +419,7 @@ function renderInterpretationChrome() {
 }
 function renderInterpretation() {
   renderInterpretationChrome();
+  loadTurnstile();
   $("#payload-view").value = JSON.stringify(state.payload, null, 2);
   $("#report-out").hidden = true; $("#audit-out").hidden = true; $("#interp-status").hidden = true;
   V.clear($("#fig-reader")); V.clear($("#fig-closure"));
@@ -445,6 +475,15 @@ function renderReport(rep) {
   }
 }
 
+// Al servicio solo viaja lo necesario para interpretar: la fecha, la hora, el lugar y el día juliano no salen del dispositivo.
+function servicePayload(p) {
+  return {
+    schema: p.schema, engine: p.engine, person: { first_name: p.person.first_name }, request: p.request,
+    birth: { time_precision: p.birth.time_precision, time_precision_label: p.birth.time_precision_label },
+    chart: { ...p.chart, jd_ut: undefined },
+    warnings: p.warnings.map((w) => ({ code: w.code })),
+  };
+}
 class ServiceError extends Error { constructor(key, params) { super(key); this.key = key; this.params = params; } }
 async function obtainReport() {
   if (CONFIG.demo) {
@@ -453,12 +492,15 @@ async function obtainReport() {
     return { report: (await import("./" + which)).DEMO_REPORT };
   }
   const code = ($("#access-code").value || "").trim();
-  if (CONFIG.requireCode && !code) throw new ServiceError("i.err.code_required");
+  if (!publicAccess() && !code) throw new ServiceError("i.err.code_required");
+  if (CONFIG.turnstileSiteKey && !ts.token) throw new ServiceError("i.err.bot_pending");
   try { localStorage.setItem("astroinforme.code", code); } catch (e) { }
   let r;
+  const headers = { "content-type": "application/json", ...(code ? { "x-astro-code": code } : {}), ...(ts.token ? { "x-turnstile-token": ts.token } : {}) };
   try {
-    r = await fetch(serviceUrl(), { method: "POST", headers: { "content-type": "application/json", ...(code ? { "x-astro-code": code } : {}) }, body: JSON.stringify(state.payload) });
-  } catch (e) { throw new ServiceError("i.err.upstream"); }
+    r = await fetch(serviceUrl(), { method: "POST", headers, body: JSON.stringify(servicePayload(state.payload)) });
+  } catch (e) { resetTurnstile(); throw new ServiceError("i.err.upstream"); }
+  resetTurnstile(); // cada verificación sirve para un solo pedido
   // el servicio responde en flujo: espacios de mantenimiento y, al final, un único JSON
   let body = null; try { body = JSON.parse((await r.text()).trim()); } catch (e) { }
   if (!r.ok || (body && body.error)) {
@@ -471,7 +513,7 @@ async function obtainReport() {
 
 async function callInterpreter() {
   const out = $("#report-out"), btn = $("#btn-interp"), status = $("#interp-status");
-  btn.disabled = true; out.hidden = true; $("#audit-out").hidden = true;
+  btn.disabled = true; // un informe anterior queda visible hasta que llegue el nuevo
   status.hidden = false; status.textContent = t(CONFIG.demo ? "i.demoWaiting" : "i.generating");
   V.clear($("#fig-closure")); V.show($("#fig-reader"), "report_reader");
   try {
@@ -490,6 +532,42 @@ async function callInterpreter() {
     status.textContent = t("i.fail", { msg: e instanceof ServiceError ? t(e.key, e.params) : e.message });
   }
   btn.disabled = false;
+  if (serviceUrl() && !CONFIG.demo) checkService();
+}
+
+// ---------- guardar: imprimir o descargar ----------
+function printSheet() { window.print(); }
+
+function downloadSheet() {
+  if (!state.chart || !state.last) return;
+  const { f } = state.last, chart = state.chart, rep = state.lastReport, H = t("r.house");
+  const lang = rep && rep.language ? rep.language : L.getLang();
+  const row = (cells, tag = "td") => `<tr>${cells.map((c) => `<${tag}>${c}</${tag}>`).join("")}</tr>`;
+  const pos = chart.bodies.map((b) => row([esc(nm(b.id)), esc(`${b.deg} ${term(b.sign)}${b.retrograde ? " R" : ""}`), chart.houses ? ROMAN[b.house] : ""]));
+  const asp = chart.aspects.map((a) => row([esc(`${nm(a.a)} ${term(a.aspect)} ${nm(a.b)}`), `${a.orb.toFixed(2)}°`]));
+  const reportHTML = rep ? rep.sections.map((s) => `<h2>${esc(s.heading)}</h2>` + String(s.body_markdown).split(/\n{2,}/).map((p) => `<p>${esc(p)}</p>`).join("")).join("") : "";
+  const audit = state.lastAudit ? `<p class="m">${esc(t("a.head", { v: state.lastAudit.verified, t: state.lastAudit.total }))}${state.lastAudit.ok ? "." : esc(t("a.headBad", { n: state.lastAudit.issues.length }))}</p>` : "";
+  const ascLine = chart.houses ? `${term("ASC")} ${E.fmtDeg(chart.houses.asc)} ${term(E.SIGNS[Math.floor(chart.houses.asc / 30)])} · ${term("MC")} ${E.fmtDeg(chart.houses.mc)} ${term(E.SIGNS[Math.floor(chart.houses.mc / 30)])}` : t("r.noTime");
+  const title = rep && rep.title ? rep.title : $("#r-title").textContent;
+  const doc = `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
+<style>body{font:16px/1.6 Georgia,serif;color:#1c2230;background:#fff;max-width:44rem;margin:0 auto;padding:24px 16px}h1{font-weight:500;line-height:1.15}h2{font-weight:500;margin-top:1.8em}.m{font:13px/1.5 ui-monospace,Menlo,monospace;color:#5d6573}table{border-collapse:collapse;width:100%;font:13px/1.4 ui-monospace,Menlo,monospace}td,th{border-bottom:1px solid #ccc;padding:4px 8px 4px 0;text-align:left}details{margin:1.5em 0}footer{margin-top:3em;border-top:1px solid #ccc;padding-top:12px;font-size:13px;color:#5d6573}</style></head><body>
+<h1>${esc(title)}</h1>
+<p class="m">${esc($("#r-meta").textContent)}</p>
+<p class="m">${esc(ascLine)}</p>
+${reportHTML}
+${audit}
+<details${rep ? "" : " open"}><summary>${esc(t("r.eyebrow"))}</summary>
+<table>${row([t("th.point"), t("th.position"), chart.houses ? t("th.house") : ""], "th")}${pos.join("")}</table>
+<h3>${esc(t("h.aspects"))}</h3><table>${row([t("th.aspect"), t("th.orb")], "th")}${asp.join("")}</table>
+<p class="m">${esc($("#prov").textContent)}</p></details>
+<footer><p>${esc(t("disclaimer"))}</p><p>${esc(t("footer.credit"))} Bárbara Gutiérrez · barbaragutierrez.art</p><p>${esc(t("dl.generated", { date: new Date().toLocaleDateString(LOCALE[L.getLang()]) }))} https://barbara-netizen.github.io/astroinforme/</p></footer>
+</body></html>`;
+  const blob = new Blob([doc], { type: "text/html;charset=utf-8" });
+  const a = document.createElement("a");
+  const slug = (f.first || "carta").normalize("NFD").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "carta";
+  a.href = URL.createObjectURL(blob); a.download = `astroinforme-${slug}-${state.payload.birth.local_date}.html`;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
 // ---------- idioma ----------
@@ -507,6 +585,7 @@ function applyLanguage(lang, { remember = true } = {}) {
   if (state.place) showPlace();
   if (state.chart) render(false);
   if (state.lastAudit) renderAudit(state.lastAudit);
+  $("#privacy-link").href = "privacidad.html#" + lang;
 }
 
 // ---------- eventos ----------
@@ -531,6 +610,11 @@ function init() {
   try { $("#access-code").value = localStorage.getItem("astroinforme.code") || ""; } catch (e) { }
   $("#ui-lang").addEventListener("change", (e) => applyLanguage(e.target.value));
   $("#lang").addEventListener("change", () => { state.reportLangTouched = true; });
+  $("#gender").addEventListener("change", (e) => {
+    if (!state.payload) return;
+    state.payload.request.address_gender = e.target.value; state.last.f.gender = e.target.value;
+    $("#payload-view").value = JSON.stringify(state.payload, null, 2);
+  });
   try { const zones = Intl.supportedValuesOf("timeZone"); $("#tz-list").innerHTML = zones.map((z) => `<option value="${z}">`).join(""); } catch (e) { }
   $("#place-q").addEventListener("focus", () => { loadCities().catch(() => { }); ensureEngine().catch(() => { }); }, { once: true });
   $("#place-form-btn").addEventListener("click", doSearch);
@@ -557,6 +641,9 @@ function init() {
   $("#birth-form").addEventListener("submit", (e) => { e.preventDefault(); $("#ambig").hidden = true; calculate(); });
   $("#btn-copy-json").addEventListener("click", (e) => copyText(JSON.stringify(state.payload, null, 2), e.currentTarget));
   $("#btn-interp").addEventListener("click", callInterpreter);
+  $("#btn-print").addEventListener("click", printSheet);
+  $("#btn-download").addEventListener("click", downloadSheet);
+  $("#access-code").addEventListener("input", renderInterpretationChrome);
   $("#btn-example").addEventListener("click", loadExample);
 }
 
@@ -567,6 +654,7 @@ function loadExample() {
 
 init();
 ensureEngine().catch(() => { });
+checkService();
 // demostración con varias cartas de prueba: un selector arriba del formulario
 function loadDemoCase(c) {
   $("#fname").value = c.first; $("#bdate").value = c.date; $("#btime").value = c.time || ""; $("#prec").value = c.precision;

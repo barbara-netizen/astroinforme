@@ -3,6 +3,14 @@
 
 export const IDIOMA = { es: "español rioplatense, con voseo", de: "alemán, tuteando (du)", en: "inglés" };
 
+// Tratamiento gramatical elegido por la persona (request.address_gender). Sin indicación: formas sin marca de género.
+export const TRATAMIENTO = {
+  FEMININE: "Cuando el idioma exija concordancia de género para referirse a la persona, usá el femenino.",
+  MASCULINE: "Cuando el idioma exija concordancia de género para referirse a la persona, usá el masculino.",
+  NEUTRAL: "La persona prefiere un tratamiento neutro: no uses marcas de género gramatical para referirte a ella. Elegí construcciones que no las requieran (por ejemplo, «tenés tendencia a…» en lugar de «sos propenso/propensa a…»). No uses «e», «x» ni «@» como desinencias.",
+  UNSPECIFIED: "No sabés el género de la persona: no uses marcas de género gramatical para referirte a ella. Elegí construcciones que no las requieran (por ejemplo, «tenés tendencia a…» en lugar de «sos propenso/propensa a…»). No uses «e», «x» ni «@» como desinencias.",
+};
+
 export const PROMPT_ANALISIS = (carta) => `FASE A — ANÁLISIS ESTRUCTURAL (no es el informe).
 Leé la carta calculada que sigue y devolvé SOLO un objeto JSON, sin texto antes ni después, con esta forma:
 {
@@ -18,9 +26,10 @@ Usá exclusivamente los datos del JSON. Nada de memoria ni cálculos propios. Si
 CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
 
-export const PROMPT_INFORME = ({ idioma, lang, nombre, analisis, carta }) => `FASE B — REDACCIÓN DEL INFORME.
+export const PROMPT_INFORME = ({ idioma, lang, nombre, tratamiento, analisis, carta }) => `FASE B — REDACCIÓN DEL INFORME.
 Redactá el informe natal completo siguiendo el protocolo, en ${idioma}, en segunda persona, a partir del análisis estructural
 y de la carta calculada. ${nombre}
+${tratamiento}
 Devolvé SOLO un objeto JSON válido, sin texto antes ni después, con esta forma (contrato astroinforme.report/v1):
 {
  "schema": "astroinforme.report/v1",
@@ -43,13 +52,17 @@ ${analisis}
 CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
 
-export const PROMPT_CORRECCION = ({ problemas, informe, carta }) => `FASE C — CORRECCIÓN TÉCNICA.
-La auditoría automática comparó las referencias técnicas de tu informe con la carta calculada y encontró estos problemas:
+export const PROMPT_CORRECCION = ({ problemas, estilo, informe, carta }) => `FASE C — CORRECCIÓN.
+${problemas ? `La auditoría técnica comparó las referencias de tu informe con la carta calculada y encontró estos problemas:
 ${problemas}
 
-Corregí el informe: cambiá solo los pasajes que dependen de esos datos, para que digan lo que efectivamente figura en la carta
-calculada, o quitá la afirmación si el dato no existe o no es fiable. Mantené el resto del texto. Actualizá
-technical_references_used en consecuencia. Devolvé SOLO el objeto JSON completo corregido (contrato astroinforme.report/v1).
+Corregí esos pasajes para que digan lo que efectivamente figura en la carta calculada, o quitá la afirmación si el dato no
+existe o no es fiable. Actualizá technical_references_used en consecuencia.
+` : ""}${estilo ? `
+El control de estilo encontró esto:
+${estilo}
+` : ""}
+Cambiá solo los pasajes señalados y mantené el resto del texto. Devolvé SOLO el objeto JSON completo corregido (contrato astroinforme.report/v1).
 
 INFORME A CORREGIR:
 ${informe}
