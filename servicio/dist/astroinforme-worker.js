@@ -361,13 +361,17 @@ var worker_default = {
         turnstile: !!env.TURNSTILE_SECRET,
         // «available»: si hoy se puede pedir un informe (sin revelar el gasto)
         available: configured && month2.usd < cap && (requireCode || day < +(env.DAILY_LIMIT || 8)),
-        configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, kv: !!env.ASTRO_KV, codes: Object.keys(parseCodes(env.ACCESS_CODES)).length }
+        configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, style: !!(env.ASTRO_KV && await env.ASTRO_KV.get("style")), kv: !!env.ASTRO_KV, codes: Object.keys(parseCodes(env.ACCESS_CODES)).length }
       }, 200, cors);
     }
     if (request.method !== "POST") return json({ error: "bad_request" }, 405, cors);
     if (!cors["access-control-allow-origin"] && request.headers.get("origin")) return json({ error: "forbidden_origin" }, 403, cors);
-    const protocol = env.PROTOCOL || (env.ASTRO_KV ? await env.ASTRO_KV.get("protocol") : null);
-    if (!env.ANTHROPIC_API_KEY || !protocol || !env.ASTRO_KV) return json({ error: "not_configured" }, 503, cors);
+    const base = env.PROTOCOL || (env.ASTRO_KV ? await env.ASTRO_KV.get("protocol") : null);
+    if (!env.ANTHROPIC_API_KEY || !base || !env.ASTRO_KV) return json({ error: "not_configured" }, 503, cors);
+    const style = await env.ASTRO_KV.get("style");
+    const protocol = style ? `${base}
+
+${style}` : base;
     const raw = await request.text();
     if (raw.length > MAX_BODY) return json({ error: "bad_request" }, 413, cors);
     let payload;

@@ -44,7 +44,7 @@ La app muestra cada error en el idioma de la interfaz.
 ## Instalación actual (17-10-2026)
 
 - Worker `astroinforme` en la cuenta de Cloudflare de Bárbara: https://astroinforme.gutierrez-barbarita.workers.dev
-- Espacio KV `astroinforme` (id `3fe6f27f5f3844df8f90d1e9790291da`) vinculado como `ASTRO_KV`, con la clave `protocol` cargada.
+- Espacio KV `astroinforme` (id `3fe6f27f5f3844df8f90d1e9790291da`) vinculado como `ASTRO_KV`, con las claves `protocol` (protocolo interpretativo) y `style` (guía de estilo, que el servicio 1.1 agrega al final del protocolo). Ninguna de las dos está en este repositorio.
 - Faltan: el secreto `ANTHROPIC_API_KEY` y, para acceso público, `REQUIRE_CODE=false` (y si se usa Turnstile, `TURNSTILE_SECRET`).
 
 ### Actualizar el código del servicio

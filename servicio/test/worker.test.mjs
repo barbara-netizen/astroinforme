@@ -80,7 +80,7 @@ assert.equal((await run(req(carta, "ANA-7K2"), e2)).body.error, "budget_exhauste
 
 // 8. salud y preflight
 const h = await worker.fetch(new Request("https://x/health"), env(), {}); const hb = await h.json();
-assert.deepEqual(hb.configured, { api_key: true, protocol: true, kv: true, codes: 2 });
+assert.deepEqual(hb.configured, { api_key: true, protocol: true, style: false, kv: true, codes: 2 });
 assert.equal(hb.access, "code"); assert.equal(hb.available, true); assert.equal(hb.turnstile, false);
 const o = await worker.fetch(new Request("https://x/", { method: "OPTIONS", headers: { origin: ORIGIN } }), env(), {});
 assert.equal(o.status, 204); assert.match(o.headers.get("access-control-allow-headers"), /x-astro-code/);
@@ -140,4 +140,10 @@ mockClaude([ANALISIS, ok]);
 r = await run(req(reducida, "PEDRO-9X4"), env());
 assert.equal(r.body.report.audit.all_references_present_in_chart, true);
 
-console.log("OK — 13 grupos de pruebas; costo simulado del mes: US$", month.usd);
+// 14. guía de estilo opcional en el KV: se agrega al protocolo
+const conGuia = env(); await conGuia.ASTRO_KV.put("style", "GUÍA DE PRUEBA");
+mockClaude([ANALISIS, ok]);
+await run(req(carta, "ANA-7K2"), conGuia);
+assert.equal(calls[0].system[0].text, "PROTOCOLO DE PRUEBA\n\nGUÍA DE PRUEBA");
+
+console.log("OK — 14 grupos de pruebas; costo simulado del mes: US$", month.usd);

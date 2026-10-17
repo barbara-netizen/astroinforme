@@ -21,6 +21,7 @@
 //   PROTOCOL            opcional. Alternativa al KV si el protocolo cabe en 5 KB (no cabe: usar KV).
 // Enlace KV (Settings → Bindings → KV namespace): nombre de variable ASTRO_KV.
 //   Clave "protocol": texto completo del protocolo interpretativo.
+//   Clave "style" (opcional): guía de estilo; se agrega al final del protocolo.
 //   El servicio guarda ahí "used:<CÓDIGO>", "month:<AAAA-MM>", "day:<AAAA-MM-DD>" y "v:<AAAA-MM-DD>:<hash>".
 //   La IP del visitante nunca se guarda: solo un resumen criptográfico con sal, que vence a los dos días.
 
@@ -185,14 +186,16 @@ export default {
         access: requireCode ? "code" : "public", turnstile: !!env.TURNSTILE_SECRET,
         // «available»: si hoy se puede pedir un informe (sin revelar el gasto)
         available: configured && month.usd < cap && (requireCode || day < +(env.DAILY_LIMIT || 8)),
-        configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, kv: !!env.ASTRO_KV, codes: Object.keys(parseCodes(env.ACCESS_CODES)).length } }, 200, cors);
+        configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, style: !!(env.ASTRO_KV && (await env.ASTRO_KV.get("style"))), kv: !!env.ASTRO_KV, codes: Object.keys(parseCodes(env.ACCESS_CODES)).length } }, 200, cors);
     }
     if (request.method !== "POST") return json({ error: "bad_request" }, 405, cors);
     if (!cors["access-control-allow-origin"] && request.headers.get("origin")) return json({ error: "forbidden_origin" }, 403, cors);
 
     // configuración mínima
-    const protocol = env.PROTOCOL || (env.ASTRO_KV ? await env.ASTRO_KV.get("protocol") : null);
-    if (!env.ANTHROPIC_API_KEY || !protocol || !env.ASTRO_KV) return json({ error: "not_configured" }, 503, cors);
+    const base = env.PROTOCOL || (env.ASTRO_KV ? await env.ASTRO_KV.get("protocol") : null);
+    if (!env.ANTHROPIC_API_KEY || !base || !env.ASTRO_KV) return json({ error: "not_configured" }, 503, cors);
+    const style = await env.ASTRO_KV.get("style");
+    const protocol = style ? `${base}\n\n${style}` : base;
 
     // datos
     const raw = await request.text();
