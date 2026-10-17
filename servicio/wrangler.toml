@@ -1,0 +1,16 @@
+# Para desplegar con la línea de comandos (opcional; el LEEME explica cómo hacerlo desde el panel web).
+name = "astroinforme"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+MODEL = "claude-opus-5-5"
+MONTHLY_USD_LIMIT = "15"
+ALLOWED_ORIGINS = "https://barbara-netizen.github.io"
+# ACCESS_CODES y ANTHROPIC_API_KEY se cargan como secretos:
+#   npx wrangler secret put ANTHROPIC_API_KEY
+#   npx wrangler secret put ACCESS_CODES
+
+[[kv_namespaces]]
+binding = "ASTRO_KV"
+id = "REEMPLAZAR_POR_EL_ID_DEL_NAMESPACE"

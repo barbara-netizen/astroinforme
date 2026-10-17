@@ -1,0 +1,4 @@
+node_modules/
+protocolo.txt
+.dev.vars
+.wrangler/

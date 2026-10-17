@@ -3,35 +3,39 @@ import * as E from "./engine.js";
 import { CONFIG } from "./config.js";
 import * as V from "./visuals.js";
 import { auditReport } from "./audit.js";
+import * as L from "./i18n.js";
 
+const { t, term } = L;
 const $ = (s) => document.querySelector(s);
 const VS = "︎";
-const NAME = { SUN: "Sol", MOON: "Luna", MERCURY: "Mercurio", VENUS: "Venus", MARS: "Marte", JUPITER: "Júpiter", SATURN: "Saturno", URANUS: "Urano", NEPTUNE: "Neptuno", PLUTO: "Plutón", CHIRON: "Quirón", NORTH_NODE: "Nodo Norte", SOUTH_NODE: "Nodo Sur", ASC: "Ascendente", MC: "Medio Cielo", DSC: "Descendente", IC: "Fondo del Cielo" };
 const GLYPH = { SUN: "☉", MOON: "☽", MERCURY: "☿", VENUS: "♀", MARS: "♂", JUPITER: "♃", SATURN: "♄", URANUS: "♅", NEPTUNE: "♆", PLUTO: "♇", CHIRON: "⚷", NORTH_NODE: "☊", ASC: "AC", MC: "MC" };
-const SIGN_ES = { ARIES: "Aries", TAURUS: "Tauro", GEMINI: "Géminis", CANCER: "Cáncer", LEO: "Leo", VIRGO: "Virgo", LIBRA: "Libra", SCORPIO: "Escorpio", SAGITTARIUS: "Sagitario", CAPRICORN: "Capricornio", AQUARIUS: "Acuario", PISCES: "Piscis" };
 const SIGN_GLYPH = ["♈", "♉", "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓"];
-const ASP_ES = { CONJUNCTION: "Conjunción", OPPOSITION: "Oposición", SQUARE: "Cuadratura", TRINE: "Trígono", SEXTILE: "Sextil", QUINCUNX: "Quincuncio" };
 const ASP_GLYPH = { CONJUNCTION: "☌", OPPOSITION: "☍", SQUARE: "□", TRINE: "△", SEXTILE: "⚹", QUINCUNX: "⚻" };
-const ELEM_ES = { FIRE: "Fuego", EARTH: "Tierra", AIR: "Aire", WATER: "Agua" };
-const MOD_ES = { CARDINAL: "Cardinal", FIXED: "Fija", MUTABLE: "Mutable" };
-const PHASE_ES = { NEW: "Nueva", CRESCENT: "Creciente", FIRST_QUARTER: "Cuarto creciente", GIBBOUS: "Gibosa", FULL: "Llena", DISSEMINATING: "Diseminante", LAST_QUARTER: "Cuarto menguante", BALSAMIC: "Balsámica" };
-const CFG_ES = { T_SQUARE: "Cuadratura en T", GRAND_TRINE: "Gran trígono", GRAND_CROSS: "Gran cruz", YOD: "Yod" };
 const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
-const nm = (id) => NAME[id] || id;
+const nm = (id) => term(id);
 const g = (s) => s + VS;
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const posStr = (b) => `${b.deg} ${SIGN_ES[b.sign]}`;
+const posStr = (b) => `${b.deg} ${term(b.sign)}`;
+const LOCALE = { es: "es-AR", de: "de-DE", en: "en-GB" };
+// grados con los segundos en un <span> que se oculta en pantallas angostas
+const degHTML = (deg) => { const m = /^(.*')(\d\d")$/.exec(deg); return m ? `${m[1]}<span class="sec">${m[2]}</span>` : deg; };
 
 let regionName = null;
-try { regionName = new Intl.DisplayNames(["es"], { type: "region" }); } catch (e) { }
+function setRegionNames() { try { regionName = new Intl.DisplayNames([L.getLang()], { type: "region" }); } catch (e) { regionName = null; } }
 const country = (cc) => { try { return regionName ? regionName.of(cc) : cc; } catch (e) { return cc; } };
 
 // ---------- estado ----------
-const state = { place: null, chart: null, payload: null, engineReady: null };
+const state = { place: null, chart: null, payload: null, engineReady: null, engineInfo: null, engineErr: null, last: null, lastReport: null, lastAudit: null, reportLangTouched: false, heroAnimated: false };
 
 function setStatus(el, kind, html) { el.className = "note " + kind; el.innerHTML = html; el.hidden = !html; }
 
 // ---------- motor ----------
+function showEngineState() {
+  const el = $("#engine-state");
+  if (state.engineInfo) { el.textContent = t("engine.ok", { engine: state.engineInfo.engine }); el.dataset.ok = "1"; }
+  else if (state.engineErr) { el.textContent = t("engine.fail", { code: state.engineErr }); el.dataset.ok = "0"; }
+  else { el.textContent = t("engine.loading"); delete el.dataset.ok; }
+}
 async function ensureEngine() {
   if (!state.engineReady) {
     state.engineReady = E.initEngine({
@@ -44,8 +48,8 @@ async function ensureEngine() {
         return out;
       },
     });
-    state.engineReady.then((info) => { $("#engine-state").textContent = info.engine + " · archivos sepl_18, semo_18, seas_18 cargados"; $("#engine-state").dataset.ok = "1"; })
-      .catch((e) => { $("#engine-state").textContent = "El motor no pudo cargarse en este navegador (" + (e.code || e.message) + ")."; $("#engine-state").dataset.ok = "0"; state.engineReady = null; });
+    state.engineReady.then((info) => { state.engineInfo = info; state.engineErr = null; showEngineState(); })
+      .catch((e) => { state.engineErr = e.code || e.message; state.engineReady = null; showEngineState(); });
   }
   return state.engineReady;
 }
@@ -54,15 +58,37 @@ async function ensureEngine() {
 let cities = null, citiesLoading = null;
 const SPECIAL = { "ø": "o", "Ø": "o", "æ": "ae", "Æ": "ae", "ß": "ss", "ł": "l", "Ł": "l", "đ": "d", "Đ": "d", "ı": "i", "œ": "oe", "þ": "th", "ð": "d" };
 const fold = (s) => s.replace(/[øØæÆßłŁđĐıœþð]/g, (c) => SPECIAL[c]).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-const ALIASES = { "ciudad de mexico": "mexico city", "cdmx": "mexico city", "df": "mexico city", "nueva york": "new york city", "londres": "london", "munich": "munich", "muenchen": "munich", "munchen": "munich", "colonia": "cologne", "koln": "cologne", "francfort": "frankfurt am main", "frankfurt": "frankfurt am main", "hamburgo": "hamburg", "berlin": "berlin", "viena": "vienna", "wien": "vienna", "roma": "rome", "milan": "milan", "florencia": "florence", "napoles": "naples", "venecia": "venice", "lisboa": "lisbon", "moscu": "moscow", "atenas": "athens", "ginebra": "geneva", "zurich": "zurich", "bruselas": "brussels", "estocolmo": "stockholm", "copenhague": "copenhagen", "varsovia": "warsaw", "praga": "prague", "pekin": "beijing", "tokio": "tokyo", "el cairo": "cairo", "la habana": "havana", "nueva orleans": "new orleans", "filadelfia": "philadelphia", "montreal": "montreal", "asuncion": "asuncion", "san pablo": "sao paulo", "sao paulo": "sao paulo", "rio de janeiro": "rio de janeiro", "caba": "buenos aires", "capital federal": "buenos aires", "nurnberg": "nuremberg", "nuremberg": "nuremberg", "dusseldorf": "dusseldorf" };
+// nombres usuales en español y alemán → nombre de la lista GeoNames (ya normalizado)
+const ALIASES = {
+  "ciudad de mexico": "mexico city", "cdmx": "mexico city", "df": "mexico city", "mexiko stadt": "mexico city", "mexiko city": "mexico city",
+  "nueva york": "new york city", "new york": "new york city", "londres": "london", "munchen": "munich", "muenchen": "munich", "munich": "munich",
+  "colonia": "koln", "cologne": "koln", "koeln": "koln", "francfort": "frankfurt am main", "frankfurt": "frankfurt am main", "hamburgo": "hamburg",
+  "viena": "vienna", "wien": "vienna", "roma": "rome", "rom": "rome", "milan": "milan", "mailand": "milan", "florencia": "florence", "florenz": "florence",
+  "napoles": "naples", "neapel": "naples", "venecia": "venice", "venedig": "venice", "lisboa": "lisbon", "lissabon": "lisbon",
+  "moscu": "moscow", "moskau": "moscow", "atenas": "athens", "athen": "athens", "ginebra": "geneve", "genf": "geneve", "geneva": "geneve",
+  "zurich": "zurich", "zuerich": "zurich", "bruselas": "brussels", "brussel": "brussels", "bruessel": "brussels", "estocolmo": "stockholm",
+  "copenhague": "copenhagen", "kopenhagen": "copenhagen", "varsovia": "warsaw", "warschau": "warsaw", "praga": "prague", "prag": "prague",
+  "pekin": "beijing", "peking": "beijing", "tokio": "tokyo", "el cairo": "cairo", "kairo": "cairo", "la habana": "havana", "havanna": "havana",
+  "nueva orleans": "new orleans", "filadelfia": "philadelphia", "san pablo": "sao paulo", "caba": "buenos aires", "capital federal": "buenos aires",
+  "nuremberg": "nurnberg", "nuernberg": "nurnberg", "dusseldorf": "dusseldorf", "duesseldorf": "dusseldorf",
+};
 
 async function loadCities() {
   if (cities) return cities;
-  if (!citiesLoading) citiesLoading = fetch(new URL("./cities.txt", import.meta.url)).then((r) => { if (!r.ok) throw new Error("cities"); return r.text(); }).then((t) => {
-    cities = t.split("\n").map((l) => { const [n, cc, adm, pop, lat, lon] = l.split("\t"); return { n, f: fold(n), cc, adm, pop: +pop, lat: +lat, lon: +lon }; });
+  if (!citiesLoading) citiesLoading = fetch(new URL("./cities.txt", import.meta.url)).then((r) => { if (!r.ok) throw new Error("cities"); return r.text(); }).then((txt) => {
+    cities = txt.split("\n").map((l) => { const [n, cc, adm, pop, lat, lon] = l.split("\t"); return { n, f: fold(n), cc, adm, pop: +pop, lat: +lat, lon: +lon }; });
     return cities;
   });
   return citiesLoading;
+}
+// el filtro de país acepta el código ISO o el nombre en cualquiera de los tres idiomas
+const countryNames = {};
+function countryMatches(cc, q) {
+  if (cc.toLowerCase() === q) return true;
+  if (!countryNames[cc]) {
+    countryNames[cc] = L.LANGS.map((l) => { try { return fold(new Intl.DisplayNames([l], { type: "region" }).of(cc)); } catch (e) { return ""; } });
+  }
+  return countryNames[cc].some((n) => n && n.startsWith(q));
 }
 function searchCities(q) {
   const parts = q.split(",").map(fold);
@@ -71,7 +97,7 @@ function searchCities(q) {
   const ccFilter = parts[1] ? parts[1] : null;
   const exact = [], prefix = [], inner = [];
   for (const c of cities) {
-    if (ccFilter && !(c.cc.toLowerCase() === ccFilter || fold(country(c.cc)).startsWith(ccFilter))) continue;
+    if (ccFilter && !countryMatches(c.cc, ccFilter)) continue;
     if (c.f === qn) exact.push(c); else if (c.f.startsWith(qn)) prefix.push(c); else if (qn.length > 3 && c.f.includes(qn)) inner.push(c);
     if (exact.length + prefix.length > 400) break;
   }
@@ -80,8 +106,9 @@ function searchCities(q) {
 
 function renderPlaceResults(list) {
   const box = $("#place-results");
-  if (!list.length) { box.innerHTML = `<p class="muted small">Sin resultados. Probá con el nombre en inglés o en el idioma local, o agregá el país después de una coma (por ejemplo, «Córdoba, Argentina»). También podés cargar coordenadas a mano.</p>`; box.hidden = false; return; }
-  box.innerHTML = list.map((c, i) => `<button type="button" class="place-opt" data-i="${i}"><span class="pn">${esc(c.n)}</span><span class="pm">${esc(country(c.cc))} · ${c.pop.toLocaleString("es-AR")} hab. · ${c.lat.toFixed(2)}, ${c.lon.toFixed(2)}</span></button>`).join("");
+  if (!list.length) { box.innerHTML = `<p class="muted small">${esc(t("place.none"))}</p>`; box.hidden = false; return; }
+  const fmt = new Intl.NumberFormat(LOCALE[L.getLang()]);
+  box.innerHTML = list.map((c, i) => `<button type="button" class="place-opt" data-i="${i}"><span class="pn">${esc(c.n)}</span><span class="pm">${esc(country(c.cc))} · ${fmt.format(c.pop)} ${t("place.inhab")} · ${c.lat.toFixed(2)}, ${c.lon.toFixed(2)}</span></button>`).join("");
   box.hidden = false;
   box.querySelectorAll(".place-opt").forEach((b) => b.addEventListener("click", () => choosePlace(list[+b.dataset.i])));
 }
@@ -98,26 +125,28 @@ function showPlace() {
   if (!p) { box.hidden = true; return; }
   box.hidden = false;
   $("#pc-label").textContent = p.label;
-  $("#pc-coords").textContent = `${Math.abs(p.lat).toFixed(4)}° ${p.lat >= 0 ? "N" : "S"} · ${Math.abs(p.lon).toFixed(4)}° ${p.lon >= 0 ? "E" : "O"}`;
+  const W = L.getLang() === "es" ? "O" : "W";
+  $("#pc-coords").textContent = `${Math.abs(p.lat).toFixed(4)}° ${p.lat >= 0 ? "N" : "S"} · ${Math.abs(p.lon).toFixed(4)}° ${p.lon >= 0 ? "E" : W}`;
   $("#tz").value = p.zone;
 }
 
 // ---------- cálculo ----------
+class FormError extends Error { constructor(key, params) { super(key); this.key = key; this.params = params; } }
 function readForm() {
-  const d = $("#bdate").value, t = $("#btime").value, prec = $("#prec").value;
-  if (!d) throw new Error("Falta la fecha de nacimiento.");
+  const d = $("#bdate").value, tm = $("#btime").value, prec = $("#prec").value;
+  if (!d) throw new FormError("err.date");
   const [y, mo, dd] = d.split("-").map(Number);
-  if (y < 1800 || y > 2399) throw new Error("Los archivos de efemérides cubren de 1800 a 2399.");
+  if (y < 1800 || y > 2399) throw new FormError("err.range");
   let h = 12, mi = 0;
-  if (prec !== "UNKNOWN") { if (!t) throw new Error("Falta la hora. Si no la conocés, elegí «Desconocida» en precisión."); [h, mi] = t.split(":").map(Number); }
-  if (!state.place) throw new Error("Elegí el lugar de nacimiento de la lista o cargá coordenadas.");
+  if (prec !== "UNKNOWN") { if (!tm) throw new FormError("err.time"); [h, mi] = tm.split(":").map(Number); }
+  if (!state.place) throw new FormError("err.place");
   const zone = $("#tz").value.trim();
-  try { new Intl.DateTimeFormat("en", { timeZone: zone }); } catch (e) { throw new Error("La zona horaria «" + zone + "» no es válida."); }
+  try { new Intl.DateTimeFormat("en", { timeZone: zone }); } catch (e) { throw new FormError("err.tz", { zone }); }
   let manual = null;
   if ($("#use-manual-offset").checked) {
     const v = $("#manual-offset").value.trim().replace(",", ".");
     const m = v.match(/^([+-])?(\d{1,2})(?::(\d{2}))?$/) || v.match(/^([+-])?(\d{1,2}(?:\.\d+)?)$/);
-    if (!m) throw new Error("Desfase manual inválido. Usá un formato como -3, +1 o -3:30.");
+    if (!m) throw new FormError("err.offset");
     const sign = m[1] === "-" ? -1 : 1; const hrs = parseFloat(m[2]); const mins = m[3] ? +m[3] : 0;
     manual = sign * Math.round(hrs * 60 + mins);
   }
@@ -126,18 +155,19 @@ function readForm() {
 
 function fmtOffset(min) { const s = min < 0 ? "−" : "+"; const a = Math.abs(min); return `UTC${s}${Math.floor(a / 60)}${a % 60 ? ":" + String(a % 60).padStart(2, "0") : ""}`; }
 function fmtUtc(ms) { return new Date(ms).toISOString().replace("T", " ").slice(0, 16) + " UTC"; }
+const pad = (n) => String(n).padStart(2, "0");
 
 async function calculate(chosenUtc = null) {
   const err = $("#form-error"); setStatus(err, "", "");
   let f;
-  try { f = readForm(); } catch (e) { setStatus(err, "bad", esc(e.message)); return; }
+  try { f = readForm(); } catch (e) { setStatus(err, "bad", esc(t(e.key, e.params))); return; }
   const waitFig = $("#fig-wait");
   let waiting = false;
-  const t = setTimeout(() => { waiting = true; V.show(waitFig, "analysis_neural"); }, 250); // solo si la espera es real
-  try { await ensureEngine(); } catch (e) { clearTimeout(t); V.clear(waitFig); setStatus(err, "bad", "El motor de cálculo no pudo cargarse en este navegador. Probá con una versión actual de Chrome, Firefox o Safari."); return; }
-  clearTimeout(t); if (waiting) V.clear(waitFig);
+  const timer = setTimeout(() => { waiting = true; V.show(waitFig, "analysis_neural"); }, 250); // solo si la espera es real
+  try { await ensureEngine(); } catch (e) { clearTimeout(timer); V.clear(waitFig); setStatus(err, "bad", esc(t("err.engine"))); return; }
+  clearTimeout(timer); if (waiting) V.clear(waitFig);
 
-  const warnings = [];
+  const warnings = []; // {code, params}
   let opt, res;
   if (f.prec === "UNKNOWN") {
     res = E.resolveLocalTime({ y: f.y, mo: f.mo, d: f.d, h: 12, mi: 0 }, f.zone, f.manual);
@@ -145,39 +175,41 @@ async function calculate(chosenUtc = null) {
     opt = res.options[0];
   } else {
     res = E.resolveLocalTime({ y: f.y, mo: f.mo, d: f.d, h: f.h, mi: f.mi }, f.zone, f.manual);
-    if (res.status === "NONEXISTENT") { setStatus(err, "bad", `La hora ${String(f.h).padStart(2, "0")}:${String(f.mi).padStart(2, "0")} no existió en ${esc(f.zone)} ese día: cae en un adelanto de reloj. Revisá la hora del acta o cargá el desfase a mano.`); return; }
+    if (res.status === "NONEXISTENT") { setStatus(err, "bad", esc(t("time.nonexistent", { time: `${pad(f.h)}:${pad(f.mi)}`, zone: f.zone }))); return; }
     if (res.status === "AMBIGUOUS" && chosenUtc === null) {
       const box = $("#ambig");
-      box.innerHTML = `<p><strong>Esa hora ocurrió dos veces</strong> ese día en ${esc(f.zone)} (retraso de reloj). Elegí cuál corresponde:</p>` +
-        res.options.map((o, i) => `<button type="button" class="btn ghost" data-u="${o.utcMs}">${i === 0 ? "Primera vez" : "Segunda vez"} · ${fmtOffset(o.offsetMin)} · ${fmtUtc(o.utcMs)}</button>`).join("");
+      box.innerHTML = `<p>${t("time.ambig", { zone: esc(f.zone) })}</p>` +
+        res.options.map((o, i) => `<button type="button" class="btn ghost" data-u="${o.utcMs}">${t(i === 0 ? "time.first" : "time.second")} · ${fmtOffset(o.offsetMin)} · ${fmtUtc(o.utcMs)}</button>`).join("");
       box.hidden = false;
       box.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { box.hidden = true; calculate(+b.dataset.u); }));
       return;
     }
     opt = chosenUtc !== null ? res.options.find((o) => o.utcMs === chosenUtc) : res.options[0];
-    if (res.status === "AMBIGUOUS") warnings.push({ code: "AMBIGUOUS_LOCAL_TIME", text: `Hora repetida por cambio de horario; se eligió ${fmtOffset(opt.offsetMin)}.` });
+    if (res.status === "AMBIGUOUS") warnings.push({ code: "AMBIGUOUS_LOCAL_TIME", params: { offset: fmtOffset(opt.offsetMin) } });
   }
-  if (f.manual === null && f.y < 1970) warnings.push({ code: "PRE_1970_TZ", text: `Antes de 1970 la base de zonas horarias puede no reflejar el horario oficial de ${f.zone}. Desfase usado: ${fmtOffset(opt.offsetMin)}. Si tenés otra fuente, cargalo a mano.` });
-  if (f.manual !== null) warnings.push({ code: "MANUAL_OFFSET", text: `Desfase cargado a mano: ${fmtOffset(f.manual)}.` });
-  if (state.place.source === "MANUAL") warnings.push({ code: "MANUAL_COORDS", text: "Coordenadas cargadas a mano." });
+  if (f.manual === null && f.y < 1970) warnings.push({ code: "PRE_1970_TZ", params: { zone: f.zone, offset: fmtOffset(opt.offsetMin) } });
+  if (f.manual !== null) warnings.push({ code: "MANUAL_OFFSET", params: { offset: fmtOffset(f.manual) } });
+  if (state.place.source === "MANUAL") warnings.push({ code: "MANUAL_COORDS", params: {} });
 
   const dayEdge = (h, mi) => { const r = E.resolveLocalTime({ y: f.y, mo: f.mo, d: f.d, h, mi }, f.zone, f.manual); return (r.options[0] || opt).utcMs; };
   let chart;
   try {
     chart = E.buildChart({ utcMs: opt.utcMs, lat: state.place.lat, lon: state.place.lon, precision: f.prec, zoneNoonUtcMs: opt.utcMs, dayStartUtcMs: dayEdge(0, 0), dayEndUtcMs: dayEdge(23, 59) });
-  } catch (e) { setStatus(err, "bad", "Error de cálculo: " + esc(e.code || e.message) + ". No se muestra ninguna carta."); return; }
-  if (chart.houses && chart.houses.warning) warnings.push({ code: chart.houses.warning, text: "Placidus no está definido en esta latitud; las casas se calcularon con Porfirio." });
-  if (f.prec === "UNKNOWN") warnings.push({ code: "UNKNOWN_TIME", text: chart.note });
-  if (chart.sensitivity.unreliable.length) warnings.push({ code: "TIME_SENSITIVE", text: `Con la precisión indicada, ${chart.sensitivity.unreliable.length} dato(s) podrían cambiar (marcados con ◇).` });
+  } catch (e) { setStatus(err, "bad", esc(t("err.calc", { code: e.code || e.message }))); return; }
+  if (chart.houses && chart.houses.warning) warnings.push({ code: chart.houses.warning, params: {} });
+  if (f.prec === "UNKNOWN") warnings.push({ code: "UNKNOWN_TIME", params: {} });
+  if (chart.sensitivity.unreliable.length) warnings.push({ code: "TIME_SENSITIVE", params: { n: chart.sensitivity.unreliable.length } });
 
   state.chart = chart;
   state.payload = buildPayload(f, opt, res.source, chart, warnings);
-  render(f, opt, chart, warnings);
+  state.last = { f, opt, warnings };
+  state.lastReport = null; state.lastAudit = null;
+  render(true);
 }
 
 // ---------- contrato de datos ----------
 function buildPayload(f, opt, source, chart, warnings) {
-  const precLabel = { EXACT: "±4 min", PM15: "±15 min", PM30: "±30 min", PM60: "±60 min", UNKNOWN: "desconocida" }[f.prec];
+  const precLabel = { EXACT: "±4 min", PM15: "±15 min", PM30: "±30 min", PM60: "±60 min", UNKNOWN: "unknown" }[f.prec];
   return {
     schema: "astroinforme.chart/v1",
     generated_at: new Date().toISOString(),
@@ -185,8 +217,8 @@ function buildPayload(f, opt, source, chart, warnings) {
     person: { first_name: f.first || null },
     request: { kind: "NATAL_FULL_REPORT", report_language: f.lang, address: f.lang === "de" ? "du" : f.lang === "es" ? "voseo" : "you", include_myth: true },
     birth: {
-      local_date: `${f.y}-${String(f.mo).padStart(2, "0")}-${String(f.d).padStart(2, "0")}`,
-      local_time: f.prec === "UNKNOWN" ? null : `${String(f.h).padStart(2, "0")}:${String(f.mi).padStart(2, "0")}`,
+      local_date: `${f.y}-${pad(f.mo)}-${pad(f.d)}`,
+      local_time: f.prec === "UNKNOWN" ? null : `${pad(f.h)}:${pad(f.mi)}`,
       time_precision: f.prec, time_precision_label: precLabel,
       place: { label: state.place.label, lat: state.place.lat, lon: state.place.lon, source: state.place.source },
       time_zone: f.zone, utc_offset_minutes: opt.offsetMin, offset_source: source, utc: new Date(opt.utcMs).toISOString(),
@@ -200,79 +232,97 @@ function buildPayload(f, opt, source, chart, warnings) {
       derived: chart.derived,
       sensitivity: chart.sensitivity,
     },
-    warnings,
+    // los avisos van con su código; el texto, en el idioma del informe
+    warnings: warnings.map((w) => ({ code: w.code, params: w.params, text: textIn(f.lang, "w." + w.code, w.params) })),
   };
 }
+function textIn(lang, key, params) { const cur = L.getLang(); L.setLang(lang); const s = t(key, params); L.setLang(cur); return s; }
 
 // ---------- render ----------
-function render(f, opt, chart, warnings) {
+function render(scroll = false) {
+  if (!state.chart || !state.last) return;
+  const { f, opt, warnings } = state.last;
+  const chart = state.chart;
   $("#result").hidden = false;
   const by = Object.fromEntries(chart.bodies.map((b) => [b.id, b]));
-  const mark = (ok) => ok === false ? ` <span class="uns" title="Podría cambiar dentro de la precisión horaria">◇</span>` : "";
-  const ascTxt = chart.houses ? `${E.fmtDeg(chart.houses.asc)} ${SIGN_ES[E.SIGNS[Math.floor(chart.houses.asc / 30)]]}` : "sin hora";
-  $("#r-title").textContent = f.first ? `Carta natal de ${f.first}` : "Carta natal";
-  $("#r-meta").textContent = `${state.payload.birth.local_date}${f.prec === "UNKNOWN" ? " · hora desconocida" : " · " + state.payload.birth.local_time + " (" + state.payload.birth.time_precision_label + ")"} · ${state.place.label} · ${fmtOffset(opt.offsetMin)} · ${fmtUtc(opt.utcMs)}`;
+  const mark = (ok) => ok === false ? ` <span class="uns" title="${esc(t("r.mark"))}">◇</span>` : "";
+  const H = t("r.house");
+  const ascTxt = chart.houses ? `${E.fmtDeg(chart.houses.asc)} ${term(E.SIGNS[Math.floor(chart.houses.asc / 30)])}` : t("r.noTime");
+  $("#r-title").textContent = f.first ? t("r.titleNamed", { name: f.first }) : t("r.title");
+  $("#r-meta").textContent = `${state.payload.birth.local_date}${f.prec === "UNKNOWN" ? " · " + t("r.unknownTime") : " · " + state.payload.birth.local_time + " (" + state.payload.birth.time_precision_label + ")"} · ${state.place.label} · ${fmtOffset(opt.offsetMin)} · ${fmtUtc(opt.utcMs)}`;
   $("#r-big3").innerHTML = [
-    ["Sol", posStr(by.SUN) + (chart.houses ? " · casa " + ROMAN[by.SUN.house] : ""), by.SUN.reliable],
-    ["Luna", posStr(by.MOON) + (chart.houses ? " · casa " + ROMAN[by.MOON.house] : ""), by.MOON.reliable],
-    ["Ascendente", ascTxt, !chart.sensitivity.unreliable.some((u) => u.item === "ASC")],
-  ].map(([k, v, ok]) => `<div class="b3"><span class="lab">${k}</span><span class="val">${esc(v)}${mark(ok)}</span></div>`).join("");
+    [term("SUN"), posStr(by.SUN) + (chart.houses ? ` · ${H} ${ROMAN[by.SUN.house]}` : ""), by.SUN.reliable],
+    [term("MOON"), posStr(by.MOON) + (chart.houses ? ` · ${H} ${ROMAN[by.MOON.house]}` : ""), by.MOON.reliable],
+    [term("ASC"), ascTxt, !chart.sensitivity.unreliable.some((u) => u.item === "ASC")],
+  ].map(([k, v, ok]) => `<div class="b3"><span class="lab">${esc(k)}</span><span class="val">${esc(v)}${mark(ok)}</span></div>`).join("");
 
-  $("#r-warn").innerHTML = warnings.map((w) => `<li><code>${w.code}</code> ${esc(w.text)}</li>`).join("");
+  $("#r-warn").innerHTML = warnings.map((w) => `<li><code>${w.code}</code> ${esc(t("w." + w.code, w.params))}</li>`).join("");
   $("#r-warn-box").hidden = !warnings.length;
 
   $("#wheel").innerHTML = wheelSVG(chart);
 
-  $("#t-pos").innerHTML = `<thead><tr><th>Punto</th><th>Posición</th>${chart.houses ? "<th>Casa</th>" : ""}<th>Mov.</th></tr></thead><tbody>` +
-    chart.bodies.map((b) => `<tr><td><span class="gl">${g(GLYPH[b.id])}</span> ${nm(b.id)}</td><td class="num">${b.deg} ${SIGN_ES[b.sign]}${mark(b.reliable)}</td>${chart.houses ? `<td class="num">${ROMAN[b.house]}${b.near_next_cusp ? " <span class='muted' title='A menos de 2° de la cúspide siguiente'>↦</span>" : ""}</td>` : ""}<td>${b.retrograde ? "R" : ""}${b.stationary ? " est." : ""}</td></tr>`).join("") +
-    `<tr><td><span class="gl">${g("☋")}</span> Nodo Sur</td><td class="num">${chart.south_node.deg} ${SIGN_ES[chart.south_node.sign]}</td>${chart.houses ? `<td class="num">${ROMAN[chart.south_node.house]}</td>` : ""}<td></td></tr></tbody>`;
+  // posiciones: el movimiento va junto al grado (R, est.) para que la tabla entre en el celular
+  const motion = (b) => `${b.retrograde ? `<span class="rx" title="${esc(t("r.rx"))}">R</span>` : ""}${b.stationary ? `<span class="rx" title="${esc(t("r.stTitle"))}">${t("r.st")}</span>` : ""}`;
+  $("#t-pos").innerHTML = `<thead><tr><th>${t("th.point")}</th><th>${t("th.position")}</th>${chart.houses ? `<th>${t("th.house")}</th>` : ""}</tr></thead><tbody>` +
+    chart.bodies.map((b) => `<tr><td><span class="gl">${g(GLYPH[b.id])}</span> ${esc(nm(b.id))}</td><td class="num">${degHTML(b.deg)} ${esc(term(b.sign))}${motion(b)}${mark(b.reliable)}</td>${chart.houses ? `<td class="num">${ROMAN[b.house]}${b.near_next_cusp ? ` <span class='muted' title='${esc(t("r.nearCusp"))}'>↦</span>` : ""}</td>` : ""}</tr>`).join("") +
+    `<tr><td><span class="gl">${g("☋")}</span> ${esc(nm("SOUTH_NODE"))}</td><td class="num">${degHTML(chart.south_node.deg)} ${esc(term(chart.south_node.sign))}</td>${chart.houses ? `<td class="num">${ROMAN[chart.south_node.house]}</td>` : ""}</tr></tbody>`;
 
   $("#houses-block").hidden = !chart.houses;
   if (chart.houses) {
-    $("#t-houses").innerHTML = `<thead><tr><th>Casa</th><th>Cúspide</th><th>Regente</th></tr></thead><tbody>` + chart.houses.cusps.map((c, i) => {
+    $("#t-houses").innerHTML = `<thead><tr><th>${t("th.house")}</th><th>${t("th.cusp")}</th><th>${t("th.ruler")}</th></tr></thead><tbody>` + chart.houses.cusps.map((c, i) => {
       const r = chart.derived.house_rulers[i];
-      return `<tr><td>${ROMAN[i + 1]}${i === 0 ? " · AC" : i === 9 ? " · MC" : ""}</td><td class="num">${E.fmtDeg(c)} ${SIGN_ES[E.SIGNS[Math.floor(c / 30)]]}</td><td>${nm(r.ruler)}${r.traditional_coregent ? ` <span class="muted">(trad. ${nm(r.traditional_coregent)})</span>` : ""}</td></tr>`;
+      return `<tr><td>${ROMAN[i + 1]}${i === 0 ? " · AC" : i === 9 ? " · MC" : ""}</td><td class="num">${degHTML(E.fmtDeg(c))} ${esc(term(E.SIGNS[Math.floor(c / 30)]))}</td><td>${esc(nm(r.ruler))}${r.traditional_coregent ? ` <span class="muted">(${t("trad")} ${esc(nm(r.traditional_coregent))})</span>` : ""}</td></tr>`;
     }).join("") + "</tbody>";
-    $("#houses-sys").textContent = chart.houses.system_effective === "PLACIDUS" ? "Placidus" : "Porfirio (Placidus no definido en esta latitud)";
+    $("#houses-sys").textContent = t(chart.houses.system_effective === "PLACIDUS" ? "houses.placidus" : "houses.porphyry");
   }
 
-  $("#t-asp").innerHTML = `<thead><tr><th>Aspecto</th><th>Orbe</th><th></th></tr></thead><tbody>` + chart.aspects.map((a) =>
-    `<tr class="${a.orb_class.toLowerCase()}"><td>${nm(a.a)} <span class="gl">${g(ASP_GLYPH[a.aspect])}</span> ${nm(a.b)} <span class="muted small">${ASP_ES[a.aspect].toLowerCase()}</span>${mark(a.reliable)}</td><td class="num">${a.orb.toFixed(2)}°</td><td class="small muted">${a.applying === null ? "" : a.applying ? "aplic." : "separ."}</td></tr>`).join("") + "</tbody>";
+  $("#t-asp").innerHTML = `<thead><tr><th>${t("th.aspect")}</th><th>${t("th.orb")}</th><th></th></tr></thead><tbody>` + chart.aspects.map((a) =>
+    `<tr class="${a.orb_class.toLowerCase()}"><td>${esc(nm(a.a))} <span class="gl">${g(ASP_GLYPH[a.aspect])}</span> ${esc(nm(a.b))} <span class="muted small">${esc(term(a.aspect))}</span>${mark(a.reliable)}</td><td class="num">${a.orb.toFixed(2)}°</td><td class="small muted">${a.applying === null ? "" : t(a.applying ? "asp.app" : "asp.sep")}</td></tr>`).join("") + "</tbody>";
 
   const d = chart.derived;
   const list = (arr) => arr.length ? arr.map(nm).join(", ") : "—";
   const rows = [];
-  rows.push(["Elementos", Object.entries(d.elements).map(([k, v]) => `${ELEM_ES[k]} ${v.length}`).join(" · "), Object.entries(d.elements).map(([k, v]) => `${ELEM_ES[k]}: ${list(v)}`).join("<br>")]);
-  rows.push(["Modalidades", Object.entries(d.modalities).map(([k, v]) => `${MOD_ES[k]} ${v.length}`).join(" · "), Object.entries(d.modalities).map(([k, v]) => `${MOD_ES[k]}: ${list(v)}`).join("<br>")]);
-  if (d.hemispheres) rows.push(["Hemisferios", `Arriba ${d.hemispheres.UPPER_7_12.length} · abajo ${d.hemispheres.LOWER_1_6.length} · este ${d.hemispheres.EASTERN_10_3.length} · oeste ${d.hemispheres.WESTERN_4_9.length}`, "Por casas, Sol a Plutón."]);
-  if (d.angular) rows.push(["Planetas angulares", d.angular.length ? d.angular.map((x) => `${nm(x.body)} (${x.angle}, ${x.distance.toFixed(1)}°)`).join(", ") : "—", "Hasta 10° de un ángulo."]);
-  if (d.angle_rulers) rows.push(["Regentes de los ángulos", Object.entries(d.angle_rulers).map(([k, v]) => `${k}: ${nm(v.ruler)} en ${SIGN_ES[v.ruler_sign]}, casa ${ROMAN[v.ruler_house]}`).join("<br>"), ""]);
-  rows.push(["Configuraciones", d.configurations.length ? d.configurations.map((c) => c.type === "T_SQUARE" ? `${CFG_ES[c.type]}: ${nm(c.opposition[0])}–${nm(c.opposition[1])}, ápice ${nm(c.apex)}` : c.type === "YOD" ? `${CFG_ES[c.type]}: base ${nm(c.base[0])}–${nm(c.base[1])}, ápice ${nm(c.apex)}` : `${CFG_ES[c.type]}: ${c.bodies.map(nm).join(", ")}`).join("<br>") : "—", ""]);
-  rows.push(["Stelliums", d.stelliums.length ? d.stelliums.map((s) => `${s.by === "SIGN" ? SIGN_ES[s.where] : "casa " + ROMAN[s.where]}: ${list(s.bodies)}`).join("<br>") : "—", "Tres o más cuerpos."]);
-  rows.push(["Sin aspectos", list(d.unaspected), ""]);
-  rows.push(["Recepciones mutuas", d.mutual_receptions.length ? d.mutual_receptions.map((r) => `${nm(r.a)}–${nm(r.b)}`).join(", ") : "—", "Regencias modernas."]);
-  rows.push(["Dispositor final", d.final_dispositor ? nm(d.final_dispositor) : "no hay uno único", ""]);
-  rows.push(["Fase Sol–Luna", `${PHASE_ES[d.sun_moon_phase.phase]} (${d.sun_moon_phase.angle.toFixed(1)}°)`, ""]);
-  $("#t-struct").innerHTML = rows.map(([k, v, n]) => `<div class="srow"><dt>${k}</dt><dd>${v}${n ? `<span class="muted small d-note">${n}</span>` : ""}</dd></div>`).join("");
+  rows.push([t("s.elements"), Object.entries(d.elements).map(([k, v]) => `${term(k)} ${v.length}`).join(" · "), Object.entries(d.elements).map(([k, v]) => `${term(k)}: ${list(v)}`).join("<br>")]);
+  rows.push([t("s.modalities"), Object.entries(d.modalities).map(([k, v]) => `${term(k)} ${v.length}`).join(" · "), Object.entries(d.modalities).map(([k, v]) => `${term(k)}: ${list(v)}`).join("<br>")]);
+  if (d.hemispheres) rows.push([t("s.hemispheres"), t("s.hemi", { u: d.hemispheres.UPPER_7_12.length, l: d.hemispheres.LOWER_1_6.length, e: d.hemispheres.EASTERN_10_3.length, w: d.hemispheres.WESTERN_4_9.length }), t("s.hemi.note")]);
+  if (d.angular) rows.push([t("s.angular"), d.angular.length ? d.angular.map((x) => `${nm(x.body)} (${x.angle}, ${x.distance.toFixed(1)}°)`).join(", ") : "—", t("s.angular.note")]);
+  if (d.angle_rulers) rows.push([t("s.angleRulers"), Object.entries(d.angle_rulers).map(([k, v]) => t("s.angleRuler", { angle: k, ruler: nm(v.ruler), sign: term(v.ruler_sign), house: ROMAN[v.ruler_house] })).join("<br>"), ""]);
+  rows.push([t("s.configs"), d.configurations.length ? d.configurations.map((c) => c.type === "T_SQUARE" ? `${term(c.type)}: ${nm(c.opposition[0])}–${nm(c.opposition[1])}, ${t("s.apex")} ${nm(c.apex)}` : c.type === "YOD" ? `${term(c.type)}: ${t("s.base")} ${nm(c.base[0])}–${nm(c.base[1])}, ${t("s.apex")} ${nm(c.apex)}` : `${term(c.type)}: ${c.bodies.map(nm).join(", ")}`).join("<br>") : "—", ""]);
+  rows.push([t("s.stelliums"), d.stelliums.length ? d.stelliums.map((s) => `${s.by === "SIGN" ? term(s.where) : H + " " + ROMAN[s.where]}: ${list(s.bodies)}`).join("<br>") : "—", t("s.stelliums.note")]);
+  rows.push([t("s.unaspected"), list(d.unaspected), ""]);
+  rows.push([t("s.mutual"), d.mutual_receptions.length ? d.mutual_receptions.map((r) => `${nm(r.a)}–${nm(r.b)}`).join(", ") : "—", t("s.mutual.note")]);
+  rows.push([t("s.finalDisp"), d.final_dispositor ? nm(d.final_dispositor) : t("s.noFinalDisp"), ""]);
+  rows.push([t("s.phase"), `${term(d.sun_moon_phase.phase)} (${d.sun_moon_phase.angle.toFixed(1)}°)`, ""]);
+  $("#t-struct").innerHTML = rows.map(([k, v, n]) => `<div class="srow"><dt>${esc(k)}</dt><dd>${v}${n ? `<span class="muted small d-note">${n}</span>` : ""}</dd></div>`).join("");
 
   const s = chart.sensitivity;
+  const win = s.window_min === "FULL_DAY" ? t("sens.fullDay") : t("sens.minutes", { n: s.window_min });
+  const noteKey = (n) => /entrar/.test(n) ? "sens.in" : /salir/.test(n) ? "sens.out" : null;
   $("#sens").innerHTML = s.unreliable.length
-    ? `<p>Ventana analizada: ${s.window_min === "FULL_DAY" ? "el día completo" : "±" + s.window_min + " minutos"}. Estos datos cambian dentro de esa ventana:</p><ul>` + s.unreliable.map((u) => `<li>${u.field === "aspect" ? u.item.split("|").map((x, i) => i === 2 ? ASP_ES[x].toLowerCase() : nm(x)).join(" · ") + " — " + esc(u.note) : nm(u.item) + ": " + (u.field === "sign" ? "signo " + u.alternatives.map((x) => SIGN_ES[x]).join(" / ") : "casa " + u.alternatives.map((x) => ROMAN[x]).join(" / "))}</li>`).join("") + "</ul>"
-    : `<p>Dentro de la ventana de ${s.window_min === "FULL_DAY" ? "un día" : "±" + s.window_min + " minutos"} no cambia ningún signo, casa ni aspecto.</p>`;
+    ? `<p>${esc(t("sens.changes", { w: win }))}</p><ul>` + s.unreliable.map((u) => `<li>${u.field === "aspect"
+      ? u.item.split("|").map((x, i) => i === 2 ? term(x) : nm(x)).join(" · ") + " — " + esc(noteKey(u.note) ? t(noteKey(u.note)) : u.note)
+      : nm(u.item) + ": " + (u.field === "sign" ? t("sens.sign") + " " + u.alternatives.map((x) => term(x)).join(" / ") : H + " " + u.alternatives.map((x) => ROMAN[x]).join(" / "))}</li>`).join("") + "</ul>"
+    : `<p>${esc(t("sens.none", { w: win }))}</p>`;
 
-  $("#prov").textContent = `${chart.ephemeris.engine}. ${chart.ephemeris.flags}. Casas: ${chart.houses ? chart.houses.system_effective : "no calculadas"}. Nodo verdadero. Política de aspectos ${chart.aspect_policy}. Zona ${f.zone} (${state.payload.birth.offset_source === "MANUAL" ? "desfase manual" : "base IANA del navegador"}). Lugar: ${state.place.source}. Motor ${E.ENGINE_VERSION}.`;
+  $("#prov").textContent = t("prov", {
+    engine: chart.ephemeris.engine, flags: "SEFLG_SWIEPH|SEFLG_SPEED",
+    sys: chart.houses ? chart.houses.system_effective : t("prov.noHouses"), pol: chart.aspect_policy, zone: f.zone,
+    src: t(state.payload.birth.offset_source === "MANUAL" ? "prov.manual" : "prov.iana"), place: state.place.source, ver: E.ENGINE_VERSION,
+  });
 
-  renderInterpretation();
-  V.show($("#fig-eyes"), "verification_eyes", { loop: false });
-  $("#result").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  if (scroll) {
+    renderInterpretation();
+    V.show($("#fig-eyes"), "verification_eyes", { loop: false });
+    $("#result").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  }
 }
 
 // ---------- rueda ----------
 function wheelSVG(chart) {
   const S = 360, C = S / 2, R1 = 172, R2 = 146, R3 = 110, R4 = 72;
   const asc = chart.houses ? chart.houses.asc : 0;
-  const pt = (lon, r) => { const t = (180 + lon - asc) * Math.PI / 180; return [C + r * Math.cos(t), C - r * Math.sin(t)]; };
-  let o = `<svg viewBox="-14 -14 ${S + 28} ${S + 28}" role="img" aria-label="Rueda de la carta natal" class="wheel-svg">`;
+  const pt = (lon, r) => { const a = (180 + lon - asc) * Math.PI / 180; return [C + r * Math.cos(a), C - r * Math.sin(a)]; };
+  let o = `<svg viewBox="-14 -14 ${S + 28} ${S + 28}" role="img" aria-label="${esc(t("wheel.aria"))}" class="wheel-svg">`;
   o += `<circle cx="${C}" cy="${C}" r="${R1}" class="w-ring"/><circle cx="${C}" cy="${C}" r="${R2}" class="w-ring"/><circle cx="${C}" cy="${C}" r="${R4}" class="w-ring"/>`;
   for (let i = 0; i < 12; i++) {
     const [x1, y1] = pt(i * 30, R2), [x2, y2] = pt(i * 30, R1); o += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="w-tick"/>`;
@@ -312,64 +362,76 @@ function wheelSVG(chart) {
   for (const it of items) {
     const [px, py] = pt(it.lon, R2 - 2), [qx, qy] = pt(it.lon, R2 - 8); o += `<line x1="${px}" y1="${py}" x2="${qx}" y2="${qy}" class="w-tick"/>`;
     const [lx, ly] = pt(it.disp, R3 + 14);
-    o += `<text x="${lx}" y="${ly}" class="w-body${by[it.id].retrograde ? " r" : ""}" text-anchor="middle" dominant-baseline="central"><title>${nm(it.id)} ${by[it.id].deg} ${SIGN_ES[by[it.id].sign]}</title>${g(GLYPH[it.id])}</text>`;
+    o += `<text x="${lx}" y="${ly}" class="w-body${by[it.id].retrograde ? " r" : ""}" text-anchor="middle" dominant-baseline="central"><title>${esc(nm(it.id))} ${by[it.id].deg} ${esc(term(by[it.id].sign))}</title>${g(GLYPH[it.id])}</text>`;
   }
   return o + "</svg>";
 }
 
 // ---------- interpretación (desacoplada) ----------
-function renderInterpretation() {
-  const url = (CONFIG.interpreterUrl || "").trim();
-  const connected = !!url || !!CONFIG.demo;
+const serviceUrl = () => (CONFIG.interpreterUrl || "").trim();
+function renderInterpretationChrome() {
+  const connected = !!serviceUrl() || !!CONFIG.demo;
   $("#interp-connected").hidden = !connected;
   $("#interp-missing").hidden = connected;
   $("#demo-note").hidden = !CONFIG.demo;
-  if (CONFIG.demo && !$("#demo-which").options.length) $("#demo-which").innerHTML = CONFIG.demoReports.map((r) => `<option value="${esc(r.file)}">${esc(r.label)}</option>`).join("");
   $("#interp-conn-text").hidden = !!CONFIG.demo;
   $("#demo-which-row").hidden = !CONFIG.demo;
-  $("#btn-interp").textContent = CONFIG.demo ? "Generar el informe (simulación)" : "Generar el informe";
+  $("#code-row").hidden = !(serviceUrl() && CONFIG.requireCode);
+  if (CONFIG.demo && !$("#demo-which").options.length) $("#demo-which").innerHTML = CONFIG.demoReports.map((r) => `<option value="${esc(r.file)}">${esc(r.label)}</option>`).join("");
+  $("#btn-interp").textContent = t(CONFIG.demo ? "btn.interpDemo" : "btn.interp");
+  const pill = $("#pill-interp");
+  pill.className = "pill " + (serviceUrl() ? "ok" : "no");
+  pill.dataset.i18n = serviceUrl() ? "pill.conn" : "pill.no";
+  pill.textContent = t(pill.dataset.i18n);
+}
+function renderInterpretation() {
+  renderInterpretationChrome();
   $("#payload-view").value = JSON.stringify(state.payload, null, 2);
-  $("#report-out").hidden = true; $("#audit-out").hidden = true;
+  $("#report-out").hidden = true; $("#audit-out").hidden = true; $("#interp-status").hidden = true;
   V.clear($("#fig-reader")); V.clear($("#fig-closure"));
 }
 
 async function copyText(text, btn) {
   const orig = btn.textContent;
-  try { await navigator.clipboard.writeText(text); btn.textContent = "Copiado"; }
-  catch (e) { const ta = $("#payload-view"); ta.value = text; ta.closest("details").open = true; ta.focus(); ta.select(); btn.textContent = "Seleccionado: copialo manualmente"; }
+  try { await navigator.clipboard.writeText(text); btn.textContent = t("copied"); }
+  catch (e) { const ta = $("#payload-view"); ta.value = text; ta.closest("details").open = true; ta.focus(); ta.select(); btn.textContent = t("copyManual"); }
   setTimeout(() => (btn.textContent = orig), 2500);
 }
 
-
-const AUDIT_NAME = { ...NAME };
-const refLabel = (r) => r.type === "aspect" ? `${nm(r.a)} ${ASP_ES[r.aspect].toLowerCase()} ${nm(r.b)}`
-  : r.type === "angle" ? `${nm(r.angle)} en ${SIGN_ES[r.sign]} ${r.deg}` : `${nm(r.body)} en ${SIGN_ES[r.sign]} ${r.deg}${r.house != null ? ", casa " + ROMAN[r.house] : ""}`;
-function problemText(p) {
-  if (p.field === "sign") return `el informe dice ${SIGN_ES[p.report]}; la carta calculada da ${SIGN_ES[p.chart]}`;
-  if (p.field === "deg") return `el informe dice ${p.report}; la carta calculada da ${p.chart}`;
-  if (p.field === "house") return p.chart == null ? p.note : `el informe dice casa ${ROMAN[p.report]}; la carta calculada da casa ${ROMAN[p.chart]}`;
-  return p.note;
+const refLabel = (r) => r.type === "aspect" ? `${nm(r.a)} ${term(r.aspect)} ${nm(r.b)}`
+  : r.type === "angle" ? `${nm(r.angle)} ${t("a.in")} ${term(r.sign)} ${r.deg}` : `${nm(r.body)} ${t("a.in")} ${term(r.sign)} ${r.deg}${r.house != null ? ", " + t("r.house") + " " + ROMAN[r.house] : ""}`;
+function problemText(p, ref) {
+  const H = t("r.house");
+  if (p.kind === "missing") return t("a.missing");
+  if (p.field === "sign") return t("a.says", { r: term(p.report), c: term(p.chart) });
+  if (p.field === "deg") return t("a.says", { r: p.report, c: p.chart });
+  if (p.field === "house") return p.chart == null ? t("a.noHouses") : t("a.says", { r: `${H} ${ROMAN[p.report]}`, c: `${H} ${ROMAN[p.chart]}` });
+  if (p.field === "angle") return t("a.noAngles");
+  if (p.field === "aspect") return t("a.noAspect", { pol: state.payload.engine.aspect_policy });
+  if (p.field === "reliability") return t("a.unreliable");
+  return p.note || "";
 }
 
 function renderAudit(a) {
   const box = $("#audit-out");
   box.hidden = false;
   box.className = "note " + (a.ok ? "ok" : "warn");
-  box.innerHTML = `<strong>Auditoría técnica: ${a.verified} de ${a.total} referencias coinciden con la carta calculada${a.ok ? "." : `; ${a.issues.length} no coinciden.`}</strong>` +
-    (a.ok ? "" : `<ul>${a.issues.map((i) => `<li>${esc(refLabel(i.ref))}: ${(i.problems || [i]).map((p) => esc(problemText(p).replace(/\.$/, "").replace(/^./, (c) => c.toLowerCase()))).join("; ")}.</li>`).join("")}</ul>
-    <p class="small">Las interpretaciones que dependen de estos datos deberían revisarse antes de entregar el informe. La auditoría compara solo las referencias que el informe declara.</p>`);
+  box.innerHTML = `<strong>${esc(t("a.head", { v: a.verified, t: a.total }))}${a.ok ? "." : esc(t("a.headBad", { n: a.issues.length }))}</strong>` +
+    (a.ok ? "" : `<ul>${a.issues.map((i) => `<li>${esc(refLabel(i.ref))}: ${(i.problems || [i]).map((p) => esc(problemText(p, i.ref))).join("; ")}.</li>`).join("")}</ul>
+    <p class="small">${esc(t("a.foot"))}</p>`);
 }
 
 function renderReport(rep) {
   const out = $("#report-out");
   out.hidden = false;
   out.replaceChildren();
+  out.lang = rep.language || "";
   for (const s of rep.sections) {
     const sec = document.createElement("section"); sec.className = "rep-sec";
     const h = document.createElement("h3"); h.textContent = s.heading; sec.append(h);
     const paras = String(s.body_markdown).split(/\n{2,}/);
-    paras.forEach((t, i) => {
-      const p = document.createElement("p"); p.textContent = t; sec.append(p);
+    paras.forEach((p, i) => {
+      const el = document.createElement("p"); el.textContent = p; sec.append(el);
       if (i === 0 && V.SECTION_ART[s.id]) {
         const fig = document.createElement("figure"); fig.className = "art art-section";
         sec.append(fig); V.show(fig, V.SECTION_ART[s.id], { loop: false });
@@ -379,67 +441,109 @@ function renderReport(rep) {
   }
 }
 
+class ServiceError extends Error { constructor(key, params) { super(key); this.key = key; this.params = params; } }
 async function obtainReport() {
   if (CONFIG.demo) {
     await new Promise((r) => setTimeout(r, 4000)); // espera simulada
     const which = ($("#demo-which") && $("#demo-which").value) || CONFIG.demoReports[0].file;
-    return (await import("./" + which)).DEMO_REPORT;
+    return { report: (await import("./" + which)).DEMO_REPORT };
   }
-  const r = await fetch(CONFIG.interpreterUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(state.payload) });
-  if (!r.ok) throw new Error("El servicio respondió " + r.status);
-  return r.json();
+  const code = ($("#access-code").value || "").trim();
+  if (CONFIG.requireCode && !code) throw new ServiceError("i.err.code_required");
+  try { localStorage.setItem("astroinforme.code", code); } catch (e) { }
+  let r;
+  try {
+    r = await fetch(serviceUrl(), { method: "POST", headers: { "content-type": "application/json", ...(code ? { "x-astro-code": code } : {}) }, body: JSON.stringify(state.payload) });
+  } catch (e) { throw new ServiceError("i.err.upstream"); }
+  // el servicio responde en flujo: espacios de mantenimiento y, al final, un único JSON
+  let body = null; try { body = JSON.parse((await r.text()).trim()); } catch (e) { }
+  if (!r.ok || (body && body.error)) {
+    const k = body && body.error ? "i.err." + body.error : null;
+    throw k && L.t(k) !== k ? new ServiceError(k) : new ServiceError("i.status", { status: r.status });
+  }
+  if (!body) throw new ServiceError("i.badContract");
+  return { report: body.report || body, remaining: body.remaining };
 }
 
 async function callInterpreter() {
   const out = $("#report-out"), btn = $("#btn-interp"), status = $("#interp-status");
   btn.disabled = true; out.hidden = true; $("#audit-out").hidden = true;
-  status.hidden = false; status.textContent = CONFIG.demo ? "Simulando la espera del motor interpretativo…" : "Generando el informe…";
+  status.hidden = false; status.textContent = t(CONFIG.demo ? "i.demoWaiting" : "i.generating");
   V.clear($("#fig-closure")); V.show($("#fig-reader"), "report_reader");
   try {
-    const rep = await obtainReport();
-    if (rep.schema !== "astroinforme.report/v1" || !Array.isArray(rep.sections)) throw new Error("La respuesta no cumple el contrato astroinforme.report/v1");
-    V.clear($("#fig-reader")); status.hidden = true;
+    const { report: rep, remaining } = await obtainReport();
+    if (!rep || rep.schema !== "astroinforme.report/v1" || !Array.isArray(rep.sections)) throw new ServiceError("i.badContract");
+    V.clear($("#fig-reader"));
+    // la auditoría se rehace siempre aquí, aunque el servicio ya la haya hecho
     const audit = auditReport(rep, state.payload);
+    state.lastReport = rep; state.lastAudit = audit;
     renderAudit(audit);
     renderReport(rep);
+    if (remaining != null) { status.textContent = t("i.remaining", { n: remaining }); status.hidden = false; } else status.hidden = true;
     if (audit.ok) V.show($("#fig-closure"), "closure_serendipity");
-  } catch (e) { V.clear($("#fig-reader")); status.hidden = false; status.textContent = "No se pudo generar el informe: " + e.message + ". La carta calculada sigue disponible."; }
+  } catch (e) {
+    V.clear($("#fig-reader")); status.hidden = false;
+    status.textContent = t("i.fail", { msg: e instanceof ServiceError ? t(e.key, e.params) : e.message });
+  }
   btn.disabled = false;
+}
+
+// ---------- idioma ----------
+function applyLanguage(lang, { remember = true } = {}) {
+  L.setLang(lang);
+  if (remember) L.rememberLang(lang);
+  setRegionNames();
+  V.setLang(lang);
+  L.applyStatic();
+  $("#ui-lang").value = lang;
+  if (!state.reportLangTouched) $("#lang").value = lang;
+  $("#btn-hero-anim").textContent = t(state.heroAnimated ? "hero.still" : "hero.anim");
+  showEngineState();
+  renderInterpretationChrome();
+  if (state.place) showPlace();
+  if (state.chart) render(false);
+  if (state.lastAudit) renderAudit(state.lastAudit);
 }
 
 // ---------- eventos ----------
 function initVisuals() {
   const hero = $("#fig-hero"), btn = $("#btn-hero-anim");
-  let animated = false;
   V.show(hero, "hero_levitar");
-  const sync = () => { btn.hidden = V.reducedMotion(); if (V.reducedMotion() && animated) { animated = false; V.show(hero, "hero_levitar"); btn.textContent = "Ver portada animada"; } };
+  const sync = () => { btn.hidden = V.reducedMotion(); if (V.reducedMotion() && state.heroAnimated) { state.heroAnimated = false; V.show(hero, "hero_levitar"); btn.textContent = t("hero.anim"); } };
   sync(); V.onReducedMotionChange(sync);
   btn.addEventListener("click", () => {
-    animated = !animated;
-    V.show(hero, animated ? "intro_embroidery" : "hero_levitar");
-    btn.textContent = animated ? "Ver portada fija" : "Ver portada animada";
+    state.heroAnimated = !state.heroAnimated;
+    V.show(hero, state.heroAnimated ? "intro_embroidery" : "hero_levitar");
+    btn.textContent = t(state.heroAnimated ? "hero.still" : "hero.anim");
   });
 }
 
 function init() {
+  L.setLang(L.initialLang());
+  setRegionNames();
+  V.setLang(L.getLang());
   initVisuals();
+  applyLanguage(L.getLang(), { remember: false });
+  try { $("#access-code").value = localStorage.getItem("astroinforme.code") || ""; } catch (e) { }
+  $("#ui-lang").addEventListener("change", (e) => applyLanguage(e.target.value));
+  $("#lang").addEventListener("change", () => { state.reportLangTouched = true; });
   try { const zones = Intl.supportedValuesOf("timeZone"); $("#tz-list").innerHTML = zones.map((z) => `<option value="${z}">`).join(""); } catch (e) { }
   $("#place-q").addEventListener("focus", () => { loadCities().catch(() => { }); ensureEngine().catch(() => { }); }, { once: true });
   $("#place-form-btn").addEventListener("click", doSearch);
   $("#place-q").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doSearch(); } });
   async function doSearch() {
     const q = $("#place-q").value; const box = $("#place-results");
-    box.hidden = false; box.innerHTML = `<p class="muted small">Cargando la lista de ciudades…</p>`;
+    box.hidden = false; box.innerHTML = `<p class="muted small">${esc(t("place.loading"))}</p>`;
     const wf = $("#fig-wait"); let shown = false;
-    const t = setTimeout(() => { shown = true; V.show(wf, "analysis_neural"); }, 250);
-    try { await loadCities(); } catch (e) { clearTimeout(t); V.clear(wf); box.innerHTML = `<p class="note bad">No se pudo cargar la lista de ciudades. Usá coordenadas manuales.</p>`; return; }
-    clearTimeout(t); if (shown) V.clear(wf);
+    const timer = setTimeout(() => { shown = true; V.show(wf, "analysis_neural"); }, 250);
+    try { await loadCities(); } catch (e) { clearTimeout(timer); V.clear(wf); box.innerHTML = `<p class="note bad">${esc(t("place.fail"))}</p>`; return; }
+    clearTimeout(timer); if (shown) V.clear(wf);
     renderPlaceResults(searchCities(q));
   }
   $("#manual-coords-toggle").addEventListener("change", (e) => { $("#manual-coords").hidden = !e.target.checked; });
   $("#mc-apply").addEventListener("click", () => {
     const lat = parseFloat($("#mc-lat").value.replace(",", ".")), lon = parseFloat($("#mc-lon").value.replace(",", "."));
-    if (!(lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180)) { setStatus($("#form-error"), "bad", "Coordenadas inválidas. Latitud entre −90 y 90 (sur negativa), longitud entre −180 y 180 (oeste negativa)."); return; }
+    if (!(lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180)) { setStatus($("#form-error"), "bad", esc(t("err.coords"))); return; }
     state.place = { label: $("#mc-label").value.trim() || `${lat.toFixed(4)}, ${lon.toFixed(4)}`, lat, lon, zone: E.zoneFor(lat, lon), source: "MANUAL" };
     showPlace();
   });
@@ -453,7 +557,7 @@ function init() {
 }
 
 function loadExample() {
-  $("#fname").value = "Ejemplo"; $("#bdate").value = "1990-07-14"; $("#btime").value = "15:20"; $("#prec").value = "PM15"; $("#btime").disabled = false;
+  $("#fname").value = t("f.fname.ph"); $("#bdate").value = "1990-07-14"; $("#btime").value = "15:20"; $("#prec").value = "PM15"; $("#btime").disabled = false;
   loadCities().then(() => { const c = searchCities("Hamburg")[0]; if (c) { choosePlace(c); calculate(); } });
 }
 

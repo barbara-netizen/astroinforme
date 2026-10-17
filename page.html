@@ -94,7 +94,13 @@ td { border-bottom: 1px solid var(--line); padding: 5px 8px 5px 0; vertical-alig
 td.num { font-family: var(--f-data); font-size: 0.84rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gl { font-family: var(--f-glyph); }
 tr.wide td { color: var(--muted); }
-@media (max-width: 520px) { #t-pos { font-size: 0.82rem; } #t-pos td:first-child { white-space: nowrap; } #t-pos td.num { font-size: 0.76rem; } #t-pos th, #t-pos td { padding-right: 6px; } }
+#t-pos td:first-child { white-space: nowrap; }
+.top-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.langsel select { font-family: var(--f-data); font-size: 0.78rem; letter-spacing: 0.08em; padding: 4px 6px; width: auto; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.rx { font-family: var(--f-data); font-size: 0.72rem; color: var(--accent); margin-left: 5px; }
+@media (max-width: 520px) { #t-pos .sec { display: none; } #t-pos { font-size: 0.86rem; } #t-pos td.num { font-size: 0.8rem; } #t-pos th, #t-pos td { padding-right: 6px; } }
+
 tr.tight td:first-child { font-weight: 600; }
 dl#t-struct { margin: 0; display: grid; }
 .srow { display: grid; grid-template-columns: minmax(120px, 30%) minmax(0, 1fr); gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
@@ -144,10 +150,13 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
 <div class="wrap">
   <header class="top">
     <div class="top-text">
-      <span class="eyebrow">Astrología psicológica · cálculo natal</span>
+      <div class="top-bar">
+        <span class="eyebrow" data-i18n="eyebrow">Astrología psicológica · cálculo natal</span>
+        <label class="langsel"><span class="sr" data-i18n="ui.lang">Idioma</span><select id="ui-lang" aria-label="Idioma / Sprache / Language"><option value="es">ES</option><option value="de">DE</option><option value="en">EN</option></select></label>
+      </div>
       <h1>ASTROINFORME</h1>
-      <p class="lede">Calcula la carta natal con Swiss Ephemeris directamente en este dispositivo: posiciones, casas Placidus, aspectos, estructura de la carta y sensibilidad a la hora. Los datos no se envían a ningún servidor.</p>
-      <span id="engine-state">Cargando el motor de cálculo…</span>
+      <p class="lede" data-i18n="lede">Calcula la carta natal con Swiss Ephemeris directamente en este dispositivo: posiciones, casas Placidus, aspectos, estructura de la carta y sensibilidad a la hora. Los datos no se envían a ningún servidor.</p>
+      <span id="engine-state" data-i18n="engine.loading">Cargando el motor de cálculo…</span>
     </div>
     <div class="hero-col">
       <figure id="fig-hero" class="art art-hero" hidden></figure>
@@ -156,33 +165,33 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
   </header>
 
   <section class="panel" aria-labelledby="h-datos">
-    <h2 id="h-datos">Datos de nacimiento</h2>
+    <h2 id="h-datos" data-i18n="h.data">Datos de nacimiento</h2>
     <form id="birth-form" novalidate>
       <div class="grid2">
-        <label class="f">Nombre de pila <span class="hint">Opcional. Solo para el encabezado.</span><input id="fname" autocomplete="off" placeholder="Ana"></label>
-        <label class="f">Idioma del informe <span class="hint">Se registra en el contrato de datos.</span>
+        <label class="f"><span data-i18n="f.fname">Nombre de pila</span> <span class="hint" data-i18n="f.fname.hint">Opcional. Solo para el encabezado.</span><input id="fname" autocomplete="off" placeholder="Ana" data-i18n-ph="f.fname.ph"></label>
+        <label class="f"><span data-i18n="f.lang">Idioma del informe</span> <span class="hint" data-i18n="f.lang.hint">Se registra en el contrato de datos.</span>
           <select id="lang"><option value="es">Español (voseo)</option><option value="de">Deutsch (du)</option><option value="en">English</option></select></label>
-        <label class="f">Fecha <span class="hint">Calendario gregoriano, 1800–2399.</span><input id="bdate" type="date" min="1800-01-01" max="2399-12-31" required></label>
-        <label class="f">Hora local del acta <input id="btime" type="time" step="60"></label>
-        <label class="f">Precisión de la hora
-          <select id="prec"><option value="EXACT">Exacta (±4 min)</option><option value="PM15" selected>Aproximada ±15 min</option><option value="PM30">Aproximada ±30 min</option><option value="PM60">Aproximada ±60 min</option><option value="UNKNOWN">Desconocida</option></select></label>
+        <label class="f"><span data-i18n="f.date">Fecha</span> <span class="hint" data-i18n="f.date.hint">Calendario gregoriano, 1800–2399.</span><input id="bdate" type="date" min="1800-01-01" max="2399-12-31" required></label>
+        <label class="f"><span data-i18n="f.time">Hora local del acta</span> <input id="btime" type="time" step="60"></label>
+        <label class="f"><span data-i18n="f.prec">Precisión de la hora</span>
+          <select id="prec"><option value="EXACT" data-i18n="prec.EXACT">Exacta (±4 min)</option><option value="PM15" selected data-i18n="prec.PM15">Aproximada ±15 min</option><option value="PM30" data-i18n="prec.PM30">Aproximada ±30 min</option><option value="PM60" data-i18n="prec.PM60">Aproximada ±60 min</option><option value="UNKNOWN" data-i18n="prec.UNKNOWN">Desconocida</option></select></label>
       </div>
 
       <div class="grid2">
         <div style="display:grid;gap:8px;min-width:0">
-          <label class="f" for="place-q">Lugar de nacimiento <span class="hint">Ciudad o pueblo de más de 1000 habitantes. Para distinguir homónimos: «Córdoba, Argentina».</span></label>
-          <div class="row"><input id="place-q" autocomplete="off" placeholder="Buenos Aires" style="flex:1 1 180px"><button type="button" class="btn ghost" id="place-form-btn">Buscar</button></div>
+          <label class="f" for="place-q"><span data-i18n="f.place">Lugar de nacimiento</span> <span class="hint" data-i18n="f.place.hint">Ciudad o pueblo de más de 1000 habitantes. Para distinguir homónimos: «Córdoba, Argentina».</span></label>
+          <div class="row"><input id="place-q" autocomplete="off" placeholder="Buenos Aires" data-i18n-ph="f.place.ph" style="flex:1 1 180px"><button type="button" class="btn ghost" id="place-form-btn" data-i18n="btn.search">Buscar</button></div>
           <div id="place-results" hidden></div>
           <div id="place-chosen" hidden><strong id="pc-label"></strong><span id="pc-coords"></span></div>
         </div>
         <div style="display:grid;gap:10px;min-width:0;align-content:start">
-          <label class="f">Zona horaria (IANA) <span class="hint">Se completa con el lugar. Cambiala solo si sabés que corresponde otra.</span><input id="tz" list="tz-list" autocomplete="off" placeholder="America/Argentina/Buenos_Aires"><datalist id="tz-list"></datalist></label>
-          <label class="check"><input type="checkbox" id="use-manual-offset"> Cargar el desfase horario a mano</label>
-          <label class="f" id="manual-offset-row" hidden>Desfase respecto de UTC <span class="hint">Ejemplo: -3, +1, -3:30. Reemplaza la base de zonas.</span><input id="manual-offset" placeholder="-3"></label>
-          <label class="check"><input type="checkbox" id="manual-coords-toggle"> Cargar coordenadas a mano</label>
+          <label class="f"><span data-i18n="f.tz">Zona horaria (IANA)</span> <span class="hint" data-i18n="f.tz.hint">Se completa con el lugar. Cambiala solo si sabés que corresponde otra.</span><input id="tz" list="tz-list" autocomplete="off" placeholder="America/Argentina/Buenos_Aires"><datalist id="tz-list"></datalist></label>
+          <label class="check"><input type="checkbox" id="use-manual-offset"> <span data-i18n="f.useOffset">Cargar el desfase horario a mano</span></label>
+          <label class="f" id="manual-offset-row" hidden><span data-i18n="f.offset">Desfase respecto de UTC</span> <span class="hint" data-i18n="f.offset.hint">Ejemplo: -3, +1, -3:30. Reemplaza la base de zonas.</span><input id="manual-offset" placeholder="-3"></label>
+          <label class="check"><input type="checkbox" id="manual-coords-toggle"> <span data-i18n="f.useCoords">Cargar coordenadas a mano</span></label>
           <div id="manual-coords" hidden style="display:grid;gap:8px">
-            <div class="row"><input id="mc-lat" inputmode="decimal" placeholder="Latitud, sur negativa: -34.6037" style="flex:1 1 150px"><input id="mc-lon" inputmode="decimal" placeholder="Longitud, oeste negativa: -58.3816" style="flex:1 1 150px"></div>
-            <div class="row"><input id="mc-label" placeholder="Nombre del lugar (opcional)" style="flex:1 1 180px"><button type="button" class="btn ghost" id="mc-apply">Usar coordenadas</button></div>
+            <div class="row"><input id="mc-lat" inputmode="decimal" placeholder="Latitud, sur negativa: -34.6037" data-i18n-ph="ph.lat" style="flex:1 1 150px"><input id="mc-lon" inputmode="decimal" placeholder="Longitud, oeste negativa: -58.3816" data-i18n-ph="ph.lon" style="flex:1 1 150px"></div>
+            <div class="row"><input id="mc-label" placeholder="Nombre del lugar (opcional)" data-i18n-ph="ph.placeLabel" style="flex:1 1 180px"><button type="button" class="btn ghost" id="mc-apply" data-i18n="btn.useCoords">Usar coordenadas</button></div>
           </div>
         </div>
       </div>
@@ -190,7 +199,7 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
       <figure id="fig-wait" class="art art-wait" hidden></figure>
       <div id="ambig" class="note warn" hidden></div>
       <div id="form-error" class="note bad" hidden></div>
-      <div class="row"><button type="submit" class="btn">Calcular la carta</button><button type="button" class="btn ghost" id="btn-example">Ver un ejemplo</button></div>
+      <div class="row"><button type="submit" class="btn" data-i18n="btn.calc">Calcular la carta</button><button type="button" class="btn ghost" id="btn-example" data-i18n="btn.example">Ver un ejemplo</button></div>
     </form>
   </section>
 
@@ -198,7 +207,7 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
     <div class="panel">
       <div class="r-head-row">
         <div class="r-head">
-          <span class="eyebrow">Ficha técnica calculada</span>
+          <span class="eyebrow" data-i18n="r.eyebrow">Ficha técnica calculada</span>
           <h2 id="r-title">Carta natal</h2>
           <p id="r-meta"></p>
         </div>
@@ -211,58 +220,61 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
         <div class="tbl-wrap"><table id="t-pos"></table></div>
       </div>
       <div class="r-grid">
-        <div style="display:grid;gap:8px;min-width:0"><h3>Aspectos</h3><p class="small muted">Política orbes_v1: cinco mayores y quincuncio. En negrita, orbe hasta 2°; atenuados, más de 5°.</p><div class="tbl-wrap"><table id="t-asp"></table></div></div>
+        <div style="display:grid;gap:8px;min-width:0"><h3 data-i18n="h.aspects">Aspectos</h3><p class="small muted" data-i18n="aspects.note">Política orbes_v1: cinco mayores y quincuncio. En negrita, orbe hasta 2°; atenuados, más de 5°.</p><div class="tbl-wrap"><table id="t-asp"></table></div></div>
         <div style="display:grid;gap:14px;min-width:0">
-          <div id="houses-block" style="display:grid;gap:8px"><h3>Casas</h3><p class="small muted">Sistema: <span id="houses-sys"></span>. Regencias modernas con co-regentes tradicionales.</p><div class="tbl-wrap"><table id="t-houses"></table></div></div>
+          <div id="houses-block" style="display:grid;gap:8px"><h3 data-i18n="h.houses">Casas</h3><p class="small muted"><span data-i18n="houses.sys">Sistema</span>: <span id="houses-sys"></span>. <span data-i18n="houses.note">Regencias modernas con co-regentes tradicionales.</span></p><div class="tbl-wrap"><table id="t-houses"></table></div></div>
         </div>
       </div>
-      <div style="display:grid;gap:8px"><h3>Estructura de la carta</h3><dl id="t-struct"></dl></div>
-      <div style="display:grid;gap:8px"><h3>Sensibilidad a la hora</h3><div id="sens" class="small"></div></div>
+      <div style="display:grid;gap:8px"><h3 data-i18n="h.structure">Estructura de la carta</h3><dl id="t-struct"></dl></div>
+      <div style="display:grid;gap:8px"><h3 data-i18n="h.sensitivity">Sensibilidad a la hora</h3><div id="sens" class="small"></div></div>
       <p id="prov" class="muted"></p>
     </div>
 
     <div class="panel" aria-labelledby="h-interp">
-      <span class="eyebrow">Informe psicológico</span>
-      <h2 id="h-interp">Interpretación</h2>
+      <span class="eyebrow" data-i18n="i.eyebrow">Informe psicológico</span>
+      <h2 id="h-interp" data-i18n="i.h">Interpretación</h2>
       <div id="interp-missing" class="interp-box">
-        <p><strong>El motor interpretativo no está conectado en esta versión.</strong> Redactar el informe requiere un modelo de lenguaje con la calidad que exige el protocolo de ASTROINFORME, y hoy no existe una forma gratuita de ejecutarlo para cualquier persona sin cuenta ni clave de pago. Esta página no genera textos automáticos de reemplazo.</p>
-        <p class="small muted">Mientras tanto podés llevarte la carta calculada completa en formato de datos (JSON).</p>
-        <div class="row"><button type="button" class="btn ghost" id="btn-copy-json">Copiar datos (JSON)</button></div>
+        <p data-i18n-html="i.missing"><strong>El motor interpretativo no está conectado en esta versión.</strong></p>
+        <p class="small muted" data-i18n="i.missing2">Mientras tanto podés llevarte la carta calculada completa en formato de datos (JSON).</p>
+        <div class="row"><button type="button" class="btn ghost" id="btn-copy-json" data-i18n="btn.copyJson">Copiar datos (JSON)</button></div>
       </div>
       <div id="interp-connected" class="interp-box" hidden>
-        <p id="interp-conn-text">Motor interpretativo conectado. Se envía solo la carta calculada (nombre de pila opcional, sin apellido).</p>
-        <div class="row"><button type="button" class="btn" id="btn-interp">Generar el informe</button></div>
-        <p id="demo-note" class="note warn" hidden><strong>Simulación.</strong> El texto que aparece fue redactado fuera de la app y se carga como si lo devolviera el motor interpretativo; la espera es simulada. La auditoría técnica sí es real: compara las referencias del informe con la carta calculada en esta página.</p>
-        <label class="f" id="demo-which-row" hidden>Informe a cargar<select id="demo-which"></select></label>
+        <p id="interp-conn-text" data-i18n="i.conn">Motor interpretativo conectado. Se envía solo la carta calculada (nombre de pila opcional, sin apellido).</p>
+        <label class="f" id="code-row" hidden><span data-i18n="f.code">Código de acceso</span> <span class="hint" data-i18n="f.code.hint">Te lo da quien administra ASTROINFORME.</span><input id="access-code" autocomplete="off" autocapitalize="characters" spellcheck="false" style="max-width:16rem"></label>
+        <div class="row"><button type="button" class="btn" id="btn-interp" data-i18n="btn.interp">Generar el informe</button></div>
+        <p id="demo-note" class="note warn" hidden data-i18n-html="demo.note"><strong>Simulación.</strong></p>
+        <label class="f" id="demo-which-row" hidden><span data-i18n="demo.which">Informe a cargar</span><select id="demo-which"></select></label>
         <p id="interp-status" class="muted" hidden></p>
         <figure id="fig-reader" class="art art-wide" hidden></figure>
         <div id="audit-out" class="note" hidden></div>
         <div id="report-out" hidden></div>
         <figure id="fig-closure" class="art art-wide" hidden></figure>
       </div>
-      <details><summary>Ver el contrato de datos (astroinforme.chart/v1)</summary><textarea id="payload-view" readonly aria-label="Datos calculados en JSON"></textarea></details>
+      <details><summary data-i18n="i.contract">Ver el contrato de datos (astroinforme.chart/v1)</summary><textarea id="payload-view" readonly aria-label="Datos calculados en JSON" data-i18n-aria="i.contract.aria"></textarea></details>
     </div>
   </section>
 
   <section class="panel" aria-labelledby="h-auto">
-    <h2 id="h-auto">Qué funciona por sí solo</h2>
+    <h2 id="h-auto" data-i18n="auto.h">Qué funciona por sí solo</h2>
     <div class="tbl-wrap"><table class="auto-tbl">
       <tbody>
-        <tr><td>Cálculo de posiciones (Sol a Plutón, Quirón, Nodo verdadero) con Swiss Ephemeris 2.10.03</td><td><span class="pill ok">Autónomo</span></td></tr>
-        <tr><td>Casas Placidus (Porfirio en latitudes polares), Ascendente y Medio Cielo</td><td><span class="pill ok">Autónomo</span></td></tr>
-        <tr><td>Aspectos, configuraciones, regencias, elementos, hemisferios</td><td><span class="pill ok">Autónomo</span></td></tr>
-        <tr><td>Zona horaria histórica, horas repetidas o inexistentes</td><td><span class="pill ok">Autónomo</span></td></tr>
-        <tr><td>Búsqueda de ciudades (lista GeoNames incluida en la página)</td><td><span class="pill ok">Autónomo</span></td></tr>
-        <tr><td>Sensibilidad de la carta a la precisión de la hora</td><td><span class="pill ok">Autónomo</span></td></tr>
-        <tr><td>Redacción del informe psicológico</td><td><span class="pill no">No conectado</span></td></tr>
+        <tr><td data-i18n="auto.1"></td><td><span class="pill ok" data-i18n="pill.ok">Autónomo</span></td></tr>
+        <tr><td data-i18n="auto.2"></td><td><span class="pill ok" data-i18n="pill.ok">Autónomo</span></td></tr>
+        <tr><td data-i18n="auto.3"></td><td><span class="pill ok" data-i18n="pill.ok">Autónomo</span></td></tr>
+        <tr><td data-i18n="auto.4"></td><td><span class="pill ok" data-i18n="pill.ok">Autónomo</span></td></tr>
+        <tr><td data-i18n="auto.5"></td><td><span class="pill ok" data-i18n="pill.ok">Autónomo</span></td></tr>
+        <tr><td data-i18n="auto.6"></td><td><span class="pill ok" data-i18n="pill.ok">Autónomo</span></td></tr>
+        <tr><td data-i18n="auto.7"></td><td><span class="pill ok" data-i18n="pill.ok">Autónomo</span></td></tr>
+        <tr><td data-i18n="auto.8"></td><td><span class="pill no" id="pill-interp" data-i18n="pill.no">No conectado</span></td></tr>
       </tbody>
     </table></div>
   </section>
 
   <footer>
-    <p class="credit">Ilustraciones: <a href="https://barbaragutierrez.art" target="_blank" rel="noopener">Bárbara Gutiérrez</a></p>
-    <p>Cálculo: Swiss Ephemeris de Astrodienst AG, versión WebAssembly @swisseph/browser (AGPL-3.0). Lugares: GeoNames (CC BY 4.0) vía all-the-cities. Zonas: tz-lookup (CC0) y la base IANA del navegador.</p>
-    <p>Tropical, geocéntrico, posiciones aparentes, convención de Astro.com. Prototipo privado, uso no comercial.</p>
+    <p class="credit"><span data-i18n="footer.credit">Ilustraciones:</span> <a href="https://barbaragutierrez.art" target="_blank" rel="noopener">Bárbara Gutiérrez</a></p>
+    <p data-i18n="footer.calc"></p>
+    <p data-i18n="footer.conv"></p>
+    <p><a href="https://github.com/barbara-netizen/astroinforme" target="_blank" rel="noopener" data-i18n="footer.code">Código fuente</a> · AGPL-3.0</p>
   </footer>
 </div>
 <script type="module" src="app.js"></script>

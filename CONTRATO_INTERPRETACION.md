@@ -7,13 +7,26 @@ El cálculo y la interpretación están separados. La página calcula la carta e
 En `config.js`:
 
 ```js
-export const CONFIG = { interpreterUrl: "https://tu-servicio/interpretar" };
+export const CONFIG = { interpreterUrl: "https://astroinforme.<subdominio>.workers.dev/", requireCode: true };
 ```
 
 Vacío: la sección «Interpretación» muestra «No conectado» y ofrece copiar los datos.
-Con valor: aparece el botón «Generar el informe», que hace `POST interpreterUrl` con `Content-Type: application/json` y el cuerpo `astroinforme.chart/v1`.
+Con valor: aparecen el campo «Código de acceso» y el botón «Generar el informe», que hace `POST interpreterUrl` con `Content-Type: application/json`, el encabezado `x-astro-code: <código>` y el cuerpo `astroinforme.chart/v1`.
 
-El servicio debe permitir CORS desde el dominio donde se publique la página. La clave del modelo de lenguaje vive solo en el servicio, nunca en la página.
+El servicio de referencia está en `servicio/` (Cloudflare Worker): ver `servicio/LEEME.md`. La clave del modelo de lenguaje y el protocolo interpretativo viven solo en el servicio, nunca en la página ni en este repositorio.
+
+### Respuesta
+
+- Rechazos inmediatos (código faltante o inválido, cupo agotado, tope mensual, datos inválidos): estado HTTP 4xx/5xx y `{"error": "<código>"}`.
+- Pedido aceptado: estado 200 y respuesta en flujo. Mientras trabaja, el servicio envía espacios cada 10 s; al final, un único JSON:
+  - éxito: `{"report": <astroinforme.report/v1>, "remaining": <informes restantes del código>}`
+  - fallo: `{"error": "audit_failed" | "upstream"}`
+
+La app descarta los espacios iniciales, interpreta el JSON y muestra los errores en el idioma de la interfaz. Siempre rehace la auditoría técnica, aunque el servicio ya la haya hecho.
+
+### Qué datos recibe el modelo de lenguaje
+
+El servicio reenvía a Claude solo `engine`, `request`, `birth.time_precision`, `chart` (sin `jd_ut`) y los códigos de `warnings`, más el nombre de pila en la indicación. No reenvía fecha, hora, lugar, zona ni instante UTC.
 
 ## Entrada: `astroinforme.chart/v1`
 
@@ -65,11 +78,11 @@ Identificadores internos en inglés (`SUN`, `SQUARE`, `SCORPIO`…). La traducci
 4. Con `time_precision = UNKNOWN`: sin Ascendente, Medio Cielo, casas ni cúspides.
 5. Protocolo interpretativo: el de ASTROINFORME. No se publica en este repositorio; vive en el servicio interpretativo.
 
-## Opciones para conectarlo (pendiente de decidir)
+## Opciones que se evaluaron
 
 | Opción | Costo | Autonomía para terceros | Calidad esperada |
 |---|---|---|---|
 | Servicio propio con la API de Claude (función serverless con la clave guardada en el servidor) | pago por informe | total: cualquier persona usa el enlace | la del protocolo |
 | Modelo abierto ejecutado en el navegador | gratis | total | muy por debajo del protocolo: modelos pequeños, descargas de varios GB, no funciona en muchos celulares |
 
-La tercera no se implementó porque no alcanza la calidad requerida.
+Se eligió la primera, implementada en `servicio/`. La tercera no se implementó porque no alcanza la calidad requerida.

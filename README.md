@@ -16,8 +16,9 @@ Página estática que calcula la carta natal en el navegador de quien la abre. N
 | Zona horaria histórica (base IANA del navegador), horas repetidas e inexistentes, desfase manual | Autónomo |
 | Búsqueda de lugares: 135.233 localidades de GeoNames incluidas en la página; coordenadas manuales | Autónomo |
 | Sensibilidad de la carta a la precisión horaria | Autónomo |
-| Redacción del informe psicológico | **No conectado.** Contrato listo en `CONTRATO_INTERPRETACION.md` |
+| Redacción del informe psicológico | **No conectado todavía.** El servicio está listo en `servicio/` (Cloudflare Worker); falta instalarlo con la clave de la API. Contrato en `CONTRATO_INTERPRETACION.md` |
 | Auditoría técnica del informe (`audit.js`): compara cada referencia declarada con la carta calculada | Autónomo |
+| Interfaz en español, alemán e inglés (selector arriba a la derecha; `#es`, `#de`, `#en` en la dirección) | Autónomo |
 
 ## Validación
 
@@ -68,7 +69,9 @@ Obra de Bárbara Gutiérrez (https://barbaragutierrez.art), integrada según las
 | `swisseph-browser.js`, `swisseph.js`, `swisseph.wasm` | Swiss Ephemeris compilado a WebAssembly (`@swisseph/browser` 1.4.0) |
 | `sepl_18.se1.b64.txt`, `semo_18.se1.b64.txt`, `seas_18.se1.b64.txt` | efemérides 1800–2399 (planetas, Luna, Quirón), en base64 |
 | `tzlookup.js` | zona horaria a partir de coordenadas (`@photostructure/tz-lookup` 11.7.0) |
-| `audit.js` | auditoría técnica de informes |
+| `audit.js` | auditoría técnica de informes (la usan la app y el servicio) |
+| `i18n.js` | textos de la interfaz en es/de/en, glosario astrológico del MVP y textos alternativos de las ilustraciones |
+| `servicio/` | servicio interpretativo (Cloudflare Worker), con pruebas e instrucciones |
 | `visuals.js`, `assets/` | capa visual e ilustraciones |
 | `cities.txt` | localidades de más de 1000 habitantes (GeoNames vía `all-the-cities` 3.1.0) |
 
@@ -88,5 +91,6 @@ Los datos de nacimiento no salen del navegador. La página solo descarga sus pro
 - Zonas horarias anteriores a 1970: la base IANA puede no coincidir con el horario oficial de la época; la página lo avisa y permite cargar el desfase a mano.
 - Zona según coordenadas: en localidades muy cercanas a una frontera horaria conviene revisar la zona propuesta.
 - Nombres de lugares: la lista usa el nombre de GeoNames (inglés o idioma local). Hay equivalencias para las ciudades más comunes en español («Múnich», «Ciudad de México», «Londres»…); si una búsqueda no encuentra el lugar, probar con el nombre local o cargar coordenadas.
-- Interfaz solo en español; el idioma del informe (es/de/en) queda registrado en el contrato.
+- Los textos en alemán e inglés de la interfaz necesitan una revisión de una persona con dominio nativo.
+- Los nombres de lugares siguen la lista de GeoNames: en alemán, por ejemplo, Múnich aparece como «Munich», aunque se puede buscar como «München».
 - Primera carga: unos 8 MB (efemérides, WASM y lista de lugares). Después el navegador los guarda en caché.

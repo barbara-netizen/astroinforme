@@ -1,0 +1,57 @@
+{
+ "schema": "astroinforme.report/v1",
+ "language": "es",
+ "title": "Informe de prueba",
+ "sections": [
+  {
+   "id": "opening",
+   "heading": "Apertura",
+   "body_markdown": "Texto de prueba.\n\nSegundo párrafo de prueba."
+  },
+  {
+   "id": "identity",
+   "heading": "Identidad",
+   "body_markdown": "Texto de prueba."
+  }
+ ],
+ "technical_references_used": [
+  {
+   "type": "position",
+   "body": "SUN",
+   "sign": "CANCER",
+   "deg": "21°50'",
+   "house": 9
+  },
+  {
+   "type": "position",
+   "body": "MOON",
+   "sign": "ARIES",
+   "deg": "10°06'",
+   "house": 5
+  },
+  {
+   "type": "position",
+   "body": "SATURN",
+   "sign": "CAPRICORN",
+   "deg": "22°02'"
+  },
+  {
+   "type": "aspect",
+   "a": "SUN",
+   "b": "SATURN",
+   "aspect": "OPPOSITION"
+  },
+  {
+   "type": "aspect",
+   "a": "JUPITER",
+   "b": "SATURN",
+   "aspect": "OPPOSITION"
+  },
+  {
+   "type": "aspect",
+   "a": "SUN",
+   "b": "JUPITER",
+   "aspect": "CONJUNCTION"
+  }
+ ]
+}
