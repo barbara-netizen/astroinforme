@@ -286,6 +286,17 @@ const UI = {
   "pill.no": ["No conectado", "Nicht verbunden", "Not connected"],
   "pill.conn": ["Conectado", "Verbunden", "Connected"],
 
+  "don.h": ["Aportes voluntarios", "Freiwillige Beiträge", "Voluntary contributions"],
+  "don.text": [
+    "ASTROINFORME es gratuito. Cada informe tiene un costo real de redacción, cercano a un dólar, que hoy cubre la autora. Si querés colaborar para que siga disponible, podés hacer un aporte.",
+    "ASTROINFORME ist kostenlos. Jeder Bericht verursacht reale Kosten von etwa einem Dollar, die derzeit die Autorin trägt. Wenn du dazu beitragen möchtest, dass es verfügbar bleibt, kannst du etwas beisteuern.",
+    "ASTROINFORME is free. Each report has a real writing cost of about one dollar, currently covered by the author. If you would like to help keep it available, you can contribute."],
+  "don.note": [
+    "El aporte es voluntario y no cambia el acceso: el informe es el mismo para quien aporta y para quien no. El pago se hace en Mercado Pago; esta página no recibe tus datos de pago.",
+    "Der Beitrag ist freiwillig und ändert nichts am Zugang: Der Bericht ist für alle gleich. Die Zahlung erfolgt bei Mercado Pago; diese Seite erhält keine Zahlungsdaten.",
+    "Contributions are voluntary and do not change access: the report is the same for everyone. Payment happens on Mercado Pago; this page receives no payment data."],
+  "don.give": ["Aportar", "Beitragen", "Contribute"],
+  "don.alias": ["También por transferencia al alias {alias}.", "Auch per Überweisung an den Alias {alias}.", "Also by bank transfer to the alias {alias}."],
   "footer.credit": ["Ilustraciones:", "Illustrationen:", "Illustrations:"],
   "footer.calc": [
     "Cálculo: Swiss Ephemeris de Astrodienst AG, versión WebAssembly @swisseph/browser (AGPL-3.0). Lugares: GeoNames (CC BY 4.0) vía all-the-cities. Zonas: tz-lookup (CC0) y la base IANA del navegador.",

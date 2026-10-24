@@ -157,7 +157,7 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
   .wrap { padding: 0; gap: 14px; max-width: none; }
   .hero-col, .top-bar .langsel, #engine-state, section[aria-labelledby="h-datos"], section[aria-labelledby="h-auto"],
   .btn, .row, details, #interp-missing, #interp-conn-text, #interp-status, #interp-unavail, #code-row, #ts-box, #demo-note, #demo-which-row,
-  .art, .save-box { display: none !important; }
+  .art, .save-box, .donation { display: none !important; }
   .panel { border: 0; padding: 0; }
   .interp-box { border: 0; padding: 0; }
   .rep-sec { max-width: none; break-inside: auto; }
@@ -298,6 +298,14 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
         <tr><td data-i18n="auto.8"></td><td><span class="pill no" id="pill-interp" data-i18n="pill.no">No conectado</span></td></tr>
       </tbody>
     </table></div>
+  </section>
+
+  <section class="panel donation" id="donation" aria-labelledby="h-don" hidden>
+    <h2 id="h-don" data-i18n="don.h">Aportes voluntarios</h2>
+    <p data-i18n="don.text"></p>
+    <p class="small muted" data-i18n="don.note"></p>
+    <div class="row" id="donation-links"></div>
+    <p class="small" id="donation-alias" hidden></p>
   </section>
 
   <footer>

@@ -586,6 +586,7 @@ function applyLanguage(lang, { remember = true } = {}) {
   if (state.chart) render(false);
   if (state.lastAudit) renderAudit(state.lastAudit);
   $("#privacy-link").href = "privacidad.html#" + lang;
+  renderDonation();
 }
 
 // ---------- eventos ----------
@@ -601,8 +602,28 @@ function initVisuals() {
   });
 }
 
+function limitLanguages() {
+  const allowed = (CONFIG.languages && CONFIG.languages.length) ? CONFIG.languages.filter((l) => L.LANGS.includes(l)) : L.LANGS;
+  for (const sel of [$("#ui-lang"), $("#lang")]) for (const o of [...sel.options]) if (!allowed.includes(o.value)) o.remove();
+  $(".langsel").hidden = allowed.length < 2;
+  return allowed;
+}
+
+function renderDonation() {
+  const d = CONFIG.donation || {};
+  const links = (d.links || []).filter((x) => x && x.url);
+  const box = $("#donation");
+  box.hidden = !links.length && !d.alias;
+  if (box.hidden) return;
+  $("#donation-links").innerHTML = links.map((x) => `<a class="btn ghost" href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.amount || t("don.give"))}</a>`).join("");
+  $("#donation-alias").hidden = !d.alias;
+  if (d.alias) $("#donation-alias").textContent = t("don.alias", { alias: d.alias });
+}
+
 function init() {
-  L.setLang(L.initialLang());
+  const allowed = limitLanguages();
+  const first = L.initialLang();
+  L.setLang(allowed.includes(first) ? first : allowed[0]);
   setRegionNames();
   V.setLang(L.getLang());
   initVisuals();
