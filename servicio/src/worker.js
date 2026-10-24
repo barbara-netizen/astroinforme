@@ -143,10 +143,10 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }) {
   const lang = payload.request.report_language;
   const nombre = payload.person && payload.person.first_name ? `La persona se llama ${payload.person.first_name}; usá solo ese nombre de pila si hace falta.` : "";
   const tratamiento = TRATAMIENTO[payload.request.address_gender] || TRATAMIENTO.UNSPECIFIED;
-  const a = await callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta), maxTokens: 6000 });
+  const a = await callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta), maxTokens: 16000 });
   spent.usd += costUSD(a.usage, model);
   const analisis = extractJSON(a.text);
-  const b = await callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 16000 });
+  const b = await callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 32000 });
   spent.usd += costUSD(b.usage, model);
   let report = extractJSON(b.text);
   let audit = auditReport(report, payload);
@@ -154,7 +154,7 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }) {
   let corrected = false;
   // una sola corrección, que atiende a la vez los problemas técnicos y los de estilo
   if (!audit.ok || !style.ok) {
-    const c = await callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: audit.ok ? "" : describeIssues(audit), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 16000 });
+    const c = await callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: audit.ok ? "" : describeIssues(audit), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32000 });
     spent.usd += costUSD(c.usage, model);
     const fixed = extractJSON(c.text);
     const fixedAudit = auditReport(fixed, payload);
