@@ -291,6 +291,7 @@ const UI = {
   "pill.no": ["No conectado", "Nicht verbunden", "Not connected"],
   "pill.conn": ["Conectado", "Verbunden", "Connected"],
 
+  "r.more": ["Ver más datos técnicos (aspectos, casas, estructura y sensibilidad a la hora)", "Weitere technische Daten (Aspekte, Häuser, Struktur, Zeitempfindlichkeit)", "More technical data (aspects, houses, structure, time sensitivity)"],
   "don.h": ["Aportes voluntarios", "Freiwillige Beiträge", "Voluntary contributions"],
   "don.text": [
     "ASTROINFORME es gratuito. Cada informe tiene un costo real de redacción, cercano a un dólar, que hoy cubre la autora. Si querés colaborar para que siga disponible, podés hacer un aporte.",

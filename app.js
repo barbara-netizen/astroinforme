@@ -672,6 +672,10 @@ function renderDonation() {
 }
 
 function init() {
+  // al imprimir, los datos técnicos plegados se incluyen completos
+  const more = document.querySelector(".more-tech"); let wasOpen = false;
+  window.addEventListener("beforeprint", () => { if (more) { wasOpen = more.open; more.open = true; } });
+  window.addEventListener("afterprint", () => { if (more) more.open = wasOpen; });
   const allowed = limitLanguages();
   const first = L.initialLang();
   L.setLang(allowed.includes(first) ? first : allowed[0]);

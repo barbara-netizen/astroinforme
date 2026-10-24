@@ -156,8 +156,9 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
   body { background: #fff; font-size: 11pt; }
   .wrap { padding: 0; gap: 14px; max-width: none; }
   .hero-col, .top-bar .langsel, #engine-state, section[aria-labelledby="h-datos"], section[aria-labelledby="h-auto"],
-  .btn, .row, details, #interp-missing, #interp-conn-text, #interp-status, #interp-unavail, #code-row, #ts-box, #demo-note, #demo-which-row,
+  .btn, .row, details:not(.more-tech), #interp-missing, #interp-conn-text, #interp-status, #interp-unavail, #code-row, #ts-box, #demo-note, #demo-which-row,
   .art, .save-box, .donation { display: none !important; }
+  .more-tech > summary { display: none; }
   .panel { border: 0; padding: 0; }
   .interp-box { border: 0; padding: 0; }
   .rep-sec { max-width: none; break-inside: auto; }
@@ -241,6 +242,9 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
         <div id="wheel"></div>
         <div class="tbl-wrap"><table id="t-pos"></table></div>
       </div>
+      <details class="more-tech">
+      <summary data-i18n="r.more">Ver más datos técnicos (aspectos, casas, estructura y sensibilidad a la hora)</summary>
+      <div style="display:grid;gap:28px;margin-top:16px">
       <div class="r-grid">
         <div style="display:grid;gap:8px;min-width:0"><h3 data-i18n="h.aspects">Aspectos</h3><p class="small muted" data-i18n="aspects.note">Política orbes_v1: cinco mayores y quincuncio. En negrita, orbe hasta 2°; atenuados, más de 5°.</p><div class="tbl-wrap"><table id="t-asp"></table></div></div>
         <div style="display:grid;gap:14px;min-width:0">
@@ -250,6 +254,8 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
       <div style="display:grid;gap:8px"><h3 data-i18n="h.structure">Estructura de la carta</h3><dl id="t-struct"></dl></div>
       <div style="display:grid;gap:8px"><h3 data-i18n="h.sensitivity">Sensibilidad a la hora</h3><div id="sens" class="small"></div></div>
       <p id="prov" class="muted"></p>
+      </div>
+      </details>
     </div>
 
     <div class="panel" aria-labelledby="h-interp">
