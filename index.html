@@ -134,6 +134,7 @@ header.top { grid-template-columns: minmax(0, 1fr) auto; align-items: end; colum
 @media (max-width: 640px) { header.top { grid-template-columns: minmax(0, 1fr); } .hero-col { justify-items: start; } }
 .art { margin: 0; display: grid; gap: 4px; min-width: 0; }
 .art img, .art video { display: block; width: 100%; height: auto; background: var(--panel); }
+.art .print-only { display: none; }
 .art figcaption { font-size: 0.72rem; color: var(--muted); font-style: italic; }
 .art-hero { width: min(240px, 60vw); }
 .art-hero img, .art-hero video { aspect-ratio: 1 / 1; }
@@ -169,6 +170,11 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
   .btn, .row, details:not(.more-tech), #interp-missing, #interp-conn-text, #interp-status, #interp-unavail, #code-row, #ts-box, #demo-note, #demo-which-row,
   .art, .save-box, .donation, .pilot, .feedback, .about-report { display: none !important; }
   .more-tech > summary { display: none; }
+  /* las ilustraciones del informe sí se imprimen; de las animaciones sale el fotograma fijo */
+  #report-out .art:not([hidden]), #fig-closure:not([hidden]) { display: block !important; max-width: 11cm; margin: 6px 0; break-inside: avoid; page-break-inside: avoid; }
+  #report-out .art img, #fig-closure img { max-height: 9cm; width: auto; max-width: 100%; }
+  #report-out .art video, #fig-closure video { display: none !important; }
+  .art .print-only { display: block !important; }
   .panel { border: 0; padding: 0; }
   .interp-box { border: 0; padding: 0; }
   .rep-sec { max-width: none; break-inside: auto; }

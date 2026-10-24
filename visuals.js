@@ -44,6 +44,7 @@ function toPoster(v) {
   playing.delete(v);
   const a = { ...A[v.dataset.asset], id: v.dataset.asset };
   const img = makeImg(a.poster, a);
+  const fig = v.closest("figure"); if (fig) fig.querySelectorAll(".print-only").forEach((p) => p.remove()); // ya hay imagen fija
   v.replaceWith(img);
 }
 
@@ -79,6 +80,8 @@ export function show(fig, id, opts = {}) {
   const a = A[id] && { ...A[id], id }; if (!a) return;
   const media = a.type === "video" && !reduced.matches ? makeVideo(a, id, opts) : makeImg(a.type === "video" ? a.poster : a.file, a);
   if (a.type === "image") media.addEventListener("error", () => clear(fig), { once: true });
+  // fotograma fijo para la impresión (en pantalla queda oculto)
+  if (a.type === "video") { const pi = makeImg(a.poster, a); pi.className = "print-only"; pi.alt = ""; pi.loading = "eager"; fig.append(pi); }
   const cap = document.createElement("figcaption");
   cap.textContent = `${AUTHOR}, «${a.title}»`;
   fig.append(media, cap);
