@@ -521,6 +521,9 @@ function initFeedback() {
 }
 function showFeedback() {
   if (!CONFIG.pilot || !serviceUrl() || CONFIG.demo) return;
+  // el servicio recibe comentarios desde la versión 1.3; con una versión anterior el recuadro no se muestra
+  const v = String((state.health && state.health.version) || "0").split(".").map(Number);
+  if (v[0] < 1 || (v[0] === 1 && (v[1] || 0) < 3)) return;
   $("#feedback-box").hidden = false; $("#fb-status").hidden = true;
   $("#fb-text").dispatchEvent(new Event("input"));
 }
