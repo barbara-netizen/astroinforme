@@ -640,7 +640,10 @@ function applyLanguage(lang, { remember = true } = {}) {
 // ---------- eventos ----------
 function initVisuals() {
   const hero = $("#fig-hero"), btn = $("#btn-hero-anim");
-  V.show(hero, "hero_levitar");
+  // la portada animada se ve de entrada; quien pidió menos movimiento en su sistema ve la imagen fija
+  state.heroAnimated = !V.reducedMotion();
+  V.show(hero, state.heroAnimated ? "intro_embroidery" : "hero_levitar");
+  btn.textContent = t(state.heroAnimated ? "hero.still" : "hero.anim");
   const sync = () => { btn.hidden = V.reducedMotion(); if (V.reducedMotion() && state.heroAnimated) { state.heroAnimated = false; V.show(hero, "hero_levitar"); btn.textContent = t("hero.anim"); } };
   sync(); V.onReducedMotionChange(sync);
   btn.addEventListener("click", () => {
