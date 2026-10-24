@@ -211,7 +211,7 @@ CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
 
 // src/worker.js
-var SERVICE_VERSION = "1.2";
+var SERVICE_VERSION = "1.3";
 var DEFAULT_MODEL = "claude-opus-5-5";
 var DEFAULT_ORIGINS = "https://barbara-netizen.github.io";
 var PRICES = {
@@ -397,6 +397,36 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }) {
   report.audit = { all_references_present_in_chart: audit.ok, verified: audit.verified, total: audit.total, corrected, style_issues: style.issues.map((i) => ({ kind: i.kind, count: i.count })) };
   return { report, audit, usd: spent.usd };
 }
+var FEEDBACK_MIN = 200;
+var FEEDBACK_MAX = 5e3;
+var FEEDBACK_PER_CODE = 3;
+async function handleFeedback(request, env, cors, requireCode) {
+  if (!env.ASTRO_KV) return json({ error: "not_configured" }, 503, cors);
+  const raw = await request.text();
+  if (raw.length > FEEDBACK_MAX * 4) return json({ error: "bad_request" }, 413, cors);
+  let body;
+  try {
+    body = JSON.parse(raw);
+  } catch (e) {
+    return json({ error: "bad_request" }, 400, cors);
+  }
+  const text = String(body && body.text || "").replace(/\s+\n/g, "\n").trim();
+  if (text.length < FEEDBACK_MIN) return json({ error: "feedback_short", min: FEEDBACK_MIN }, 400, cors);
+  if (text.length > FEEDBACK_MAX) return json({ error: "feedback_long", max: FEEDBACK_MAX }, 400, cors);
+  const codes = parseCodes(env.ACCESS_CODES);
+  let code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
+  if (code && !(code in codes)) return json({ error: "code_invalid" }, 403, cors);
+  if (!code && requireCode) return json({ error: "code_required" }, 401, cors);
+  if (!code) code = "PUBLICO";
+  const kv = env.ASTRO_KV, ck = "fbcount:" + code;
+  const n = +await kv.get(ck) || 0;
+  if (n >= FEEDBACK_PER_CODE) return json({ error: "feedback_limit" }, 429, cors);
+  const at = (/* @__PURE__ */ new Date()).toISOString();
+  const title = String(body && body.report_title || "").slice(0, 200);
+  await kv.put(`fb:${at}:${code}`, JSON.stringify({ code, at, report_title: title, text }));
+  await kv.put(ck, String(n + 1));
+  return json({ ok: true }, 200, cors);
+}
 async function kvGetJSON(kv, key, fallback) {
   try {
     const v = await kv.get(key);
@@ -430,6 +460,7 @@ var worker_default = {
     }
     if (request.method !== "POST") return json({ error: "bad_request" }, 405, cors);
     if (!cors["access-control-allow-origin"] && request.headers.get("origin")) return json({ error: "forbidden_origin" }, 403, cors);
+    if (url.pathname === "/feedback") return handleFeedback(request, env, cors, requireCode);
     const base = env.PROTOCOL || (env.ASTRO_KV ? await env.ASTRO_KV.get("protocol") : null);
     if (!env.ANTHROPIC_API_KEY || !base || !env.ASTRO_KV) return json({ error: "not_configured" }, 503, cors);
     const style = await env.ASTRO_KV.get("style");

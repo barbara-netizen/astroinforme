@@ -511,6 +511,35 @@ async function obtainReport() {
   return { report: body.report || body, remaining: body.remaining };
 }
 
+// ---------- comentario de quien probó el informe (versión piloto) ----------
+const FB_MIN = 200;
+function initFeedback() {
+  const ta = $("#fb-text"), btn = $("#btn-fb"), cnt = $("#fb-count");
+  const upd = () => { const n = ta.value.trim().length; btn.disabled = n < FB_MIN; cnt.textContent = t(n < FB_MIN ? "fb.count" : "fb.countOk", { n, min: FB_MIN }); };
+  ta.addEventListener("input", upd); upd();
+  btn.addEventListener("click", sendFeedback);
+}
+function showFeedback() {
+  if (!CONFIG.pilot || !serviceUrl() || CONFIG.demo) return;
+  $("#feedback-box").hidden = false; $("#fb-status").hidden = true;
+  $("#fb-text").dispatchEvent(new Event("input"));
+}
+async function sendFeedback() {
+  const ta = $("#fb-text"), btn = $("#btn-fb"), st = $("#fb-status");
+  const text = ta.value.trim(); if (text.length < FB_MIN) return;
+  const code = ($("#access-code").value || "").trim();
+  btn.disabled = true; st.hidden = false; st.textContent = t("fb.sending");
+  try {
+    const r = await fetch(serviceUrl() + "feedback", { method: "POST", headers: { "content-type": "application/json", ...(code ? { "x-astro-code": code } : {}) },
+      body: JSON.stringify({ text, report_title: (state.lastReport && state.lastReport.title) || "" }) });
+    const body = await r.json().catch(() => null);
+    if (r.ok && body && body.ok) { st.textContent = t("fb.thanks"); ta.value = ""; ta.disabled = true; $("#fb-count").textContent = ""; return; }
+    const err = body && body.error;
+    st.textContent = err === "feedback_short" ? t("fb.err.feedback_short", { min: FB_MIN }) : err === "feedback_limit" ? t("fb.err.feedback_limit") : (err === "code_invalid" || err === "code_required") ? t("fb.err.code") : t("fb.err.generic");
+  } catch (e) { st.textContent = t("fb.err.generic"); }
+  btn.disabled = false;
+}
+
 // ---------- aviso al terminar: contador, título de la pestaña, sonido, vibración y notificación ----------
 const notify = { title: document.title, timer: null, audio: null };
 function prepareNotice() {
@@ -557,6 +586,7 @@ async function callInterpreter() {
   prepareNotice();
   status.hidden = false;
   if (CONFIG.demo) status.textContent = t("i.demoWaiting"); else startProgress(status);
+  $("#about-report").open = true;
   V.clear($("#fig-closure")); V.show($("#fig-reader"), "report_reader");
   let ok = false;
   try {
@@ -578,6 +608,8 @@ async function callInterpreter() {
     status.textContent = t("i.fail", { msg: e instanceof ServiceError ? t(e.key, e.params) : e.message });
   }
   if (!CONFIG.demo) finishProgress(ok);
+  $("#about-report").open = false;
+  if (ok) showFeedback();
   if (ok) { try { status.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { } }
   btn.disabled = false;
   if (serviceUrl() && !CONFIG.demo) checkService();
@@ -639,6 +671,7 @@ function applyLanguage(lang, { remember = true } = {}) {
 
 // ---------- eventos ----------
 function initVisuals() {
+  if (CONFIG.pilot) { $("#pilot").hidden = false; V.show($("#fig-pilot"), "pilot_rabbit"); }
   const hero = $("#fig-hero"), btn = $("#btn-hero-anim");
   // la portada animada se ve de entrada; quien pidió menos movimiento en su sistema ve la imagen fija
   state.heroAnimated = !V.reducedMotion();
@@ -682,6 +715,7 @@ function init() {
   setRegionNames();
   V.setLang(L.getLang());
   initVisuals();
+  initFeedback();
   applyLanguage(L.getLang(), { remember: false });
   try { $("#access-code").value = localStorage.getItem("astroinforme.code") || ""; } catch (e) { }
   $("#ui-lang").addEventListener("change", (e) => applyLanguage(e.target.value));

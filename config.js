@@ -15,6 +15,8 @@ export const CONFIG = {
   requireCode: true,
   turnstileSiteKey: "",
   languages: ["es"],
+  // pilot: franja de «versión piloto» con el conejo y el recuadro de comentario al final del informe.
+  pilot: true,
   donation: {
     links: [
       // { amount: "$ 3.000", url: "https://mpago.la/..." },

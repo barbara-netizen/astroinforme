@@ -143,6 +143,16 @@ header.top { grid-template-columns: minmax(0, 1fr) auto; align-items: end; colum
 .r-head-row .r-head { flex: 1 1 320px; min-width: 0; }
 .art-wide { max-width: 640px; }
 .art-wide img { aspect-ratio: 2 / 1; }
+.pilot { display: flex; align-items: center; gap: 14px; border: 1px dashed var(--line); border-radius: 4px; padding: 10px 14px; background: var(--panel); }
+.pilot p { margin: 0; font-size: 0.9rem; }
+.art-pilot { flex: 0 0 auto; width: 84px; }
+.art-pilot figcaption { display: none; }
+.art-pilot video, .art-pilot img { aspect-ratio: 360 / 326; border-radius: 3px; }
+.about-report .about-body { display: grid; gap: 10px; max-width: 68ch; font-size: 0.95rem; }
+.about-report .about-body p { margin: 0; }
+.feedback { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 16px; max-width: 68ch; }
+.feedback h3 { margin: 0; }
+.feedback textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg, #fff); color: inherit; resize: vertical; }
 .linkbtn { font: inherit; font-size: 0.8rem; background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; }
 footer a, .credit a { color: var(--accent); }
 .credit { font-size: 0.86rem; color: var(--ink); }
@@ -157,7 +167,7 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
   .wrap { padding: 0; gap: 14px; max-width: none; }
   .hero-col, .top-bar .langsel, #engine-state, section[aria-labelledby="h-datos"], section[aria-labelledby="h-auto"],
   .btn, .row, details:not(.more-tech), #interp-missing, #interp-conn-text, #interp-status, #interp-unavail, #code-row, #ts-box, #demo-note, #demo-which-row,
-  .art, .save-box, .donation { display: none !important; }
+  .art, .save-box, .donation, .pilot, .feedback, .about-report { display: none !important; }
   .more-tech > summary { display: none; }
   .panel { border: 0; padding: 0; }
   .interp-box { border: 0; padding: 0; }
@@ -184,6 +194,11 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
       <button type="button" class="linkbtn" id="btn-hero-anim" hidden>Ver portada animada</button>
     </div>
   </header>
+
+  <aside id="pilot" class="pilot" hidden>
+    <figure id="fig-pilot" class="art art-pilot" hidden></figure>
+    <p data-i18n="pilot.text"></p>
+  </aside>
 
   <section class="panel" aria-labelledby="h-datos">
     <h2 id="h-datos" data-i18n="h.data">Datos de nacimiento</h2>
@@ -276,10 +291,18 @@ footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border
         <p id="demo-note" class="note warn" hidden data-i18n-html="demo.note"><strong>Simulación.</strong></p>
         <label class="f" id="demo-which-row" hidden><span data-i18n="demo.which">Informe a cargar</span><select id="demo-which"></select></label>
         <p id="interp-status" class="muted" hidden></p>
+        <details id="about-report" class="about-report"><summary data-i18n="about.sum">Sobre este informe</summary><div class="about-body" data-i18n-html="about.body"></div></details>
         <figure id="fig-reader" class="art art-wide" hidden></figure>
         <div id="audit-out" class="note" hidden></div>
         <div id="report-out" hidden></div>
         <figure id="fig-closure" class="art art-wide" hidden></figure>
+        <div id="feedback-box" class="feedback" hidden>
+          <h3 data-i18n="fb.h">Tu opinión sobre el informe</h3>
+          <p class="small muted" data-i18n="fb.note"></p>
+          <textarea id="fb-text" rows="7" data-i18n-ph="fb.ph" data-i18n-aria="fb.h"></textarea>
+          <div class="row"><button type="button" class="btn" id="btn-fb" data-i18n="btn.fb" disabled>Enviar comentario</button><span id="fb-count" class="small muted"></span></div>
+          <p id="fb-status" class="small" hidden></p>
+        </div>
       </div>
       <div class="save-box">
         <h3 data-i18n="save.h">Guardar</h3>

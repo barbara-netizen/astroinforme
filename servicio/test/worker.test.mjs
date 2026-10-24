@@ -157,4 +157,21 @@ mockClaude([ANALISIS, ok]);
 await run(req(carta, "ANA-7K2"), conGuia);
 assert.equal(calls[0].system[0].text, "PROTOCOLO DE PRUEBA\n\nGUÍA DE PRUEBA");
 
-console.log("OK — 14 grupos de pruebas; costo simulado del mes: US$", month.usd);
+// 15. comentarios: código válido, mínimo un párrafo, tope por código; no llaman a Claude
+const fbEnv = env(); calls = [];
+const fbReq = (text, code, origin = ORIGIN) => new Request("https://astro.example.workers.dev/feedback", { method: "POST", headers: { "content-type": "application/json", origin, ...(code ? { "x-astro-code": code } : {}) }, body: JSON.stringify({ text, report_title: "Informe de prueba" }) });
+const fb = async (t, c, o) => { const res = await worker.fetch(fbReq(t, c, o), fbEnv, {}); return { status: res.status, body: await res.json() }; };
+const parrafo = "Me sorprendió la sección sobre Saturno, porque describe algo que reconozco: la necesidad de revisar todo antes de decirlo. El mito me pareció acertado. Me costó un poco el lenguaje técnico del principio, pero después se entiende bien.";
+assert.equal((await fb("Muy bueno", "ANA-7K2")).body.error, "feedback_short");
+assert.equal((await fb(parrafo, null)).body.error, "code_required");
+assert.equal((await fb(parrafo, "NOEXISTE1")).body.error, "code_invalid");
+assert.equal((await fb(parrafo, "ANA-7K2", "https://otro.example")).status, 403);
+assert.equal((await fb(parrafo, "ana-7k2")).body.ok, true);
+const fbKeys = [...fbEnv.ASTRO_KV.m.keys()].filter((k) => k.startsWith("fb:"));
+assert.equal(fbKeys.length, 1); assert.ok(fbKeys[0].endsWith(":ANA-7K2"));
+const saved = JSON.parse(fbEnv.ASTRO_KV.m.get(fbKeys[0])); assert.equal(saved.text, parrafo); assert.equal(saved.report_title, "Informe de prueba");
+await fb(parrafo, "ANA-7K2"); await fb(parrafo, "ANA-7K2");
+assert.equal((await fb(parrafo, "ANA-7K2")).body.error, "feedback_limit");
+assert.equal(calls.length, 0);
+
+console.log("OK — 15 grupos de pruebas; costo simulado del mes: US$", month.usd);

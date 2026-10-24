@@ -29,7 +29,7 @@ import { auditReport } from "../../audit.js";
 import { styleCheck, describeStyle } from "./style.js";
 import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION } from "./prompts.js";
 
-export const SERVICE_VERSION = "1.2";
+export const SERVICE_VERSION = "1.3";
 const DEFAULT_MODEL = "claude-opus-5-5";
 const DEFAULT_ORIGINS = "https://barbara-netizen.github.io";
 // Precios por millón de tokens (USD), https://platform.claude.com/docs/en/about-claude/pricing (16-10-2026)
@@ -202,6 +202,32 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }) {
   return { report, audit, usd: spent.usd };
 }
 
+// ---------------------------------------------------------------- comentarios
+export const FEEDBACK_MIN = 200, FEEDBACK_MAX = 5000, FEEDBACK_PER_CODE = 3;
+/** Guarda un comentario en KV («fb:<fecha>:<código>»). Pide un código válido cuando el acceso es con código. */
+export async function handleFeedback(request, env, cors, requireCode) {
+  if (!env.ASTRO_KV) return json({ error: "not_configured" }, 503, cors);
+  const raw = await request.text();
+  if (raw.length > FEEDBACK_MAX * 4) return json({ error: "bad_request" }, 413, cors);
+  let body; try { body = JSON.parse(raw); } catch (e) { return json({ error: "bad_request" }, 400, cors); }
+  const text = String((body && body.text) || "").replace(/\s+\n/g, "\n").trim();
+  if (text.length < FEEDBACK_MIN) return json({ error: "feedback_short", min: FEEDBACK_MIN }, 400, cors);
+  if (text.length > FEEDBACK_MAX) return json({ error: "feedback_long", max: FEEDBACK_MAX }, 400, cors);
+  const codes = parseCodes(env.ACCESS_CODES);
+  let code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
+  if (code && !(code in codes)) return json({ error: "code_invalid" }, 403, cors);
+  if (!code && requireCode) return json({ error: "code_required" }, 401, cors);
+  if (!code) code = "PUBLICO";
+  const kv = env.ASTRO_KV, ck = "fbcount:" + code;
+  const n = +(await kv.get(ck)) || 0;
+  if (n >= FEEDBACK_PER_CODE) return json({ error: "feedback_limit" }, 429, cors);
+  const at = new Date().toISOString();
+  const title = String((body && body.report_title) || "").slice(0, 200);
+  await kv.put(`fb:${at}:${code}`, JSON.stringify({ code, at, report_title: title, text }));
+  await kv.put(ck, String(n + 1));
+  return json({ ok: true }, 200, cors);
+}
+
 // ---------------------------------------------------------------- handler
 async function kvGetJSON(kv, key, fallback) { try { const v = await kv.get(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; } }
 
@@ -226,6 +252,9 @@ export default {
     }
     if (request.method !== "POST") return json({ error: "bad_request" }, 405, cors);
     if (!cors["access-control-allow-origin"] && request.headers.get("origin")) return json({ error: "forbidden_origin" }, 403, cors);
+
+    // comentario de quien probó la app (después de leer su informe)
+    if (url.pathname === "/feedback") return handleFeedback(request, env, cors, requireCode);
 
     // configuración mínima
     const base = env.PROTOCOL || (env.ASTRO_KV ? await env.ASTRO_KV.get("protocol") : null);
