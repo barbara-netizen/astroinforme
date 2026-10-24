@@ -11,7 +11,7 @@
 //   links: links de pago de Mercado Pago, cada uno con su monto fijo. Vacío = no se muestra el recuadro.
 //   alias: alias para transferencia bancaria (opcional; muestra el nombre de la titular a quien transfiere).
 export const CONFIG = {
-  interpreterUrl: "",
+  interpreterUrl: "https://astroinforme.gutierrez-barbarita.workers.dev/",
   requireCode: true,
   turnstileSiteKey: "",
   languages: ["es"],
