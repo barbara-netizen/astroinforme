@@ -13,6 +13,8 @@ var lonToSignMin = (lon) => {
 function auditReport(report, payload) {
   const issues = [], checked = [];
   const bodies = Object.fromEntries(payload.chart.bodies.map((b) => [b.id, b]));
+  const sn = payload.chart.south_node;
+  if (sn && !bodies.SOUTH_NODE) bodies.SOUTH_NODE = { id: "SOUTH_NODE", sign: sn.sign, longitude: sn.lon ?? sn.longitude, position: sn.deg ?? sn.position, house: sn.house };
   const houses = payload.chart.houses;
   const timeKnown = payload.birth.time_precision !== "UNKNOWN";
   for (const r of report.technical_references_used || []) {
@@ -39,7 +41,12 @@ function auditReport(report, payload) {
         issues.push({ ref: r, problems: [{ field: "angle", note: "Hora desconocida: no hay \xE1ngulos." }] });
         continue;
       }
-      const c = lonToSignMin(r.angle === "ASC" ? houses.asc : houses.mc);
+      const base = { ASC: houses.asc, DSC: houses.asc + 180, MC: houses.mc, IC: houses.mc + 180 }[r.angle];
+      if (base == null) {
+        issues.push({ ref: r, problems: [{ field: "angle", note: "\xC1ngulo desconocido." }] });
+        continue;
+      }
+      const c = lonToSignMin(base);
       const probs = [];
       if (r.sign && r.sign !== c.sign) probs.push({ field: "sign", report: r.sign, chart: c.sign });
       else if (r.deg && Math.abs(toMin(r.deg) - c.min) > 1) probs.push({ field: "deg", report: r.deg, chart: `${Math.floor(c.min / 60)}\xB0${String(c.min % 60).padStart(2, "0")}'` });
