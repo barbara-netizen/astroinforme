@@ -228,7 +228,12 @@ const UI = {
   "f.code.hint": ["Te lo da quien administra ASTROINFORME. Cada código tiene un número limitado de informes.", "Du bekommst ihn von der Person, die ASTROINFORME betreut. Jeder Code erlaubt eine begrenzte Zahl von Berichten.", "Given to you by whoever runs ASTROINFORME. Each code allows a limited number of reports."],
   "btn.interp": ["Generar el informe", "Bericht erstellen", "Generate the report"],
   "btn.interpDemo": ["Generar el informe (simulación)", "Bericht erstellen (Simulation)", "Generate the report (simulation)"],
-  "i.generating": ["Generando el informe. Puede tardar uno o dos minutos…", "Der Bericht wird erstellt. Das kann ein bis zwei Minuten dauern …", "Generating the report. This can take a minute or two…"],
+  "i.generating": [
+    "Generando el informe ({time}). Suele tardar unos cinco minutos. Podés cambiar de pestaña: cuando termine, va a sonar un aviso y el título de la pestaña va a decir «Informe listo». No cierres ni recargues esta página.",
+    "Der Bericht wird erstellt ({time}). Das dauert meist etwa fünf Minuten. Du kannst den Tab wechseln: Am Ende ertönt ein Signal und der Tab-Titel zeigt „Bericht fertig“. Schließe oder lade diese Seite nicht neu.",
+    "Generating the report ({time}). It usually takes about five minutes. You can switch tabs: when it is done, a sound will play and the tab title will say “Report ready”. Do not close or reload this page."],
+  "i.doneTitle": ["Informe listo.", "Bericht fertig.", "Report ready."],
+  "i.failTitle": ["No se pudo generar el informe.", "Der Bericht konnte nicht erstellt werden.", "The report could not be generated."],
   "i.demoWaiting": ["Simulando la espera del motor interpretativo…", "Wartezeit des Deutungsmoduls wird simuliert …", "Simulating the interpretation engine's wait…"],
   "i.fail": ["No se pudo generar el informe: {msg}. La carta calculada sigue disponible.", "Der Bericht konnte nicht erstellt werden: {msg}. Das berechnete Horoskop bleibt verfügbar.", "The report could not be generated: {msg}. The calculated chart is still available."],
   "i.badContract": ["la respuesta no cumple el contrato astroinforme.report/v1", "die Antwort entspricht nicht dem Vertrag astroinforme.report/v1", "the response does not follow the astroinforme.report/v1 contract"],

@@ -511,11 +511,54 @@ async function obtainReport() {
   return { report: body.report || body, remaining: body.remaining };
 }
 
+// ---------- aviso al terminar: contador, título de la pestaña, sonido, vibración y notificación ----------
+const notify = { title: document.title, timer: null, audio: null };
+function prepareNotice() {
+  // se llama desde el clic: los navegadores solo permiten sonido y permisos tras un gesto de la persona
+  try { notify.audio = notify.audio || new (window.AudioContext || window.webkitAudioContext)(); notify.audio.resume(); } catch (e) { }
+  try { if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => { }); } catch (e) { }
+}
+function startProgress(status) {
+  const t0 = Date.now();
+  const tick = () => {
+    const s = Math.round((Date.now() - t0) / 1000), mm = Math.floor(s / 60), ss = String(s % 60).padStart(2, "0");
+    status.textContent = t("i.generating", { time: `${mm}:${ss}` });
+    document.title = `(${mm}:${ss}) ${notify.title}`;
+  };
+  tick(); notify.timer = setInterval(tick, 1000);
+}
+function chime() {
+  const ctx = notify.audio; if (!ctx) return;
+  try {
+    [660, 880].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(), at = ctx.currentTime + i * 0.22;
+      o.frequency.value = f; o.type = "sine";
+      g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.25, at + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.5);
+      o.connect(g).connect(ctx.destination); o.start(at); o.stop(at + 0.55);
+    });
+  } catch (e) { }
+}
+function finishProgress(ok) {
+  clearInterval(notify.timer); notify.timer = null;
+  const msg = t(ok ? "i.doneTitle" : "i.failTitle");
+  document.title = `${ok ? "✓" : "✗"} ${msg} · ${notify.title}`;
+  chime();
+  try { navigator.vibrate && navigator.vibrate(ok ? [200, 100, 200] : [400]); } catch (e) { }
+  if (document.hidden) {
+    try { if ("Notification" in window && Notification.permission === "granted") new Notification("ASTROINFORME", { body: msg, tag: "astroinforme" }); } catch (e) { }
+  }
+  const restore = () => { if (!document.hidden) { setTimeout(() => { document.title = notify.title; }, 8000); document.removeEventListener("visibilitychange", restore); } };
+  document.addEventListener("visibilitychange", restore); restore();
+}
+
 async function callInterpreter() {
   const out = $("#report-out"), btn = $("#btn-interp"), status = $("#interp-status");
   btn.disabled = true; // un informe anterior queda visible hasta que llegue el nuevo
-  status.hidden = false; status.textContent = t(CONFIG.demo ? "i.demoWaiting" : "i.generating");
+  prepareNotice();
+  status.hidden = false;
+  if (CONFIG.demo) status.textContent = t("i.demoWaiting"); else startProgress(status);
   V.clear($("#fig-closure")); V.show($("#fig-reader"), "report_reader");
+  let ok = false;
   try {
     const { report: rep, remaining } = await obtainReport();
     if (!rep || rep.schema !== "astroinforme.report/v1" || !Array.isArray(rep.sections)) throw new ServiceError("i.badContract");
@@ -525,12 +568,17 @@ async function callInterpreter() {
     state.lastReport = rep; state.lastAudit = audit;
     renderAudit(audit);
     renderReport(rep);
-    if (remaining != null) { status.textContent = t("i.remaining", { n: remaining }); status.hidden = false; } else status.hidden = true;
+    ok = true;
+    clearInterval(notify.timer);
+    status.textContent = t("i.doneTitle") + (remaining != null ? " " + t("i.remaining", { n: remaining }) : ""); status.hidden = false;
     if (audit.ok) V.show($("#fig-closure"), "closure_serendipity");
   } catch (e) {
+    clearInterval(notify.timer);
     V.clear($("#fig-reader")); status.hidden = false;
     status.textContent = t("i.fail", { msg: e instanceof ServiceError ? t(e.key, e.params) : e.message });
   }
+  if (!CONFIG.demo) finishProgress(ok);
+  if (ok) { try { status.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { } }
   btn.disabled = false;
   if (serviceUrl() && !CONFIG.demo) checkService();
 }
