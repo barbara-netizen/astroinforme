@@ -232,6 +232,7 @@ const UI = {
     "Generando el informe ({time}). Suele tardar unos cinco minutos. Podés cambiar de pestaña: cuando termine, va a sonar un aviso y el título de la pestaña va a decir «Informe listo». No cierres ni recargues esta página.",
     "Der Bericht wird erstellt ({time}). Das dauert meist etwa fünf Minuten. Du kannst den Tab wechseln: Am Ende ertönt ein Signal und der Tab-Titel zeigt „Bericht fertig“. Schließe oder lade diese Seite nicht neu.",
     "Generating the report ({time}). It usually takes about five minutes. You can switch tabs: when it is done, a sound will play and the tab title will say “Report ready”. Do not close or reload this page."],
+  "i.recovered": ["Este es el informe que ya generaste con este código: se guarda 48 horas por si se pierde en el camino. No se descontó otro informe.", "Das ist der Bericht, den du mit diesem Code schon erstellt hast (48 Stunden gespeichert). Es wurde kein weiterer Bericht abgezogen.", "This is the report you already generated with this code (kept for 48 hours). No additional report was used."],
   "i.doneTitle": ["Informe listo.", "Bericht fertig.", "Report ready."],
   "i.failTitle": ["No se pudo generar el informe.", "Der Bericht konnte nicht erstellt werden.", "The report could not be generated."],
   "i.demoWaiting": ["Simulando la espera del motor interpretativo…", "Wartezeit des Deutungsmoduls wird simuliert …", "Simulating the interpretation engine's wait…"],

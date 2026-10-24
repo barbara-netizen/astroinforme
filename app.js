@@ -508,7 +508,7 @@ async function obtainReport() {
     throw k && L.t(k) !== k ? new ServiceError(k) : new ServiceError("i.status", { status: r.status });
   }
   if (!body) throw new ServiceError("i.badContract");
-  return { report: body.report || body, remaining: body.remaining };
+  return { report: body.report || body, remaining: body.remaining, recovered: !!body.recovered };
 }
 
 // ---------- comentario de quien probó el informe (versión piloto) ----------
@@ -593,7 +593,7 @@ async function callInterpreter() {
   V.clear($("#fig-closure")); V.show($("#fig-reader"), "report_reader");
   let ok = false;
   try {
-    const { report: rep, remaining } = await obtainReport();
+    const { report: rep, remaining, recovered } = await obtainReport();
     if (!rep || rep.schema !== "astroinforme.report/v1" || !Array.isArray(rep.sections)) throw new ServiceError("i.badContract");
     V.clear($("#fig-reader"));
     // la auditoría se rehace siempre aquí, aunque el servicio ya la haya hecho
@@ -603,7 +603,7 @@ async function callInterpreter() {
     renderReport(rep);
     ok = true;
     clearInterval(notify.timer);
-    status.textContent = t("i.doneTitle") + (remaining != null ? " " + t("i.remaining", { n: remaining }) : ""); status.hidden = false;
+    status.textContent = recovered ? t("i.recovered") : t("i.doneTitle") + (remaining != null ? " " + t("i.remaining", { n: remaining }) : ""); status.hidden = false;
     if (audit.ok) V.show($("#fig-closure"), "closure_serendipity");
   } catch (e) {
     clearInterval(notify.timer);

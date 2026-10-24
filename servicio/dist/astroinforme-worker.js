@@ -211,7 +211,7 @@ CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
 
 // src/worker.js
-var SERVICE_VERSION = "1.3";
+var SERVICE_VERSION = "1.4";
 var DEFAULT_MODEL = "claude-opus-5-5";
 var DEFAULT_ORIGINS = "https://barbara-netizen.github.io";
 var PRICES = {
@@ -397,6 +397,7 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }) {
   report.audit = { all_references_present_in_chart: audit.ok, verified: audit.verified, total: audit.total, corrected, style_issues: style.issues.map((i) => ({ kind: i.kind, count: i.count })) };
   return { report, audit, usd: spent.usd };
 }
+var REPORT_TTL = 172800;
 var FEEDBACK_MIN = 200;
 var FEEDBACK_MAX = 5e3;
 var FEEDBACK_PER_CODE = 3;
@@ -488,7 +489,11 @@ ${style}` : base;
       if (!(code in codes)) return json({ error: "code_invalid" }, 403, cors);
       limit = codes[code];
       used = +await kv.get("used:" + code) || 0;
-      if (used >= limit) return json({ error: "quota_exhausted", remaining: 0 }, 403, cors);
+      if (used >= limit) {
+        const saved = await kvGetJSON(kv, "rep:" + code, null);
+        if (saved) return json({ report: saved, remaining: 0, recovered: true }, 200, cors);
+        return json({ error: "quota_exhausted", remaining: 0 }, 403, cors);
+      }
     }
     const mk = monthKey();
     const month = await kvGetJSON(kv, mk, { reports: 0, usd: 0, failed: 0 });
@@ -526,6 +531,7 @@ ${style}` : base;
           if (useCode) {
             used += 1;
             await kv.put("used:" + code, String(used));
+            await kv.put("rep:" + code, JSON.stringify(report), { expirationTtl: REPORT_TTL });
           }
           out = { report, remaining: useCode ? Math.max(0, limit - used) : null };
         }

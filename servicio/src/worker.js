@@ -29,7 +29,7 @@ import { auditReport } from "../../audit.js";
 import { styleCheck, describeStyle } from "./style.js";
 import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION } from "./prompts.js";
 
-export const SERVICE_VERSION = "1.3";
+export const SERVICE_VERSION = "1.4";
 const DEFAULT_MODEL = "claude-opus-5-5";
 const DEFAULT_ORIGINS = "https://barbara-netizen.github.io";
 // Precios por millón de tokens (USD), https://platform.claude.com/docs/en/about-claude/pricing (16-10-2026)
@@ -203,6 +203,7 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }) {
 }
 
 // ---------------------------------------------------------------- comentarios
+export const REPORT_TTL = 172800; // 48 horas
 export const FEEDBACK_MIN = 200, FEEDBACK_MAX = 5000, FEEDBACK_PER_CODE = 3;
 /** Guarda un comentario en KV («fb:<fecha>:<código>»). Pide un código válido cuando el acceso es con código. */
 export async function handleFeedback(request, env, cors, requireCode) {
@@ -284,7 +285,12 @@ export default {
       if (!(code in codes)) return json({ error: "code_invalid" }, 403, cors);
       limit = codes[code];
       used = +(await kv.get("used:" + code)) || 0;
-      if (used >= limit) return json({ error: "quota_exhausted", remaining: 0 }, 403, cors);
+      if (used >= limit) {
+        // si el informe de este código se perdió en el camino, se entrega otra vez el guardado (48 h), sin gastar
+        const saved = await kvGetJSON(kv, "rep:" + code, null);
+        if (saved) return json({ report: saved, remaining: 0, recovered: true }, 200, cors);
+        return json({ error: "quota_exhausted", remaining: 0 }, 403, cors);
+      }
     }
     const mk = monthKey();
     const month = await kvGetJSON(kv, mk, { reports: 0, usd: 0, failed: 0 });
@@ -319,7 +325,11 @@ export default {
           out = { error: "audit_failed" };
         } else {
           month.reports += 1;
-          if (useCode) { used += 1; await kv.put("used:" + code, String(used)); }
+          if (useCode) {
+            used += 1; await kv.put("used:" + code, String(used));
+            // copia del último informe del código durante 48 h, para recuperarlo si no llegó a la pantalla
+            await kv.put("rep:" + code, JSON.stringify(report), { expirationTtl: REPORT_TTL });
+          }
           out = { report, remaining: useCode ? Math.max(0, limit - used) : null };
         }
         await kv.put(mk, JSON.stringify(month));

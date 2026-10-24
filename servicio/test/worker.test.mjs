@@ -71,7 +71,9 @@ r = await run(req(carta, "ANA-7K2"), e);
 assert.equal(r.body.report.audit.corrected, true); assert.equal(r.body.remaining, 0); assert.equal(calls.length, 3);
 assert.ok(calls[2].messages[0].content.includes("FASE C"));
 
-// 4. cupo agotado
+// 4. cupo agotado: entrega el informe guardado; sin copia guardada, quota_exhausted
+assert.equal((await run(req(carta, "ANA-7K2"), e)).body.recovered, true);
+e.ASTRO_KV.m.delete("rep:ANA-7K2");
 assert.equal((await run(req(carta, "ANA-7K2"), e)).body.error, "quota_exhausted");
 
 // 5. auditoría falla dos veces → no se entrega y no se descuenta cupo
@@ -157,6 +159,18 @@ mockClaude([ANALISIS, ok]);
 await run(req(carta, "ANA-7K2"), conGuia);
 assert.equal(calls[0].system[0].text, "PROTOCOLO DE PRUEBA\n\nGUÍA DE PRUEBA");
 
+// 16. recuperación: con el cupo agotado se entrega otra vez el último informe del código, sin llamar a Claude
+const recEnv = env();
+mockClaude([ANALISIS, ok]);
+r = await run(req(carta, "PEDRO-9X4"), recEnv);
+assert.equal(r.body.remaining, 0);
+assert.ok(recEnv.ASTRO_KV.m.has("rep:PEDRO-9X4"));
+calls = [];
+r = await run(req(carta, "PEDRO-9X4"), recEnv);
+assert.equal(r.status, 200); assert.equal(r.body.recovered, true); assert.equal(r.body.report.schema, "astroinforme.report/v1"); assert.equal(calls.length, 0);
+recEnv.ASTRO_KV.m.delete("rep:PEDRO-9X4");
+assert.equal((await run(req(carta, "PEDRO-9X4"), recEnv)).body.error, "quota_exhausted");
+
 // 15. comentarios: código válido, mínimo un párrafo, tope por código; no llaman a Claude
 const fbEnv = env(); calls = [];
 const fbReq = (text, code, origin = ORIGIN) => new Request("https://astro.example.workers.dev/feedback", { method: "POST", headers: { "content-type": "application/json", origin, ...(code ? { "x-astro-code": code } : {}) }, body: JSON.stringify({ text, report_title: "Informe de prueba" }) });
@@ -174,4 +188,4 @@ await fb(parrafo, "ANA-7K2"); await fb(parrafo, "ANA-7K2");
 assert.equal((await fb(parrafo, "ANA-7K2")).body.error, "feedback_limit");
 assert.equal(calls.length, 0);
 
-console.log("OK — 15 grupos de pruebas; costo simulado del mes: US$", month.usd);
+console.log("OK — 16 grupos de pruebas; costo simulado del mes: US$", month.usd);
