@@ -22,7 +22,18 @@ function mockClaude(sequence) {
     assert.equal(body.system[0].cache_control.type, "ephemeral");
     const next = sequence.shift();
     if (next === "500") return new Response(JSON.stringify({ error: { type: "overloaded_error" } }), { status: 529 });
-    return new Response(JSON.stringify({ content: [{ type: "text", text: typeof next === "string" ? next : JSON.stringify(next) }], usage: { input_tokens: 10000, output_tokens: 5000, cache_creation_input_tokens: 3000, cache_read_input_tokens: 0 }, stop_reason: "end_turn" }));
+    // la API real responde en flujo (server-sent events); el texto se parte en trozos para probar el armado
+    assert.equal(body.stream, true);
+    const text = typeof next === "string" ? next : JSON.stringify(next);
+    const parts = text.match(/[\s\S]{1,97}/g) || [""];
+    const ev = (o) => `event: ${o.type}\ndata: ${JSON.stringify(o)}\n\n`;
+    const sse = ev({ type: "message_start", message: { usage: { input_tokens: 10000, output_tokens: 1, cache_creation_input_tokens: 3000, cache_read_input_tokens: 0 } } })
+      + ev({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } })
+      + parts.map((t) => ev({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: t } })).join("")
+      + ev({ type: "content_block_stop", index: 0 }) + ev({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 5000 } }) + ev({ type: "message_stop" });
+    const bytes = new TextEncoder().encode(sse);
+    const stream = new ReadableStream({ start(c) { for (let i = 0; i < bytes.length; i += 61) c.enqueue(bytes.slice(i, i + 61)); c.close(); } });
+    return new Response(stream, { headers: { "content-type": "text/event-stream" } });
   };
 }
 const ANALISIS = { tension_organizadora: "x", temas: [], contradicciones: [], datos_no_fiables: [], jerarquia_de_secciones: [], mito: { nombre: "Prometeo", por_que: "y" } };

@@ -211,7 +211,7 @@ CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
 
 // src/worker.js
-var SERVICE_VERSION = "1.1";
+var SERVICE_VERSION = "1.2";
 var DEFAULT_MODEL = "claude-opus-5-5";
 var DEFAULT_ORIGINS = "https://barbara-netizen.github.io";
 var PRICES = {
@@ -295,22 +295,76 @@ async function callClaude(env, { system, user, maxTokens }) {
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+    // en flujo: la API exige streaming para respuestas largas (el informe pide hasta 32.000 tokens)
     body: JSON.stringify({
       model,
       max_tokens: maxTokens,
+      stream: true,
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: user }]
     })
   });
-  const body = await r.json().catch(() => null);
-  if (!r.ok || !body) {
+  if (!r.ok) {
+    const body = await r.json().catch(() => null);
     const e = new Error("upstream");
     e.status = r.status;
-    e.detail = body && body.error ? body.error.type : null;
+    e.detail = body && body.error ? `${body.error.type}: ${body.error.message}` : null;
     throw e;
   }
-  const text = (body.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
-  return { text, usage: body.usage || {}, stop: body.stop_reason, model };
+  const ctype = r.headers.get("content-type") || "";
+  if (ctype.includes("application/json")) {
+    const body = await r.json().catch(() => null);
+    if (!body) {
+      const e = new Error("upstream");
+      e.status = r.status;
+      throw e;
+    }
+    const text = (body.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+    return { text, usage: body.usage || {}, stop: body.stop_reason, model };
+  }
+  return readStream(r, model);
+}
+async function readStream(r, model) {
+  const reader = r.body.getReader(), dec = new TextDecoder();
+  let buf = "", text = "", usage = {}, stop = null;
+  const handle = (data) => {
+    let ev;
+    try {
+      ev = JSON.parse(data);
+    } catch (e) {
+      return;
+    }
+    if (ev.type === "message_start" && ev.message && ev.message.usage) usage = { ...ev.message.usage };
+    else if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") text += ev.delta.text;
+    else if (ev.type === "message_delta") {
+      if (ev.usage) usage = { ...usage, ...ev.usage };
+      if (ev.delta && ev.delta.stop_reason) stop = ev.delta.stop_reason;
+    } else if (ev.type === "error") {
+      const e = new Error("upstream");
+      e.status = 200;
+      e.detail = ev.error ? `${ev.error.type}: ${ev.error.message}` : "stream error";
+      throw e;
+    }
+  };
+  for (; ; ) {
+    const { value, done } = await reader.read();
+    if (value) buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      const data = chunk.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()).join("");
+      if (data) handle(data);
+    }
+    if (done) break;
+  }
+  if (!stop) {
+    const e = new Error("upstream");
+    e.status = 200;
+    e.detail = "stream ended without stop_reason";
+    throw e;
+  }
+  return { text, usage, stop, model };
 }
 async function interpret(env, payload, protocol, spent = { usd: 0 }) {
   const model = env.MODEL || DEFAULT_MODEL;
@@ -447,6 +501,7 @@ ${style}` : base;
         await kv.put(mk, JSON.stringify(month));
       } catch (e) {
         out = { error: "upstream" };
+        console.log(JSON.stringify({ event: "upstream_error", status: e.status || null, detail: e.detail || String(e.message || e) }));
         if (spent.usd) {
           month.usd = +(month.usd + spent.usd).toFixed(4);
           month.failed += 1;
