@@ -14,7 +14,7 @@ const A = {
   verification_eyes: { type: "video", file: "assets/04-verificacion-abre-los-ojos.mp4", poster: "assets/04-verificacion-abre-los-ojos-poster.jpg", title: "Abre los ojos", size: [500, 332], loop: false, fit: "contain", focal: "50% 50%" },
   report_reader: { type: "video", file: "assets/03-generacion-informe-lectora.mp4", poster: "assets/03-generacion-informe-lectora-poster.jpg", title: "Lectora", size: [960, 540], loop: true, fit: "contain", focal: "50% 50%" },
   closure_serendipity: { type: "image", file: "assets/08-cierre-serendipia-blanca.jpg", title: "Serendipia Blanca", size: [1134, 577], fit: "cover", focal: "60% 35%" },
-  identity_biographies: { type: "image", file: "assets/04-identidad-biografias.jpg", title: "Biografías", size: [966, 919], fit: "contain", focal: "50% 50%" },
+  identity_biographies: { type: "image", file: "assets/04-identidad-biografias.jpg", title: "Biografías", size: [1080, 1080], fit: "contain", focal: "50% 50%" },
   emotional_dream: { type: "image", file: "assets/06-mundo-emocional-sueno-contigo.jpg", title: "Sueño Contigo", size: [1210, 894], fit: "cover", focal: "40% 55%" },
   boundaries_wire: { type: "image", file: "assets/07-limites-glamur-alambre.jpg", title: "Glamur Atado con Alambre", size: [720, 556], fit: "cover", focal: "50% 50%" },
   texture_purple: { type: "image", file: "assets/09-textura-moradotas.jpg", title: "Moradotas", size: [1210, 908], fit: "cover", focal: "50% 50%" },
