@@ -197,11 +197,8 @@ const UI = {
 
   "i.eyebrow": ["Informe psicológico", "Psychologischer Bericht", "Psychological report"],
   "i.h": ["Tu informe personal", "Dein persönlicher Bericht", "Your personal report"],
-  "i.missing": [
-    "<strong>El motor interpretativo no está conectado en esta versión.</strong> Redactar el informe requiere un modelo de lenguaje con la calidad que exige el protocolo de ASTROINFORME, y hoy no existe una forma gratuita de ejecutarlo para cualquier persona sin cuenta ni clave de pago. Esta página no genera textos automáticos de reemplazo.",
-    "<strong>Das Deutungsmodul ist in dieser Version nicht verbunden.</strong> Für den Bericht braucht es ein Sprachmodell in der Qualität, die das ASTROINFORME-Protokoll verlangt, und dafür gibt es derzeit keinen kostenlosen Weg, der für alle ohne Konto oder bezahlten Schlüssel funktioniert. Diese Seite erzeugt keine automatischen Ersatztexte.",
-    "<strong>The interpretation engine is not connected in this version.</strong> Writing the report needs a language model of the quality the ASTROINFORME protocol requires, and there is currently no free way to run one for anyone without an account or a paid key. This page does not generate substitute texts.",
-  ],
+  "i.missing": ["<strong>En esta versión no está conectado el servicio que escribe el informe.</strong> La carta calculada sigue disponible.", "<strong>In dieser Version ist der Dienst, der den Bericht schreibt, nicht verbunden.</strong> Das berechnete Horoskop bleibt verfügbar.", "<strong>The service that writes the report is not connected in this version.</strong> The calculated chart is still available."],
+  "i.elsewhere": ["El informe personal se pide desde la app pública: <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">{url}</a>", "Den persönlichen Bericht forderst du in der öffentlichen App an: <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">{url}</a>", "The personal report is requested in the public app: <a href=\"{url}\" target=\"_blank\" rel=\"noopener\">{url}</a>"],
   "i.missing2": ["Mientras tanto podés llevarte la carta calculada completa en formato de datos (JSON).", "Bis dahin kannst du das vollständige berechnete Horoskop als Daten (JSON) mitnehmen.", "Meanwhile you can take the complete calculated chart with you as data (JSON)."],
   "btn.copyJson": ["Copiar datos (JSON)", "Daten kopieren (JSON)", "Copy data (JSON)"],
   "i.conn": [

@@ -437,6 +437,8 @@ function renderInterpretationChrome() {
   const connected = !!serviceUrl() || !!CONFIG.demo;
   $("#interp-connected").hidden = !connected;
   $("#interp-missing").hidden = connected;
+  // copia sin servicio (por ejemplo, la publicada dentro de Claude): el informe se pide en la app pública
+  if (!connected) $("#interp-missing").innerHTML = CONFIG.reportUrl ? t("i.elsewhere", { url: esc(CONFIG.reportUrl) }) : t("i.missing");
   $("#demo-note").hidden = !CONFIG.demo;
   $("#demo-which-row").hidden = !CONFIG.demo;
   $("#code-row").hidden = !serviceUrl() || !!CONFIG.demo;
