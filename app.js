@@ -25,7 +25,19 @@ function setRegionNames() { try { regionName = new Intl.DisplayNames([L.getLang(
 const country = (cc) => { try { return regionName ? regionName.of(cc) : cc; } catch (e) { return cc; } };
 
 // ---------- estado ----------
-const state = { place: null, chart: null, payload: null, engineReady: null, engineInfo: null, engineErr: null, last: null, lastReport: null, lastAudit: null, reportLangTouched: false, heroAnimated: false };
+const state = { place: null, chart: null, payload: null, engineReady: null, engineInfo: null, engineErr: null, last: null, lastReport: null, lastAudit: null, reportLangTouched: false };
+
+// ---------- pantallas: datos → carta → informe (con historial, para que «atrás» del celular vuelva un paso) ----------
+const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+function setScreen(s, { push = true, top = true } = {}) {
+  if (s === "report" && !state.lastReport) s = state.chart ? "chart" : "form";
+  if (s === "chart" && !state.chart) s = "form";
+  const prev = document.body.dataset.screen;
+  document.body.dataset.screen = s;
+  if (push && prev && prev !== s) { try { history.pushState({ screen: s }, ""); } catch (e) { } }
+  if (top) window.scrollTo({ top: 0, behavior: "auto" });
+}
+window.addEventListener("popstate", (e) => setScreen((e.state && e.state.screen) || "form", { push: false }));
 
 function setStatus(el, kind, html) { el.className = "note " + kind; el.innerHTML = html; el.hidden = !html; }
 
@@ -104,21 +116,40 @@ function searchCities(q) {
   return [...exact, ...prefix, ...inner].slice(0, 12);
 }
 
+// Provincias argentinas según los códigos admin1 de GeoNames (07 = Ciudad Autónoma de Buenos Aires)
+const AR_ADMIN = { "01": "Provincia de Buenos Aires", "02": "Catamarca", "03": "Chaco", "04": "Chubut", "05": "Córdoba", "06": "Corrientes", "07": "CABA", "08": "Entre Ríos", "09": "Formosa", "10": "Jujuy", "11": "La Pampa", "12": "La Rioja", "13": "Mendoza", "14": "Misiones", "15": "Neuquén", "16": "Río Negro", "17": "Salta", "18": "San Juan", "19": "San Luis", "20": "Santa Cruz", "21": "Santa Fe", "22": "Santiago del Estero", "23": "Tierra del Fuego", "24": "Tucumán" };
+function placeName(c) {
+  if (c.cc === "AR" && c.adm === "07" && c.f === "buenos aires") return { name: t("place.caba"), where: country(c.cc) };
+  const prov = c.cc === "AR" ? AR_ADMIN[c.adm] : null;
+  return { name: c.n, where: prov && fold(prov) !== c.f ? `${prov}, ${country(c.cc)}` : country(c.cc) };
+}
+const placeUI = { list: [], active: -1 };
 function renderPlaceResults(list) {
-  const box = $("#place-results");
-  if (!list.length) { box.innerHTML = `<p class="muted small">${esc(t("place.none"))}</p>`; box.hidden = false; return; }
-  const fmt = new Intl.NumberFormat(LOCALE[L.getLang()]);
-  box.innerHTML = list.map((c, i) => `<button type="button" class="place-opt" data-i="${i}"><span class="pn">${esc(c.n)}</span><span class="pm">${esc(country(c.cc))} · ${fmt.format(c.pop)} ${t("place.inhab")} · ${c.lat.toFixed(2)}, ${c.lon.toFixed(2)}</span></button>`).join("");
-  box.hidden = false;
-  box.querySelectorAll(".place-opt").forEach((b) => b.addEventListener("click", () => choosePlace(list[+b.dataset.i])));
+  const box = $("#place-results"), q = $("#place-q");
+  placeUI.list = list; placeUI.active = list.length ? 0 : -1;
+  if (!list.length) { box.innerHTML = `<li class="empty">${esc(t("place.none"))}</li>`; box.hidden = false; q.setAttribute("aria-expanded", "true"); return; }
+  box.innerHTML = list.map((c, i) => { const p = placeName(c); return `<li role="option" id="po-${i}"><button type="button" class="place-opt${i === 0 ? " on" : ""}" tabindex="-1" data-i="${i}"><span class="pn">${esc(p.name)}</span> <span class="pm">· ${esc(p.where)}</span></button></li>`; }).join("");
+  box.hidden = false; q.setAttribute("aria-expanded", "true");
+  box.querySelectorAll(".place-opt").forEach((b) => {
+    b.addEventListener("mousedown", (e) => e.preventDefault()); // no quitar el foco del campo antes del clic
+    b.addEventListener("click", () => choosePlace(list[+b.dataset.i]));
+  });
+}
+function hidePlaceResults() { $("#place-results").hidden = true; $("#place-q").setAttribute("aria-expanded", "false"); placeUI.active = -1; }
+function movePlace(d) {
+  const n = placeUI.list.length; if (!n || $("#place-results").hidden) return;
+  placeUI.active = (placeUI.active + d + n) % n;
+  $("#place-results").querySelectorAll(".place-opt").forEach((b, i) => b.classList.toggle("on", i === placeUI.active));
+  $("#place-q").setAttribute("aria-activedescendant", "po-" + placeUI.active);
 }
 
 function choosePlace(c) {
-  const zone = E.zoneFor(c.lat, c.lon);
-  state.place = { label: `${c.n}, ${country(c.cc)}`, lat: c.lat, lon: c.lon, zone, source: "GeoNames (all-the-cities)" };
-  $("#place-results").hidden = true;
+  const zone = E.zoneFor(c.lat, c.lon), p = placeName(c);
+  state.place = { label: `${p.name}, ${p.where}`, lat: c.lat, lon: c.lon, zone, source: "GeoNames (all-the-cities)" };
+  hidePlaceResults();
   $("#place-q").value = state.place.label;
   showPlace();
+  setStatus($("#form-error"), "", "");
 }
 function showPlace() {
   const p = state.place, box = $("#place-chosen");
@@ -133,7 +164,7 @@ function showPlace() {
 // ---------- cálculo ----------
 class FormError extends Error { constructor(key, params) { super(key); this.key = key; this.params = params; } }
 function readForm() {
-  const d = $("#bdate").value, tm = $("#btime").value, prec = $("#prec").value;
+  const d = $("#bdate").value, tm = $("#btime").value, prec = $("#no-time").checked ? "UNKNOWN" : $("#prec").value;
   if (!d) throw new FormError("err.date");
   const [y, mo, dd] = d.split("-").map(Number);
   if (y < 1800 || y > 2399) throw new FormError("err.range");
@@ -205,6 +236,7 @@ async function calculate(chosenUtc = null) {
   state.last = { f, opt, warnings };
   state.lastReport = null; state.lastAudit = null;
   render(true);
+  setScreen("chart");
 }
 
 // ---------- contrato de datos ----------
@@ -243,29 +275,33 @@ function render(scroll = false) {
   if (!state.chart || !state.last) return;
   const { f, opt, warnings } = state.last;
   const chart = state.chart;
-  $("#result").hidden = false;
   const by = Object.fromEntries(chart.bodies.map((b) => [b.id, b]));
   const mark = (ok) => ok === false ? ` <span class="uns" title="${esc(t("r.mark"))}">◇</span>` : "";
   const H = t("r.house");
   const ascTxt = chart.houses ? `${E.fmtDeg(chart.houses.asc)} ${term(E.SIGNS[Math.floor(chart.houses.asc / 30)])}` : t("r.noTime");
-  $("#r-title").textContent = f.first ? t("r.titleNamed", { name: f.first }) : t("r.title");
-  $("#r-meta").textContent = `${state.payload.birth.local_date}${f.prec === "UNKNOWN" ? " · " + t("r.unknownTime") : " · " + state.payload.birth.local_time + " (" + state.payload.birth.time_precision_label + ")"} · ${state.place.label} · ${fmtOffset(opt.offsetMin)} · ${fmtUtc(opt.utcMs)}`;
+  $("#r-title").textContent = f.first || t("r.title");
+  $("#r-title").previousElementSibling.hidden = !f.first;
+  $("#r-meta").textContent = humanBirth(f);
+  const ascSign = chart.houses ? term(E.SIGNS[Math.floor(chart.houses.asc / 30)]) : t("r.noTime");
   $("#r-big3").innerHTML = [
-    [term("SUN"), posStr(by.SUN) + (chart.houses ? ` · ${H} ${ROMAN[by.SUN.house]}` : ""), by.SUN.reliable],
-    [term("MOON"), posStr(by.MOON) + (chart.houses ? ` · ${H} ${ROMAN[by.MOON.house]}` : ""), by.MOON.reliable],
-    [term("ASC"), ascTxt, !chart.sensitivity.unreliable.some((u) => u.item === "ASC")],
-  ].map(([k, v, ok]) => `<div class="b3"><span class="lab">${esc(k)}</span><span class="val">${esc(v)}${mark(ok)}</span></div>`).join("");
+    [term("SUN"), term(by.SUN.sign), chart.houses ? `${H} ${by.SUN.house}` : by.SUN.deg.replace(/\d\d"$/, ""), by.SUN.reliable],
+    [term("MOON"), term(by.MOON.sign), chart.houses ? `${H} ${by.MOON.house}` : by.MOON.deg.replace(/\d\d"$/, ""), by.MOON.reliable],
+    [term("ASC"), ascSign, chart.houses ? E.fmtDeg(chart.houses.asc).replace(/\d\d"$/, "") : "", !chart.sensitivity.unreliable.some((u) => u.item === "ASC")],
+  ].map(([k, v, sub, ok]) => `<div class="b3"><span class="lab">${esc(k)}${mark(ok)}</span><span class="val">${esc(v)}</span><span class="sub">${esc(sub)}</span></div>`).join("");
 
-  $("#r-warn").innerHTML = warnings.map((w) => `<li><code>${w.code}</code> ${esc(t("w." + w.code, w.params))}</li>`).join("");
+  $("#r-warn").innerHTML = warnings.map((w) => `<li>${esc(t("w." + w.code, w.params))}</li>`).join("");
   $("#r-warn-box").hidden = !warnings.length;
 
   $("#wheel").innerHTML = wheelSVG(chart);
 
   // posiciones: el movimiento va junto al grado (R, est.) para que la tabla entre en el celular
   const motion = (b) => `${b.retrograde ? `<span class="rx" title="${esc(t("r.rx"))}">R</span>` : ""}${b.stationary ? `<span class="rx" title="${esc(t("r.stTitle"))}">${t("r.st")}</span>` : ""}`;
-  $("#t-pos").innerHTML = `<thead><tr><th>${t("th.point")}</th><th>${t("th.position")}</th>${chart.houses ? `<th>${t("th.house")}</th>` : ""}</tr></thead><tbody>` +
-    chart.bodies.map((b) => `<tr><td><span class="gl">${g(GLYPH[b.id])}</span> ${esc(nm(b.id))}</td><td class="num">${degHTML(b.deg)} ${esc(term(b.sign))}${motion(b)}${mark(b.reliable)}</td>${chart.houses ? `<td class="num">${ROMAN[b.house]}${b.near_next_cusp ? ` <span class='muted' title='${esc(t("r.nearCusp"))}'>↦</span>` : ""}</td>` : ""}</tr>`).join("") +
-    `<tr><td><span class="gl">${g("☋")}</span> ${esc(nm("SOUTH_NODE"))}</td><td class="num">${degHTML(chart.south_node.deg)} ${esc(term(chart.south_node.sign))}</td>${chart.houses ? `<td class="num">${ROMAN[chart.south_node.house]}</td>` : ""}</tr></tbody>`;
+  const shortDeg = (d) => d.replace(/\d\d"$/, "");
+  const prow = (glyph, id, sign, house, deg, extra, ok) => `<div class="prow"><span class="gl" aria-hidden="true">${g(glyph)}</span><span>${t("r.in", { body: `<strong>${esc(nm(id))}</strong>`, sign: esc(term(sign)) })}${house ? `<span class="ph">, ${H} ${house}</span>` : ""}${mark(ok)}</span><span class="pd">${shortDeg(deg)}${extra}</span></div>`;
+  $("#t-pos").innerHTML = chart.bodies.map((b) => prow(GLYPH[b.id], b.id, b.sign, chart.houses ? b.house : null, b.deg, motion(b), b.reliable)).join("") +
+    prow("☋", "SOUTH_NODE", chart.south_node.sign, chart.houses ? chart.south_node.house : null, chart.south_node.deg, "", true) +
+    (chart.houses ? prow("", "MC", E.SIGNS[Math.floor(chart.houses.mc / 30)], null, E.fmtDeg(chart.houses.mc), "", !chart.sensitivity.unreliable.some((u) => u.item === "MC")) : "");
+  $("#pos-note").textContent = t(chart.houses ? "r.posNote" : "r.posNoteNoTime", { sys: chart.houses ? t(chart.houses.system_effective === "PLACIDUS" ? "houses.placidus" : "houses.porphyry") : "" });
 
   $("#houses-block").hidden = !chart.houses;
   if (chart.houses) {
@@ -304,17 +340,21 @@ function render(scroll = false) {
       : nm(u.item) + ": " + (u.field === "sign" ? t("sens.sign") + " " + u.alternatives.map((x) => term(x)).join(" / ") : H + " " + u.alternatives.map((x) => ROMAN[x]).join(" / "))}</li>`).join("") + "</ul>"
     : `<p>${esc(t("sens.none", { w: win }))}</p>`;
 
-  $("#prov").textContent = t("prov", {
+  $("#prov").textContent = `${fmtOffset(opt.offsetMin)} · ${fmtUtc(opt.utcMs)} · ${state.place.lat.toFixed(4)}, ${state.place.lon.toFixed(4)}. ` + t("prov", {
     engine: chart.ephemeris.engine, flags: "SEFLG_SWIEPH|SEFLG_SPEED",
     sys: chart.houses ? chart.houses.system_effective : t("prov.noHouses"), pol: chart.aspect_policy, zone: f.zone,
     src: t(state.payload.birth.offset_source === "MANUAL" ? "prov.manual" : "prov.iana"), place: state.place.source, ver: E.ENGINE_VERSION,
   });
 
-  if (scroll) {
-    renderInterpretation();
-    V.show($("#fig-eyes"), "verification_eyes", { loop: false });
-    $("#result").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
-  }
+  if (scroll) renderInterpretation();
+}
+const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+function humanBirth(f) {
+  let date;
+  try { date = new Intl.DateTimeFormat(LOCALE[L.getLang()], { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(Date.UTC(f.y, f.mo - 1, f.d)); }
+  catch (e) { date = `${f.d} de ${MONTHS[f.mo - 1]} de ${f.y}`; }
+  const time = f.prec === "UNKNOWN" ? t("r.unknownTime") : `${pad(f.h)}:${pad(f.mi)}${f.prec === "EXACT" ? "" : " (" + state.payload.birth.time_precision_label + ")"}`;
+  return `${date}, ${time} · ${state.place.label}`;
 }
 
 // ---------- rueda ----------
@@ -398,7 +438,6 @@ function renderInterpretationChrome() {
   $("#interp-connected").hidden = !connected;
   $("#interp-missing").hidden = connected;
   $("#demo-note").hidden = !CONFIG.demo;
-  $("#interp-conn-text").hidden = !!CONFIG.demo;
   $("#demo-which-row").hidden = !CONFIG.demo;
   $("#code-row").hidden = !serviceUrl() || !!CONFIG.demo;
   $("#code-label").dataset.i18n = publicAccess() ? "f.code.opt" : "f.code"; $("#code-label").textContent = t($("#code-label").dataset.i18n);
@@ -412,17 +451,13 @@ function renderInterpretationChrome() {
     if ($("#demo-which").dataset.sig !== sig) { $("#demo-which").innerHTML = reports.map((r) => `<option value="${esc(r.file)}">${esc(r.label)}</option>`).join(""); $("#demo-which").dataset.sig = sig; }
   }
   $("#btn-interp").textContent = t(CONFIG.demo ? "btn.interpDemo" : "btn.interp");
-  const pill = $("#pill-interp");
-  pill.className = "pill " + (serviceUrl() ? "ok" : "no");
-  pill.dataset.i18n = serviceUrl() ? "pill.conn" : "pill.no";
-  pill.textContent = t(pill.dataset.i18n);
+  $("#btn-back-report").hidden = !state.lastReport;
 }
 function renderInterpretation() {
   renderInterpretationChrome();
   loadTurnstile();
   $("#payload-view").value = JSON.stringify(state.payload, null, 2);
-  $("#report-out").hidden = true; $("#audit-out").hidden = true; $("#interp-status").hidden = true;
-  V.clear($("#fig-reader")); V.clear($("#fig-closure"));
+  $("#interp-status").hidden = true;
 }
 
 async function copyText(text, btn) {
@@ -456,23 +491,32 @@ function renderAudit(a) {
 }
 
 function renderReport(rep) {
-  const out = $("#report-out");
-  out.hidden = false;
-  out.replaceChildren();
-  out.lang = rep.language || "";
-  for (const s of rep.sections) {
-    const sec = document.createElement("section"); sec.className = "rep-sec" + (s.id === "dedication" ? " rep-dedication" : "");
-    const h = document.createElement("h3"); h.textContent = s.heading; sec.append(h);
-    const paras = String(s.body_markdown).split(/\n{2,}/);
-    paras.forEach((p, i) => {
-      const el = document.createElement("p"); el.textContent = p; sec.append(el);
-      if (i === 0 && V.SECTION_ART[s.id]) {
-        const fig = document.createElement("figure"); fig.className = "art art-section";
-        sec.append(fig); V.show(fig, V.SECTION_ART[s.id], { loop: false });
-      }
-    });
+  const out = $("#report-out"), list = $("#rep-index-list");
+  const f = state.last && state.last.f;
+  out.replaceChildren(); list.replaceChildren();
+  $("#reading").lang = rep.language || "";
+  $("#rep-for").textContent = f && f.first ? t("rep.for", { name: f.first }) : t("rep.forAnon");
+  $("#rep-title").textContent = rep.title || t("i.h");
+  $("#rep-meta").textContent = f ? humanBirth(f) : "";
+  rep.sections.forEach((s, n) => {
+    const sec = document.createElement("section");
+    sec.className = "rep-sec" + (s.id === "dedication" ? " rep-dedication" : s.id === "myth" ? " rep-myth" : "");
+    sec.id = "sec-" + n;
+    if (V.SECTION_ART[s.id] && s.id !== "dedication") {
+      const fig = document.createElement("figure"); fig.className = "art";
+      sec.append(fig); V.show(fig, V.SECTION_ART[s.id], { loop: false });
+    }
+    const h = document.createElement("h2"); h.textContent = s.heading; sec.append(h);
+    for (const p of String(s.body_markdown).split(/\n{2,}/)) { const el = document.createElement("p"); el.textContent = p; sec.append(el); }
     out.append(sec);
-  }
+    if (s.id !== "dedication") {
+      const li = document.createElement("li"), a = document.createElement("a");
+      a.href = "#sec-" + n; a.textContent = s.heading;
+      a.addEventListener("click", (e) => { e.preventDefault(); $("#rep-index").open = false; sec.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" }); });
+      li.append(a); list.append(li);
+    }
+  });
+  $("#rep-index-sum").textContent = t("rep.index", { n: list.children.length });
 }
 
 // Al servicio solo viaja lo necesario para interpretar: la fecha, la hora, el lugar y el día juliano no salen del dispositivo.
@@ -550,14 +594,40 @@ function prepareNotice() {
   try { notify.audio = notify.audio || new (window.AudioContext || window.webkitAudioContext)(); notify.audio.resume(); } catch (e) { }
   try { if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => { }); } catch (e) { }
 }
-function startProgress(status) {
-  const t0 = Date.now();
+function startProgress() {
+  const t0 = Date.now(), clock = $("#wait-clock");
   const tick = () => {
     const s = Math.round((Date.now() - t0) / 1000), mm = Math.floor(s / 60), ss = String(s % 60).padStart(2, "0");
-    status.textContent = t("i.generating", { time: `${mm}:${ss}` });
+    clock.textContent = `${mm}:${ss}`;
     document.title = `(${mm}:${ss}) ${notify.title}`;
   };
   tick(); notify.timer = setInterval(tick, 1000);
+}
+// mientras se escribe el informe, la pantalla no se apaga (donde el navegador lo permite)
+const wake = { lock: null, want: false };
+async function keepAwake(on) {
+  wake.want = on;
+  try {
+    if (on && "wakeLock" in navigator && !wake.lock) { wake.lock = await navigator.wakeLock.request("screen"); wake.lock.addEventListener("release", () => { wake.lock = null; }); $("#wait-awake").hidden = false; }
+    if (!on && wake.lock) { await wake.lock.release(); wake.lock = null; }
+  } catch (e) { wake.lock = null; }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && wake.want) keepAwake(true); });
+function openWait() {
+  const f = state.last && state.last.f;
+  $("#wait-who").textContent = f && f.first ? t("wait.who", { name: f.first }) : t("wait.whoAnon");
+  $("#wait-awake").hidden = true;
+  $("#about-report").open = false;
+  $("#wait").hidden = false;
+  document.documentElement.style.overflow = "hidden";
+  V.show($("#fig-reader"), CONFIG.pilot ? "pilot_rabbit" : "report_reader");
+  keepAwake(true);
+}
+function closeWait() {
+  $("#wait").hidden = true;
+  document.documentElement.style.overflow = "";
+  V.clear($("#fig-reader"));
+  keepAwake(false);
 }
 function chime() {
   const ctx = notify.audio; if (!ctx) return;
@@ -584,42 +654,47 @@ function finishProgress(ok) {
 }
 
 async function callInterpreter() {
-  const out = $("#report-out"), btn = $("#btn-interp"), status = $("#interp-status");
-  btn.disabled = true; // un informe anterior queda visible hasta que llegue el nuevo
+  const btn = $("#btn-interp"), status = $("#interp-status");
+  // los errores que se detectan antes de enviar se muestran sin abrir la espera
+  if (!CONFIG.demo && !publicAccess() && !($("#access-code").value || "").trim()) {
+    status.hidden = false; status.textContent = t("i.fail", { msg: t("i.err.code_required") }); $("#access-code").focus(); return;
+  }
+  btn.disabled = true;
   prepareNotice();
-  status.hidden = false;
-  if (CONFIG.demo) status.textContent = t("i.demoWaiting"); else startProgress(status);
-  $("#about-report").open = true;
-  V.clear($("#fig-closure")); V.show($("#fig-reader"), "report_reader");
+  status.hidden = true;
+  openWait();
+  if (CONFIG.demo) $("#wait-clock").textContent = "…"; else startProgress();
   let ok = false;
   try {
     const { report: rep, remaining, recovered } = await obtainReport();
     if (!rep || rep.schema !== "astroinforme.report/v1" || !Array.isArray(rep.sections)) throw new ServiceError("i.badContract");
-    V.clear($("#fig-reader"));
     // la auditoría se rehace siempre aquí, aunque el servicio ya la haya hecho
     const audit = auditReport(rep, state.payload);
     state.lastReport = rep; state.lastAudit = audit;
-    renderAudit(audit);
-    renderReport(rep);
-    ok = true;
     clearInterval(notify.timer);
-    status.textContent = recovered ? t("i.recovered") : t("i.doneTitle") + (remaining != null ? " " + t("i.remaining", { n: remaining }) : ""); status.hidden = false;
+    renderReport(rep);
+    renderAudit(audit);
+    V.clear($("#fig-closure"));
     if (audit.ok) V.show($("#fig-closure"), "closure_serendipity");
+    const rs = $("#report-status");
+    rs.textContent = recovered ? t("i.recovered") : (remaining != null ? t("i.remaining", { n: remaining }) : ""); rs.hidden = !rs.textContent;
+    ok = true;
   } catch (e) {
     clearInterval(notify.timer);
-    V.clear($("#fig-reader")); status.hidden = false;
+    status.hidden = false;
     status.textContent = t("i.fail", { msg: e instanceof ServiceError ? t(e.key, e.params) : e.message });
   }
+  closeWait();
   if (!CONFIG.demo) finishProgress(ok);
-  $("#about-report").open = false;
-  if (ok) showFeedback();
-  if (ok) { try { status.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { } }
+  if (ok) { showFeedback(); setScreen("report"); }
+  else { try { status.scrollIntoView({ behavior: "auto", block: "center" }); } catch (e) { } }
   btn.disabled = false;
+  renderInterpretationChrome();
   if (serviceUrl() && !CONFIG.demo) checkService();
 }
 
 // ---------- guardar: imprimir o descargar ----------
-function printSheet() { window.print(); }
+function printSheet() { document.querySelectorAll(".more-tech").forEach((d) => { d.dataset.was = d.open ? "1" : ""; d.open = true; }); window.print(); }
 
 function downloadSheet() {
   if (!state.chart || !state.last) return;
@@ -631,7 +706,7 @@ function downloadSheet() {
   const reportHTML = rep ? rep.sections.map((s) => `<h2>${esc(s.heading)}</h2>` + String(s.body_markdown).split(/\n{2,}/).map((p) => `<p>${esc(p)}</p>`).join("")).join("") : "";
   const audit = state.lastAudit ? `<p class="m">${esc(t("a.head", { v: state.lastAudit.verified, t: state.lastAudit.total }))}${state.lastAudit.ok ? "." : esc(t("a.headBad", { n: state.lastAudit.issues.length }))}</p>` : "";
   const ascLine = chart.houses ? `${term("ASC")} ${E.fmtDeg(chart.houses.asc)} ${term(E.SIGNS[Math.floor(chart.houses.asc / 30)])} · ${term("MC")} ${E.fmtDeg(chart.houses.mc)} ${term(E.SIGNS[Math.floor(chart.houses.mc / 30)])}` : t("r.noTime");
-  const title = rep && rep.title ? rep.title : $("#r-title").textContent;
+  const title = rep && rep.title ? rep.title : (f.first ? t("r.titleNamed", { name: f.first }) : t("r.title"));
   const doc = `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
 <style>body{font:16px/1.6 Georgia,serif;color:#1c2230;background:#fff;max-width:44rem;margin:0 auto;padding:24px 16px}h1{font-weight:500;line-height:1.15}h2{font-weight:500;margin-top:1.8em}.m{font:13px/1.5 ui-monospace,Menlo,monospace;color:#5d6573}table{border-collapse:collapse;width:100%;font:13px/1.4 ui-monospace,Menlo,monospace}td,th{border-bottom:1px solid #ccc;padding:4px 8px 4px 0;text-align:left}details{margin:1.5em 0}footer{margin-top:3em;border-top:1px solid #ccc;padding-top:12px;font-size:13px;color:#5d6573}</style></head><body>
 <h1>${esc(title)}</h1>
@@ -639,7 +714,7 @@ function downloadSheet() {
 <p class="m">${esc(ascLine)}</p>
 ${reportHTML}
 ${audit}
-<details${rep ? "" : " open"}><summary>${esc(t("r.eyebrow"))}</summary>
+<details${rep ? "" : " open"}><summary>${esc(t("dl.tech"))}</summary>
 <table>${row([t("th.point"), t("th.position"), chart.houses ? t("th.house") : ""], "th")}${pos.join("")}</table>
 <h3>${esc(t("h.aspects"))}</h3><table>${row([t("th.aspect"), t("th.orb")], "th")}${asp.join("")}</table>
 <p class="m">${esc($("#prov").textContent)}</p></details>
@@ -662,11 +737,11 @@ function applyLanguage(lang, { remember = true } = {}) {
   L.applyStatic();
   $("#ui-lang").value = lang;
   if (!state.reportLangTouched) $("#lang").value = lang;
-  $("#btn-hero-anim").textContent = t(state.heroAnimated ? "hero.still" : "hero.anim");
   showEngineState();
   renderInterpretationChrome();
   if (state.place) showPlace();
   if (state.chart) render(false);
+  if (state.lastReport) renderReport(state.lastReport);
   if (state.lastAudit) renderAudit(state.lastAudit);
   $("#privacy-link").href = "privacidad.html#" + lang;
   renderDonation();
@@ -675,18 +750,9 @@ function applyLanguage(lang, { remember = true } = {}) {
 // ---------- eventos ----------
 function initVisuals() {
   if (CONFIG.pilot) { $("#pilot").hidden = false; V.show($("#fig-pilot"), "pilot_rabbit"); }
-  const hero = $("#fig-hero"), btn = $("#btn-hero-anim");
-  // la portada animada se ve de entrada; quien pidió menos movimiento en su sistema ve la imagen fija
-  state.heroAnimated = !V.reducedMotion();
-  V.show(hero, state.heroAnimated ? "intro_embroidery" : "hero_levitar");
-  btn.textContent = t(state.heroAnimated ? "hero.still" : "hero.anim");
-  const sync = () => { btn.hidden = V.reducedMotion(); if (V.reducedMotion() && state.heroAnimated) { state.heroAnimated = false; V.show(hero, "hero_levitar"); btn.textContent = t("hero.anim"); } };
-  sync(); V.onReducedMotionChange(sync);
-  btn.addEventListener("click", () => {
-    state.heroAnimated = !state.heroAnimated;
-    V.show(hero, state.heroAnimated ? "intro_embroidery" : "hero_levitar");
-    btn.textContent = t(state.heroAnimated ? "hero.still" : "hero.anim");
-  });
+  // la portada animada se ve de entrada; con movimiento reducido, V.show muestra su fotograma fijo
+  V.show($("#fig-hero"), "intro_embroidery");
+  V.show($("#fig-offer"), "report_reader");
 }
 
 function limitLanguages() {
@@ -709,9 +775,10 @@ function renderDonation() {
 
 function init() {
   // al imprimir, los datos técnicos plegados se incluyen completos
-  const more = document.querySelector(".more-tech"); let wasOpen = false;
-  window.addEventListener("beforeprint", () => { if (more) { wasOpen = more.open; more.open = true; } });
-  window.addEventListener("afterprint", () => { if (more) more.open = wasOpen; });
+  window.addEventListener("beforeprint", () => document.querySelectorAll(".more-tech").forEach((d) => { if (d.dataset.was === undefined) d.dataset.was = d.open ? "1" : ""; d.open = true; }));
+  window.addEventListener("afterprint", () => document.querySelectorAll(".more-tech").forEach((d) => { d.open = d.dataset.was === "1"; delete d.dataset.was; }));
+  setScreen("form", { push: false, top: false });
+  try { history.replaceState({ screen: "form" }, ""); } catch (e) { }
   const allowed = limitLanguages();
   const first = L.initialLang();
   L.setLang(allowed.includes(first) ? first : allowed[0]);
@@ -729,18 +796,29 @@ function init() {
     $("#payload-view").value = JSON.stringify(state.payload, null, 2);
   });
   try { const zones = Intl.supportedValuesOf("timeZone"); $("#tz-list").innerHTML = zones.map((z) => `<option value="${z}">`).join(""); } catch (e) { }
-  $("#place-q").addEventListener("focus", () => { loadCities().catch(() => { }); ensureEngine().catch(() => { }); }, { once: true });
-  $("#place-form-btn").addEventListener("click", doSearch);
-  $("#place-q").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doSearch(); } });
+  const pq = $("#place-q");
+  pq.addEventListener("focus", () => { loadCities().catch(() => { }); ensureEngine().catch(() => { }); }, { once: true });
+  let searchTimer = null, searchSeq = 0;
   async function doSearch() {
-    const q = $("#place-q").value; const box = $("#place-results");
-    box.hidden = false; box.innerHTML = `<p class="muted small">${esc(t("place.loading"))}</p>`;
-    const wf = $("#fig-wait"); let shown = false;
-    const timer = setTimeout(() => { shown = true; V.show(wf, "analysis_neural"); }, 250);
-    try { await loadCities(); } catch (e) { clearTimeout(timer); V.clear(wf); box.innerHTML = `<p class="note bad">${esc(t("place.fail"))}</p>`; return; }
-    clearTimeout(timer); if (shown) V.clear(wf);
-    renderPlaceResults(searchCities(q));
+    const q = pq.value.trim(), box = $("#place-results"), seq = ++searchSeq;
+    if (q.length < 2) { hidePlaceResults(); return; }
+    if (!cities) { box.hidden = false; box.innerHTML = `<li class="empty">${esc(t("place.loading"))}</li>`; }
+    try { await loadCities(); } catch (e) { box.hidden = false; box.innerHTML = `<li class="empty">${esc(t("place.fail"))}</li>`; return; }
+    if (seq !== searchSeq) return; // llegó una búsqueda más nueva
+    renderPlaceResults(searchCities(q).slice(0, 8));
   }
+  pq.addEventListener("input", () => {
+    if (state.place && state.place.source !== "MANUAL") { state.place = null; showPlace(); }
+    clearTimeout(searchTimer); searchTimer = setTimeout(doSearch, 120);
+  });
+  pq.addEventListener("keydown", (e) => {
+    const open = !$("#place-results").hidden && placeUI.list.length;
+    if (e.key === "ArrowDown" && open) { e.preventDefault(); movePlace(1); }
+    else if (e.key === "ArrowUp" && open) { e.preventDefault(); movePlace(-1); }
+    else if (e.key === "Enter") { e.preventDefault(); if (open && placeUI.active >= 0) choosePlace(placeUI.list[placeUI.active]); else doSearch(); }
+    else if (e.key === "Escape") hidePlaceResults();
+  });
+  pq.addEventListener("blur", () => setTimeout(hidePlaceResults, 150));
   $("#manual-coords-toggle").addEventListener("change", (e) => { $("#manual-coords").hidden = !e.target.checked; });
   $("#mc-apply").addEventListener("click", () => {
     const lat = parseFloat($("#mc-lat").value.replace(",", ".")), lon = parseFloat($("#mc-lon").value.replace(",", "."));
@@ -750,18 +828,26 @@ function init() {
   });
   $("#tz").addEventListener("change", () => { if (state.place) state.place.zone = $("#tz").value; });
   $("#use-manual-offset").addEventListener("change", (e) => { $("#manual-offset-row").hidden = !e.target.checked; });
-  $("#prec").addEventListener("change", (e) => { $("#btime").disabled = e.target.value === "UNKNOWN"; });
+  const syncTime = () => { const unk = $("#no-time").checked; $("#btime").disabled = unk; };
+  $("#no-time").addEventListener("change", (e) => { if (e.target.checked) $("#prec").value = "UNKNOWN"; else if ($("#prec").value === "UNKNOWN") $("#prec").value = "PM15"; syncTime(); });
+  $("#prec").addEventListener("change", (e) => { $("#no-time").checked = e.target.value === "UNKNOWN"; syncTime(); });
   $("#birth-form").addEventListener("submit", (e) => { e.preventDefault(); $("#ambig").hidden = true; calculate(); });
   $("#btn-copy-json").addEventListener("click", (e) => copyText(JSON.stringify(state.payload, null, 2), e.currentTarget));
   $("#btn-interp").addEventListener("click", callInterpreter);
   $("#btn-print").addEventListener("click", printSheet);
+  $("#btn-print-2").addEventListener("click", printSheet);
+  $("#btn-print-chart").addEventListener("click", printSheet);
+  $("#btn-edit").addEventListener("click", () => setScreen("form"));
+  $("#btn-to-chart").addEventListener("click", () => setScreen("chart"));
+  $("#btn-back-report").addEventListener("click", () => setScreen("report"));
+  $("#brand").addEventListener("click", (e) => { e.preventDefault(); setScreen("form"); });
   $("#btn-download").addEventListener("click", downloadSheet);
   $("#access-code").addEventListener("input", renderInterpretationChrome);
   $("#btn-example").addEventListener("click", loadExample);
 }
 
 function loadExample() {
-  $("#fname").value = t("f.fname.ph"); $("#bdate").value = "1990-07-14"; $("#btime").value = "15:20"; $("#prec").value = "PM15"; $("#btime").disabled = false;
+  $("#fname").value = t("f.fname.ph"); $("#bdate").value = "1990-07-14"; $("#btime").value = "15:20"; $("#prec").value = "PM15"; $("#no-time").checked = false; $("#btime").disabled = false;
   loadCities().then(() => { const c = searchCities("Hamburg")[0]; if (c) { choosePlace(c); calculate(); } });
 }
 
@@ -771,7 +857,7 @@ checkService();
 // demostración con varias cartas de prueba: un selector arriba del formulario
 function loadDemoCase(c) {
   $("#fname").value = c.first; $("#bdate").value = c.date; $("#btime").value = c.time || ""; $("#prec").value = c.precision;
-  $("#btime").disabled = c.precision === "UNKNOWN";
+  $("#btime").disabled = c.precision === "UNKNOWN"; $("#no-time").checked = c.precision === "UNKNOWN";
   $("#manual-coords-toggle").checked = true; $("#manual-coords").hidden = false;
   $("#mc-lat").value = c.lat; $("#mc-lon").value = c.lon; $("#mc-label").value = c.placeLabel;
   $("#mc-apply").click();

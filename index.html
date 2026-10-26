@@ -3,90 +3,155 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="fonts.css">
 <style>
-/* Layout: una columna de trabajo (formulario → ficha técnica → informe), como una hoja de cálculo astronómica impresa */
+/* Recorrido en tres pantallas: datos → carta (gratuita) → informe. Una sola pantalla visible a la vez (body[data-screen]). */
 :root {
-  --bg: #eceeea; --panel: #f7f8f5; --ink: #1c2230; --muted: #5d6573; --line: #c9cdc6;
-  --accent: #8a5a12; --hard: #9b2d36; --soft: #2f6a63; --warn-bg: #f3e7cf; --bad-bg: #f2d9da; --ok-bg: #dbe8e3;
+  --bg: #eceeea; --panel: #f7f8f5; --ink: #1c2230; --muted: #5d6573; --line: #c9cdc6; --field: #a9aea6;
+  --accent: #8a5a12; --hard: #9b2d36; --soft: #2f6a63; --warn-bg: #f3e7cf; --bad-bg: #f2d9da; --ok-bg: #dbe8e3; --pick: #f3e7cf;
+  --offer-bg: #1c2230; --offer-ink: #e3e5e0; --offer-muted: #c9cdc6; --offer-field: #11151c; --offer-btn: #d6a752;
   --f-display: "Bodoni Moda", "Didot", Georgia, serif;
   --f-body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   --f-glyph: "Noto Sans Symbols", "Noto Sans Symbols 2", "Segoe UI Symbol", "Apple Symbols", serif;
+  --gut: max(16px, env(safe-area-inset-left, 0px));
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #11151c; --panel: #181d26; --ink: #e3e5e0; --muted: #98a0ad; --line: #2c3340;
-  --accent: #d6a752; --hard: #e07a82; --soft: #7cc0b5; --warn-bg: #3a2f1a; --bad-bg: #3d2226; --ok-bg: #1d3330; color-scheme: dark } }
+  --bg: #11151c; --panel: #181d26; --ink: #e3e5e0; --muted: #98a0ad; --line: #2c3340; --field: #3a4252;
+  --accent: #d6a752; --hard: #e07a82; --soft: #7cc0b5; --warn-bg: #3a2f1a; --bad-bg: #3d2226; --ok-bg: #1d3330; --pick: #3a2f1a;
+  --offer-bg: #0b0e13; --offer-field: #181d26; color-scheme: dark } }
 :root[data-theme="dark"] {
-  --bg: #11151c; --panel: #181d26; --ink: #e3e5e0; --muted: #98a0ad; --line: #2c3340;
-  --accent: #d6a752; --hard: #e07a82; --soft: #7cc0b5; --warn-bg: #3a2f1a; --bad-bg: #3d2226; --ok-bg: #1d3330; color-scheme: dark }
+  --bg: #11151c; --panel: #181d26; --ink: #e3e5e0; --muted: #98a0ad; --line: #2c3340; --field: #3a4252;
+  --accent: #d6a752; --hard: #e07a82; --soft: #7cc0b5; --warn-bg: #3a2f1a; --bad-bg: #3d2226; --ok-bg: #1d3330; --pick: #3a2f1a;
+  --offer-bg: #0b0e13; --offer-field: #181d26; color-scheme: dark }
 
+html { -webkit-text-size-adjust: 100%; }
 body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 16px; line-height: 1.5; }
-.wrap { max-width: 980px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
 h1, h2, h3 { font-family: var(--f-display); font-weight: 500; text-wrap: balance; margin: 0; }
-h1 { font-size: clamp(2.1rem, 6vw, 3.2rem); letter-spacing: 0.02em; line-height: 1; }
-h2 { font-size: 1.55rem; }
-h3 { font-size: 1.15rem; }
 p { margin: 0; }
-.eyebrow { font-family: var(--f-data); font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
-.muted { color: var(--muted); } .small { font-size: 0.86rem; }
-header.top { display: grid; gap: 10px; border-bottom: 1px solid var(--ink); padding-bottom: 18px; }
-header.top .lede { max-width: 62ch; color: var(--muted); }
-#engine-state { font-family: var(--f-data); font-size: 0.75rem; color: var(--muted); }
-#engine-state[data-ok="1"]::before { content: "● "; color: var(--soft); }
-#engine-state[data-ok="0"]::before { content: "● "; color: var(--hard); }
+a { color: var(--accent); }
+.muted { color: var(--muted); } .small { font-size: 0.88rem; }
+.eyebrow { font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.wrap { max-width: 1080px; margin: 0 auto; padding-left: var(--gut); padding-right: max(16px, env(safe-area-inset-right, 0px)); box-sizing: border-box; }
 
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 20px; display: grid; gap: 16px; min-width: 0; }
-form { display: grid; gap: 18px; }
-.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 18px; }
-label.f { display: grid; gap: 4px; font-size: 0.9rem; font-weight: 600; min-width: 0; }
-label.f .hint { font-weight: 400; color: var(--muted); font-size: 0.8rem; }
-input, select, textarea { font: inherit; font-weight: 400; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 9px 10px; min-width: 0; width: 100%; box-sizing: border-box; }
-input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* barra superior */
+.bar { border-bottom: 1px solid var(--line); }
+.bar .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; }
+.brand { font-family: var(--f-display); font-size: 1.15rem; letter-spacing: 0.14em; color: var(--ink); text-decoration: none; }
+.bar-links { display: flex; align-items: center; gap: 16px; font-size: 0.92rem; }
+.langsel select { font-family: var(--f-data); font-size: 0.78rem; padding: 4px 6px; width: auto; }
+
+/* pantallas */
+body[data-screen="chart"] #screen-form, body[data-screen="report"] #screen-form, body:not([data-screen="chart"]) #screen-chart, body:not([data-screen="report"]) #screen-report { display: none; }
+
+/* campos y botones */
+form { display: grid; gap: 16px; }
+.fld { display: grid; gap: 4px; min-width: 0; }
+.fld > label, .lbl { font-weight: 600; font-size: 0.95rem; }
+.fld .hint, .lbl .hint { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
+input, select, textarea { font: inherit; font-size: 16px; color: var(--ink); background: var(--panel); border: 1px solid var(--field); border-radius: 6px; padding: 0 12px; min-width: 0; width: 100%; box-sizing: border-box; }
+input, select { height: 48px; }
+textarea { padding: 10px 12px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 input:disabled { opacity: 0.45; }
-.check { display: flex; gap: 8px; align-items: center; font-size: 0.9rem; }
-.check input { width: auto; }
-.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
-.row > * { min-width: 0; }
-.btn { font: inherit; font-weight: 600; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 3px; cursor: pointer; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.check { display: flex; gap: 10px; align-items: center; font-size: 0.95rem; color: var(--muted); min-height: 32px; }
+.check input { width: 20px; height: 20px; margin: 0; flex: 0 0 auto; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.btn { font: inherit; font-weight: 600; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); min-height: 48px; padding: 0 18px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+.btn.big { min-height: 52px; font-size: 1.05rem; width: 100%; }
 .btn.ghost { background: transparent; color: var(--ink); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-#place-results { display: grid; gap: 4px; max-height: 320px; overflow: auto; }
-.place-opt { text-align: left; font: inherit; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; cursor: pointer; display: grid; }
-.place-opt:hover { border-color: var(--accent); }
-.place-opt .pn { font-weight: 600; } .place-opt .pm { font-size: 0.8rem; color: var(--muted); font-family: var(--f-data); }
-#place-chosen { border-left: 3px solid var(--accent); padding: 6px 12px; display: grid; gap: 2px; }
-#pc-coords { font-family: var(--f-data); font-size: 0.82rem; color: var(--muted); }
-.note { padding: 10px 12px; border-radius: 3px; font-size: 0.92rem; }
+.linkbtn { font: inherit; background: none; border: 0; padding: 0; min-height: 44px; color: var(--accent); text-decoration: underline; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+.note { padding: 10px 12px; border-radius: 6px; font-size: 0.95rem; }
 .note.bad { background: var(--bad-bg); } .note.warn { background: var(--warn-bg); } .note.ok { background: var(--ok-bg); }
 #ambig { display: grid; gap: 8px; }
-details > summary { cursor: pointer; font-weight: 600; }
-details[open] > summary { margin-bottom: 10px; }
+details > summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::after { content: "+"; margin-left: auto; padding-left: 12px; font-weight: 400; color: var(--muted); font-size: 1.2rem; }
+details[open] > summary::after { content: "−"; }
 
-/* resultado */
-.r-head { display: grid; gap: 6px; }
-#r-meta { font-family: var(--f-data); font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
-#r-big3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.b3 { display: grid; gap: 2px; padding: 12px 14px 12px 0; }
-.b3 + .b3 { border-left: 1px solid var(--line); padding-left: 14px; }
-@media (max-width: 640px) { .b3 + .b3 { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); } }
-.b3 .lab { font-family: var(--f-data); font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
-.b3 .val { font-family: var(--f-display); font-size: 1.3rem; }
+/* ilustraciones */
+.art { margin: 0; min-width: 0; }
+.art img, .art video { display: block; width: 100%; height: auto; background: var(--panel); }
+.art figcaption { font-size: 0.75rem; color: var(--muted); font-style: italic; }
+
+/* lugar: sugerencias mientras se escribe */
+.place-box { position: relative; }
+#place-results { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid var(--field); border-radius: 6px; background: var(--panel); overflow: hidden; }
+#place-results li + li { border-top: 1px solid var(--line); }
+.place-opt { width: 100%; text-align: left; font: inherit; background: transparent; color: var(--ink); border: 0; padding: 10px 12px; min-height: 48px; cursor: pointer; display: block; }
+.place-opt:hover, .place-opt.on { background: var(--pick); }
+.place-opt .pn { font-weight: 600; } .place-opt .pm { color: var(--muted); }
+#place-results .empty { padding: 10px 12px; font-size: 0.9rem; color: var(--muted); }
+#place-chosen { font-size: 0.88rem; color: var(--muted); }
+#pc-coords { font-family: var(--f-data); font-size: 0.8rem; }
+
+/* pantalla 1: datos */
+#screen-form .layout { display: grid; gap: 0; }
+.hero { margin: 0 calc(-1 * var(--gut)); position: relative; }
+.hero .art img, .hero .art video { display: block; width: 100%; height: clamp(220px, 58vw, 340px); object-fit: cover; }
+.hero .art figcaption { position: absolute; right: 8px; bottom: 6px; font-size: 0.72rem; color: #fff; background: rgba(28, 34, 48, 0.55); padding: 2px 6px; font-style: normal; }
+.intro { display: grid; gap: 8px; padding: 22px 0 14px; }
+.intro h1 { font-size: clamp(2rem, 7vw, 2.6rem); line-height: 1.1; }
+.intro p { color: var(--muted); max-width: 52ch; }
+.form-col { padding-bottom: 32px; display: grid; gap: 16px; }
+.more-opts { border-top: 1px solid var(--line); }
+.more-opts .opts { display: grid; gap: 14px; padding: 4px 0 12px; }
+.calc-note { text-align: center; font-size: 0.88rem; color: var(--muted); }
+#engine-state { font-family: var(--f-data); font-size: 0.72rem; color: var(--muted); text-align: center; }
+#engine-state[data-ok="0"] { color: var(--hard); }
+.pilot { display: flex; align-items: center; gap: 14px; border: 1px dashed var(--line); border-radius: 6px; padding: 10px 14px; background: var(--panel); margin-top: 16px; }
+.pilot p { margin: 0; font-size: 0.92rem; }
+.art-pilot { flex: 0 0 auto; width: 76px; }
+.art-pilot figcaption { display: none; }
+.art-pilot video, .art-pilot img { aspect-ratio: 360 / 326; border-radius: 3px; }
+@media (min-width: 900px) {
+  #screen-form .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; padding-top: 32px; align-items: start; }
+  .hero { margin: 0; position: sticky; top: 24px; }
+  .hero .art img, .hero .art video { height: auto; aspect-ratio: 4 / 5; max-height: calc(100vh - 80px); }
+  .intro { padding-top: 0; }
+}
+
+/* pantalla 2: carta */
+.chart-head { display: grid; gap: 4px; padding: 22px 0 14px; }
+.chart-head h2 { font-size: clamp(2rem, 7vw, 2.8rem); line-height: 1.05; }
+#r-meta { color: var(--muted); font-size: 0.95rem; }
+#r-big3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.b3 { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: grid; gap: 1px; min-width: 0; }
+.b3 .lab { font-size: 0.8rem; color: var(--muted); }
+.b3 .val { font-family: var(--f-display); font-size: clamp(0.98rem, 4.2vw, 1.4rem); line-height: 1.2; hyphens: none; }
+.b3 .sub { font-size: 0.8rem; color: var(--muted); }
 .uns { color: var(--accent); font-family: var(--f-data); }
-.r-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
-@media (max-width: 760px) { .r-grid { grid-template-columns: minmax(0, 1fr); } }
-#wheel { max-width: 440px; width: 100%; margin: 0 auto; }
+#r-warn-box { margin-top: 14px; }
+#r-warn { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.chart-grid { display: grid; gap: 24px; padding: 18px 0 8px; }
+@media (min-width: 900px) { .chart-grid { grid-template-columns: minmax(0, 520px) minmax(0, 1fr); gap: 48px; align-items: start; } .chart-left { position: sticky; top: 16px; } }
+#wheel { max-width: 460px; width: 100%; margin: 0 auto; }
+.legend { text-align: center; font-size: 0.85rem; color: var(--muted); margin-top: 6px; }
 .wheel-svg { width: 100%; height: auto; display: block; }
 .w-ring { fill: none; stroke: var(--ink); stroke-width: 0.8; }
 .w-tick { stroke: var(--muted); stroke-width: 0.6; }
 .w-cusp { stroke: var(--line); stroke-width: 0.8; }
 .w-axis { stroke: var(--ink); stroke-width: 1.4; }
-.w-sign { fill: var(--muted); font-family: var(--f-glyph); font-size: 15px; }
+.w-sign { fill: var(--accent); font-family: var(--f-glyph); font-size: 15px; }
 .w-house { fill: var(--muted); font-family: var(--f-data); font-size: 9px; }
 .w-angle { fill: var(--accent); font-family: var(--f-data); font-size: 10px; font-weight: 500; }
 .w-body { fill: var(--ink); font-family: var(--f-glyph); font-size: 17px; }
 .w-body.r { fill: var(--accent); }
 .w-hard { stroke: var(--hard); stroke-width: 1; }
-.w-soft { stroke: var(--soft); stroke-width: 1; }
-.w-qx { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 3; }
+.w-soft { stroke: var(--soft); stroke-width: 1; stroke-dasharray: 3 2; }
+.w-qx { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 1 3; }
+.chart-right { display: grid; gap: 10px; min-width: 0; }
+.chart-right h3 { font-size: 1.45rem; }
+#t-pos { border-top: 1px solid var(--line); }
+.prow { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.prow .gl { font-family: var(--f-glyph); font-size: 1.15rem; text-align: center; }
+.prow .ph { color: var(--muted); }
+.prow .pd { font-family: var(--f-data); font-size: 0.82rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rx { font-family: var(--f-data); font-size: 0.75rem; color: var(--accent); margin-left: 4px; }
+.tech { display: grid; }
+.tech details { border-bottom: 1px solid var(--line); }
+.tech details > div { padding: 2px 0 16px; display: grid; gap: 8px; }
 .tbl-wrap { overflow-x: auto; min-width: 0; }
 table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
 th { text-align: left; font-family: var(--f-data); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--ink); padding: 4px 8px 4px 0; }
@@ -94,13 +159,6 @@ td { border-bottom: 1px solid var(--line); padding: 5px 8px 5px 0; vertical-alig
 td.num { font-family: var(--f-data); font-size: 0.84rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gl { font-family: var(--f-glyph); }
 tr.wide td { color: var(--muted); }
-#t-pos td:first-child { white-space: nowrap; }
-.top-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-.langsel select { font-family: var(--f-data); font-size: 0.78rem; letter-spacing: 0.08em; padding: 4px 6px; width: auto; }
-.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.rx { font-family: var(--f-data); font-size: 0.72rem; color: var(--accent); margin-left: 5px; }
-@media (max-width: 520px) { #t-pos .sec { display: none; } #t-pos { font-size: 0.86rem; } #t-pos td.num { font-size: 0.8rem; } #t-pos th, #t-pos td { padding-right: 6px; } }
-
 tr.tight td:first-child { font-weight: 600; }
 dl#t-struct { margin: 0; display: grid; }
 .srow { display: grid; grid-template-columns: minmax(120px, 30%) minmax(0, 1fr); gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
@@ -108,249 +166,323 @@ dl#t-struct { margin: 0; display: grid; }
 .srow dt { font-weight: 600; font-size: 0.9rem; }
 .srow dd { margin: 0; font-size: 0.92rem; overflow-wrap: anywhere; }
 .d-note { display: block; }
-#r-warn { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
-#r-warn code, #prov { font-family: var(--f-data); font-size: 0.75rem; }
 #sens ul { margin: 6px 0 0; padding-left: 18px; }
+#prov { font-family: var(--f-data); font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; }
 textarea#payload-view { font-family: var(--f-data); font-size: 0.75rem; min-height: 220px; }
 
-/* estado de autonomía */
-.auto-tbl td:first-child { width: 58%; }
-.pill { display: inline-block; font-family: var(--f-data); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
-.pill.ok { background: var(--ok-bg); } .pill.no { background: var(--bad-bg); } .pill.ext { background: var(--warn-bg); }
-.interp-box { border: 1px dashed var(--line); padding: 16px; border-radius: 4px; display: grid; gap: 12px; }
-.rep-sec { display: grid; gap: 10px; max-width: 68ch; }
-.rep-sec h3 { margin-top: 14px; }
-.rep-sec p { line-height: 1.6; }
-.rep-dedication { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 10px; }
-.rep-dedication h3 { font-size: 1rem; }
-.rep-dedication p { font-family: var(--f-display); font-style: italic; font-size: 1.1rem; }
-.art-section { max-width: 420px; }
-.art-section img, .art-section video { max-height: 420px; }
+/* oferta del informe */
+.offer { background: var(--offer-bg); color: var(--offer-ink); margin-top: 28px; }
+.offer .wrap { display: grid; gap: 0; padding-left: 0; padding-right: 0; }
+.offer .art { margin: 0; }
+.offer .art img, .offer .art video { display: block; width: 100%; height: clamp(200px, 56vw, 300px); object-fit: cover; background: #000; }
+.offer .art figcaption { display: none; }
+.offer-body { padding: 24px var(--gut) 30px; display: grid; gap: 14px; }
+.offer h2 { font-size: clamp(1.75rem, 6vw, 2.1rem); color: #f7f8f5; }
+.offer p, .offer li { color: var(--offer-muted); }
+.offer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 0.95rem; }
+.offer .fld > label, .offer .lbl { color: #f7f8f5; }
+.offer .fld .hint { color: #98a0ad; }
+.offer input, .offer select { background: var(--offer-field); color: #f7f8f5; border-color: #5d6573; }
+#access-code { font-family: var(--f-data); letter-spacing: 0.06em; text-transform: uppercase; }
+.offer .btn { background: var(--offer-btn); color: #1c2230; border-color: var(--offer-btn); }
+.offer .note { color: var(--ink); }
+.offer .disclaimer { font-size: 0.85rem; color: #98a0ad; }
+.offer details { border-top: 1px solid #2c3340; }
+.offer details > summary::after { color: #98a0ad; }
+.offer #interp-status { color: var(--ink); }
+@media (min-width: 900px) {
+  .offer .wrap { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding-left: var(--gut); padding-right: var(--gut); }
+  .offer .art { position: relative; min-height: 400px; overflow: hidden; }
+  .offer .art img, .offer .art video { position: absolute; inset: 0; height: 100%; }
+  .offer-body { padding: 40px 0 40px 48px; }
+}
+
+/* espera */
+#wait { position: fixed; inset: 0; z-index: 50; background: #11151c; color: #e3e5e0; overflow-y: auto; display: grid; padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
+#wait[hidden] { display: none; }
+.wait-in { max-width: 460px; width: 100%; margin: 0 auto; padding: 24px 20px 28px; box-sizing: border-box; display: grid; gap: 18px; align-content: start; text-align: center; }
+.wait-brand { font-family: var(--f-display); letter-spacing: 0.14em; color: #c9cdc6; }
+.wait-in .art { margin: 0 auto; width: min(200px, 55vw); }
+.wait-in .art figcaption { display: none; }
+.wait-in .art img, .wait-in .art video { display: block; width: 100%; height: auto; border-radius: 4px; }
+#wait-who { color: #98a0ad; }
+#wait-clock { font-family: var(--f-data); font-weight: 500; font-size: clamp(3.4rem, 18vw, 4.4rem); line-height: 1; color: #f7f8f5; font-variant-numeric: tabular-nums; }
+.wait-steps { color: #c9cdc6; font-size: 0.95rem; text-align: left; }
+.wait-alert { background: #3a2f1a; border-radius: 8px; padding: 14px 16px; text-align: left; display: grid; gap: 6px; }
+.wait-alert strong { color: #f0c77a; }
+.wait-alert p { font-size: 0.95rem; }
+.about-report { text-align: left; border-top: 1px solid #2c3340; }
+.about-report > summary { color: #e3e5e0; }
+.about-report .about-body { display: grid; gap: 10px; font-size: 0.95rem; color: #c9cdc6; padding-bottom: 8px; }
+.about-report a { color: #d6a752; }
+
+/* pantalla 3: informe */
+.rep-bar { position: sticky; top: 0; z-index: 10; background: var(--panel); border-bottom: 1px solid var(--line); }
+.rep-bar .wrap { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 60px; }
+.rep-bar .btn { min-height: 44px; padding: 0 14px; }
+.reading { max-width: 680px; margin: 0 auto; padding: 0 var(--gut) 40px; box-sizing: border-box; background: var(--panel); }
+body[data-screen="report"] { background: var(--panel); }
+.rep-head { text-align: center; padding: 40px 0 20px; display: grid; gap: 10px; }
+.rep-head h1 { font-style: italic; font-size: clamp(2rem, 8vw, 2.8rem); line-height: 1.12; }
+#rep-meta { font-size: 0.9rem; color: var(--muted); }
+.rep-index { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+.rep-index ol { margin: 0; padding: 0 0 12px 20px; display: grid; gap: 4px; }
+#report-out { display: grid; gap: 0; }
+.rep-sec { display: grid; gap: 14px; padding: 0 0 30px; font-size: 1.06rem; line-height: 1.65; }
+.rep-sec h2 { font-size: clamp(1.45rem, 5.5vw, 1.75rem); line-height: 1.22; }
+.rep-sec .art { margin: 0 calc(-1 * var(--gut)); }
+.rep-sec .art img, .rep-sec .art video { display: block; width: 100%; height: auto; max-height: 520px; object-fit: cover; }
+.rep-sec .art figcaption { font-size: 0.75rem; color: var(--muted); font-style: italic; padding: 4px var(--gut) 0; }
+.rep-myth { background: var(--bg); margin: 0 calc(-1 * var(--gut)) 30px; padding: 0 var(--gut) 30px; }
+.rep-myth .art { margin-bottom: 4px; }
+.rep-dedication { text-align: center; padding: 10px 12px 34px; }
+.rep-dedication h2 { font-size: 0.85rem; font-family: var(--f-body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.rep-dedication p { font-family: var(--f-display); font-style: italic; font-size: 1.25rem; line-height: 1.5; }
+#fig-closure { margin: 0 calc(-1 * var(--gut)) 20px; }
+#fig-closure img { display: block; width: 100%; height: auto; }
+#fig-closure figcaption { font-size: 0.75rem; color: var(--muted); font-style: italic; padding: 4px var(--gut) 0; }
+.rep-end { display: grid; gap: 14px; }
 #audit-out ul { margin: 8px 0; padding-left: 18px; display: grid; gap: 4px; }
-#report-out { display: grid; gap: 8px; }
-header.top { grid-template-columns: minmax(0, 1fr) auto; align-items: end; column-gap: 28px; }
-.top-text { display: grid; gap: 10px; min-width: 0; }
-.hero-col { display: grid; gap: 6px; justify-items: end; }
-@media (max-width: 640px) { header.top { grid-template-columns: minmax(0, 1fr); } .hero-col { justify-items: start; } }
-.art { margin: 0; display: grid; gap: 4px; min-width: 0; }
-.art img, .art video { display: block; width: 100%; height: auto; background: var(--panel); }
-.art .print-only { display: none; }
-.art figcaption { font-size: 0.72rem; color: var(--muted); font-style: italic; }
-.art-hero { width: min(240px, 60vw); }
-.art-hero img, .art-hero video { aspect-ratio: 1 / 1; }
-.art-wait { width: min(180px, 50vw); }
-.art-eyes { width: min(200px, 100%); }
-.r-head-row { display: flex; flex-wrap: wrap; gap: 16px 24px; justify-content: space-between; align-items: end; }
-.r-head-row .r-head { flex: 1 1 320px; min-width: 0; }
-.art-wide { max-width: 640px; }
-.art-wide img { aspect-ratio: 2 / 1; }
-.pilot { display: flex; align-items: center; gap: 14px; border: 1px dashed var(--line); border-radius: 4px; padding: 10px 14px; background: var(--panel); }
-.pilot p { margin: 0; font-size: 0.9rem; }
-.art-pilot { flex: 0 0 auto; width: 84px; }
-.art-pilot figcaption { display: none; }
-.art-pilot video, .art-pilot img { aspect-ratio: 360 / 326; border-radius: 3px; }
-.about-report .about-body { display: grid; gap: 10px; max-width: 68ch; font-size: 0.95rem; }
-.about-report .about-body p { margin: 0; }
-.feedback { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 16px; max-width: 68ch; }
-.feedback h3 { margin: 0; }
-.feedback textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg, #fff); color: inherit; resize: vertical; }
-.linkbtn { font: inherit; font-size: 0.8rem; background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; }
-footer a, .credit a { color: var(--accent); }
-.credit { font-size: 0.86rem; color: var(--ink); }
-footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 14px; }
+.feedback { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 16px; background: var(--bg); }
+.feedback h3 { font-size: 1.2rem; }
+.rep-disclaimer { font-size: 0.85rem; color: var(--muted); }
+@media (min-width: 720px) { .rep-sec .art, .rep-myth, #fig-closure { margin-left: 0; margin-right: 0; } .rep-myth { padding-left: 24px; padding-right: 24px; } .rep-sec .art figcaption, #fig-closure figcaption { padding-left: 0; } }
+
+/* aportes y pie */
+.donation { margin: 28px auto 0; display: grid; gap: 10px; }
+footer { border-top: 1px solid var(--line); margin-top: 32px; }
+footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px; padding-top: 16px; padding-bottom: 32px; }
+.credit { color: var(--ink); }
+.art .print-only { display: none !important; }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
-.save-box { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 14px; }
-.disclaimer { max-width: 68ch; }
-#ts-box { min-height: 65px; }
+
 @media print {
   :root { --bg: #fff; --panel: #fff; --ink: #000; --muted: #444; --line: #bbb; color-scheme: light; }
-  body { background: #fff; font-size: 11pt; }
-  .wrap { padding: 0; gap: 14px; max-width: none; }
-  .hero-col, .top-bar .langsel, #engine-state, section[aria-labelledby="h-datos"], section[aria-labelledby="h-auto"],
-  .btn, .row, details:not(.more-tech), #interp-missing, #interp-conn-text, #interp-status, #interp-unavail, #code-row, #ts-box, #demo-note, #demo-which-row,
-  .art, .save-box, .donation, .pilot, .feedback, .about-report { display: none !important; }
-  .more-tech > summary { display: none; }
-  /* las ilustraciones del informe sí se imprimen; de las animaciones sale el fotograma fijo */
-  #report-out .art:not([hidden]), #fig-closure:not([hidden]) { display: block !important; max-width: 11cm; margin: 6px 0; break-inside: avoid; page-break-inside: avoid; }
-  #report-out .art img, #fig-closure img { max-height: 9cm; width: auto; max-width: 100%; }
-  #report-out .art video, #fig-closure video { display: none !important; }
+  body, body[data-screen="report"] { background: #fff; font-size: 11pt; }
+  .bar, #screen-form, .offer, #wait, .rep-bar, .rep-index, .feedback, .donation, .pilot, .btn, .linkbtn, .no-print, #ts-box { display: none !important; }
+  /* desde el informe se imprime el informe y, a continuación, la carta completa */
+  body[data-screen="report"] #screen-chart { display: block !important; break-before: page; }
+  .chart-grid { display: block; }
+  .chart-left { position: static; }
+  #wheel { max-width: 12cm; }
+  .tech details > summary::after { content: ""; }
+  .reading { max-width: none; padding: 0; }
+  .rep-sec { break-inside: auto; }
+  .rep-sec h2 { break-after: avoid; }
+  .rep-sec .art, #fig-closure, .rep-myth { margin: 6px 0; }
+  .rep-sec .art img, #fig-closure img { max-height: 9cm; width: auto; max-width: 100%; }
+  .rep-sec .art video, #fig-closure video { display: none !important; }
   .art .print-only { display: block !important; }
-  .panel { border: 0; padding: 0; }
-  .interp-box { border: 0; padding: 0; }
-  .rep-sec { max-width: none; break-inside: auto; }
-  .rep-sec h3 { break-after: avoid; }
-  table, .srow { break-inside: avoid; }
+  table, .srow, .prow { break-inside: avoid; }
   a { color: inherit; text-decoration: none; }
 }
 </style>
 
-<div class="wrap">
-  <header class="top">
-    <div class="top-text">
-      <div class="top-bar">
-        <span class="eyebrow" data-i18n="eyebrow">Astrología psicológica · cálculo natal</span>
-        <label class="langsel"><span class="sr" data-i18n="ui.lang">Idioma</span><select id="ui-lang" aria-label="Idioma / Sprache / Language"><option value="es">ES</option><option value="de">DE</option><option value="en">EN</option></select></label>
-      </div>
-      <h1>ASTROINFORME</h1>
-      <p class="lede" data-i18n="lede">Calcula la carta natal con Swiss Ephemeris directamente en este dispositivo: posiciones, casas Placidus, aspectos, estructura de la carta y sensibilidad a la hora. Los datos no se envían a ningún servidor.</p>
-      <span id="engine-state" data-i18n="engine.loading">Cargando el motor de cálculo…</span>
+<header class="bar">
+  <div class="wrap">
+    <a href="#" class="brand" id="brand">ASTROINFORME</a>
+    <div class="bar-links">
+      <label class="langsel"><span class="sr" data-i18n="ui.lang">Idioma</span><select id="ui-lang" aria-label="Idioma / Sprache / Language"><option value="es">ES</option><option value="de">DE</option><option value="en">EN</option></select></label>
     </div>
-    <div class="hero-col">
-      <figure id="fig-hero" class="art art-hero" hidden></figure>
-      <button type="button" class="linkbtn" id="btn-hero-anim" hidden>Ver portada animada</button>
-    </div>
-  </header>
+  </div>
+</header>
 
-  <aside id="pilot" class="pilot" hidden>
-    <figure id="fig-pilot" class="art art-pilot" hidden></figure>
-    <p data-i18n="pilot.text"></p>
-  </aside>
-
-  <section class="panel" aria-labelledby="h-datos">
-    <h2 id="h-datos" data-i18n="h.data">Datos de nacimiento</h2>
-    <form id="birth-form" novalidate>
-      <div class="grid2">
-        <label class="f"><span data-i18n="f.fname">Nombre de pila</span> <span class="hint" data-i18n="f.fname.hint">Opcional. Solo para el encabezado.</span><input id="fname" autocomplete="off" placeholder="Ana" data-i18n-ph="f.fname.ph"></label>
-        <label class="f"><span data-i18n="f.lang">Idioma del informe</span> <span class="hint" data-i18n="f.lang.hint">Se registra en el contrato de datos.</span>
-          <select id="lang"><option value="es">Español (voseo)</option><option value="de">Deutsch (du)</option><option value="en">English</option></select></label>
-        <label class="f"><span data-i18n="f.gender">Tratamiento en el informe</span> <span class="hint" data-i18n="f.gender.hint">Opcional.</span>
-          <select id="gender"><option value="UNSPECIFIED" data-i18n="gender.UNSPECIFIED">Sin indicar (formas sin género)</option><option value="FEMININE" data-i18n="gender.FEMININE">Femenino</option><option value="MASCULINE" data-i18n="gender.MASCULINE">Masculino</option><option value="NEUTRAL" data-i18n="gender.NEUTRAL">Neutro</option></select></label>
-        <label class="f"><span data-i18n="f.date">Fecha</span> <span class="hint" data-i18n="f.date.hint">Calendario gregoriano, 1800–2399.</span><input id="bdate" type="date" min="1800-01-01" max="2399-12-31" required></label>
-        <label class="f"><span data-i18n="f.time">Hora local del acta</span> <input id="btime" type="time" step="60"></label>
-        <label class="f"><span data-i18n="f.prec">Precisión de la hora</span>
-          <select id="prec"><option value="EXACT" data-i18n="prec.EXACT">Exacta (±4 min)</option><option value="PM15" selected data-i18n="prec.PM15">Aproximada ±15 min</option><option value="PM30" data-i18n="prec.PM30">Aproximada ±30 min</option><option value="PM60" data-i18n="prec.PM60">Aproximada ±60 min</option><option value="UNKNOWN" data-i18n="prec.UNKNOWN">Desconocida</option></select></label>
+<!-- 1 · datos -->
+<main id="screen-form" class="wrap">
+  <div class="layout">
+    <div class="hero"><figure id="fig-hero" class="art" hidden></figure></div>
+    <div>
+      <aside id="pilot" class="pilot" hidden>
+        <figure id="fig-pilot" class="art art-pilot" hidden></figure>
+        <p data-i18n="pilot.text"></p>
+      </aside>
+      <div class="intro">
+        <h1 data-i18n="form.h">Tu carta natal</h1>
+        <p data-i18n="form.lede"></p>
       </div>
-
-      <div class="grid2">
-        <div style="display:grid;gap:8px;min-width:0">
-          <label class="f" for="place-q"><span data-i18n="f.place">Lugar de nacimiento</span> <span class="hint" data-i18n="f.place.hint">Ciudad o pueblo de más de 1000 habitantes. Para distinguir homónimos: «Córdoba, Argentina».</span></label>
-          <div class="row"><input id="place-q" autocomplete="off" placeholder="Buenos Aires" data-i18n-ph="f.place.ph" style="flex:1 1 180px"><button type="button" class="btn ghost" id="place-form-btn" data-i18n="btn.search">Buscar</button></div>
-          <div id="place-results" hidden></div>
-          <div id="place-chosen" hidden><strong id="pc-label"></strong><span id="pc-coords"></span></div>
-        </div>
-        <div style="display:grid;gap:10px;min-width:0;align-content:start">
-          <label class="f"><span data-i18n="f.tz">Zona horaria (IANA)</span> <span class="hint" data-i18n="f.tz.hint">Se completa con el lugar. Cambiala solo si sabés que corresponde otra.</span><input id="tz" list="tz-list" autocomplete="off" placeholder="America/Argentina/Buenos_Aires"><datalist id="tz-list"></datalist></label>
-          <label class="check"><input type="checkbox" id="use-manual-offset"> <span data-i18n="f.useOffset">Cargar el desfase horario a mano</span></label>
-          <label class="f" id="manual-offset-row" hidden><span data-i18n="f.offset">Desfase respecto de UTC</span> <span class="hint" data-i18n="f.offset.hint">Ejemplo: -3, +1, -3:30. Reemplaza la base de zonas.</span><input id="manual-offset" placeholder="-3"></label>
-          <label class="check"><input type="checkbox" id="manual-coords-toggle"> <span data-i18n="f.useCoords">Cargar coordenadas a mano</span></label>
-          <div id="manual-coords" hidden style="display:grid;gap:8px">
-            <div class="row"><input id="mc-lat" inputmode="decimal" placeholder="Latitud, sur negativa: -34.6037" data-i18n-ph="ph.lat" style="flex:1 1 150px"><input id="mc-lon" inputmode="decimal" placeholder="Longitud, oeste negativa: -58.3816" data-i18n-ph="ph.lon" style="flex:1 1 150px"></div>
-            <div class="row"><input id="mc-label" placeholder="Nombre del lugar (opcional)" data-i18n-ph="ph.placeLabel" style="flex:1 1 180px"><button type="button" class="btn ghost" id="mc-apply" data-i18n="btn.useCoords">Usar coordenadas</button></div>
+      <div class="form-col">
+        <form id="birth-form" novalidate>
+          <div class="fld"><label for="fname"><span data-i18n="f.fname">Nombre de pila</span> <span class="hint" data-i18n="f.optional">(opcional)</span></label><input id="fname" autocomplete="given-name" placeholder="Ana" data-i18n-ph="f.fname.ph"></div>
+          <div class="pair">
+            <div class="fld"><label for="bdate" data-i18n="f.date">Fecha</label><input id="bdate" type="date" min="1800-01-01" max="2399-12-31" required></div>
+            <div class="fld"><label for="btime" data-i18n="f.timeShort">Hora</label><input id="btime" type="time" step="60"></div>
           </div>
-        </div>
-      </div>
+          <label class="check"><input type="checkbox" id="no-time"> <span data-i18n="f.noTime">No sé la hora</span></label>
+          <div class="fld place-box">
+            <label for="place-q" data-i18n="f.place">Lugar de nacimiento</label>
+            <input id="place-q" autocomplete="off" spellcheck="false" placeholder="Buenos Aires" data-i18n-ph="f.place.ph" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="place-results">
+            <ul id="place-results" role="listbox" hidden></ul>
+            <p id="place-chosen" hidden><span id="pc-label"></span> · <span id="pc-coords"></span></p>
+            <p class="hint" data-i18n="f.place.hint"></p>
+          </div>
 
-      <figure id="fig-wait" class="art art-wait" hidden></figure>
-      <div id="ambig" class="note warn" hidden></div>
-      <div id="form-error" class="note bad" hidden></div>
-      <div class="row"><button type="submit" class="btn" data-i18n="btn.calc">Calcular la carta</button><button type="button" class="btn ghost" id="btn-example" data-i18n="btn.example">Ver un ejemplo</button></div>
-    </form>
-  </section>
+          <details class="more-opts" id="more-opts">
+            <summary data-i18n="f.more">Más opciones</summary>
+            <div class="opts">
+              <div class="fld"><label for="prec" data-i18n="f.prec">Precisión de la hora</label>
+                <select id="prec"><option value="EXACT" data-i18n="prec.EXACT">Exacta (±4 min)</option><option value="PM15" selected data-i18n="prec.PM15">Aproximada ±15 min</option><option value="PM30" data-i18n="prec.PM30">Aproximada ±30 min</option><option value="PM60" data-i18n="prec.PM60">Aproximada ±60 min</option><option value="UNKNOWN" data-i18n="prec.UNKNOWN">Desconocida</option></select></div>
+              <div class="fld" id="lang-row"><label for="lang" data-i18n="f.lang">Idioma del informe</label>
+                <select id="lang"><option value="es">Español (voseo)</option><option value="de">Deutsch (du)</option><option value="en">English</option></select></div>
+              <div class="fld"><label for="tz"><span data-i18n="f.tz">Zona horaria (IANA)</span> <span class="hint" data-i18n="f.tz.hint"></span></label><input id="tz" list="tz-list" autocomplete="off" placeholder="America/Argentina/Buenos_Aires"><datalist id="tz-list"></datalist></div>
+              <label class="check"><input type="checkbox" id="use-manual-offset"> <span data-i18n="f.useOffset">Cargar el desfase horario a mano</span></label>
+              <div class="fld" id="manual-offset-row" hidden><label for="manual-offset"><span data-i18n="f.offset">Desfase respecto de UTC</span> <span class="hint" data-i18n="f.offset.hint"></span></label><input id="manual-offset" placeholder="-3"></div>
+              <label class="check"><input type="checkbox" id="manual-coords-toggle"> <span data-i18n="f.useCoords">Cargar coordenadas a mano</span></label>
+              <div id="manual-coords" hidden style="display:grid;gap:8px">
+                <div class="pair"><input id="mc-lat" inputmode="decimal" aria-label="Latitud" placeholder="-34.6037" data-i18n-ph="ph.lat"><input id="mc-lon" inputmode="decimal" aria-label="Longitud" placeholder="-58.3816" data-i18n-ph="ph.lon"></div>
+                <input id="mc-label" aria-label="Nombre del lugar" placeholder="Nombre del lugar (opcional)" data-i18n-ph="ph.placeLabel">
+                <button type="button" class="btn ghost" id="mc-apply" data-i18n="btn.useCoords">Usar coordenadas</button>
+              </div>
+            </div>
+          </details>
 
-  <section id="result" hidden style="display:grid;gap:28px">
-    <div class="panel">
-      <div class="r-head-row">
-        <div class="r-head">
-          <span class="eyebrow" data-i18n="r.eyebrow">Ficha técnica calculada</span>
-          <h2 id="r-title">Carta natal</h2>
-          <p id="r-meta"></p>
-        </div>
-        <figure id="fig-eyes" class="art art-eyes" hidden></figure>
+          <figure id="fig-wait" class="art" hidden style="width:min(160px,45vw);margin:0 auto"></figure>
+          <div id="ambig" class="note warn" hidden></div>
+          <div id="form-error" class="note bad" hidden role="alert"></div>
+          <button type="submit" class="btn big" data-i18n="btn.calc">Calcular mi carta</button>
+          <p class="calc-note" data-i18n="form.private">La fecha, la hora y el lugar no salen de tu dispositivo.</p>
+          <div class="row" style="justify-content:center"><button type="button" class="linkbtn" id="btn-example" data-i18n="btn.example">Ver un ejemplo</button></div>
+          <p id="engine-state" data-i18n="engine.loading">Cargando el motor de cálculo…</p>
+        </form>
       </div>
-      <div id="r-big3"></div>
-      <div id="r-warn-box" class="note warn" hidden><ul id="r-warn"></ul></div>
-      <div class="r-grid">
+    </div>
+  </div>
+</main>
+
+<!-- 2 · carta gratuita y pedido del informe -->
+<main id="screen-chart">
+  <div class="wrap">
+    <div class="chart-head">
+      <span class="eyebrow" data-i18n="r.eyebrow">Carta natal de</span>
+      <h2 id="r-title">Carta natal</h2>
+      <p id="r-meta"></p>
+      <div class="row no-print"><button type="button" class="linkbtn" id="btn-edit" data-i18n="btn.edit">Editar datos</button></div>
+    </div>
+    <div id="r-big3"></div>
+    <div id="r-warn-box" class="note warn" hidden><ul id="r-warn"></ul></div>
+
+    <div class="chart-grid">
+      <div class="chart-left">
         <div id="wheel"></div>
-        <div class="tbl-wrap"><table id="t-pos"></table></div>
+        <p class="legend" data-i18n="wheel.legend">Líneas continuas: tensiones. Líneas punteadas: armonías.</p>
       </div>
-      <details class="more-tech">
-      <summary data-i18n="r.more">Ver más datos técnicos (aspectos, casas, estructura y sensibilidad a la hora)</summary>
-      <div style="display:grid;gap:28px;margin-top:16px">
-      <div class="r-grid">
-        <div style="display:grid;gap:8px;min-width:0"><h3 data-i18n="h.aspects">Aspectos</h3><p class="small muted" data-i18n="aspects.note">Política orbes_v1: cinco mayores y quincuncio. En negrita, orbe hasta 2°; atenuados, más de 5°.</p><div class="tbl-wrap"><table id="t-asp"></table></div></div>
-        <div style="display:grid;gap:14px;min-width:0">
-          <div id="houses-block" style="display:grid;gap:8px"><h3 data-i18n="h.houses">Casas</h3><p class="small muted"><span data-i18n="houses.sys">Sistema</span>: <span id="houses-sys"></span>. <span data-i18n="houses.note">Regencias modernas con co-regentes tradicionales.</span></p><div class="tbl-wrap"><table id="t-houses"></table></div></div>
+      <div class="chart-right">
+        <h3 data-i18n="r.where">Dónde está cada planeta</h3>
+        <div id="t-pos"></div>
+        <p class="small muted" id="pos-note"></p>
+        <div class="tech">
+          <details class="more-tech"><summary data-i18n="h.aspects">Aspectos</summary><div><p class="small muted" data-i18n="aspects.note"></p><div class="tbl-wrap"><table id="t-asp"></table></div></div></details>
+          <details class="more-tech" id="houses-block"><summary data-i18n="h.houses">Casas</summary><div><p class="small muted"><span data-i18n="houses.sys">Sistema</span>: <span id="houses-sys"></span>. <span data-i18n="houses.note"></span></p><div class="tbl-wrap"><table id="t-houses"></table></div></div></details>
+          <details class="more-tech"><summary data-i18n="h.structure">Estructura de la carta</summary><div><dl id="t-struct"></dl></div></details>
+          <details class="more-tech"><summary data-i18n="h.sensitivity">Qué cambia si la hora no es exacta</summary><div><div id="sens" class="small"></div></div></details>
+          <details class="more-tech no-print"><summary data-i18n="i.contract">Datos calculados (JSON)</summary><div><textarea id="payload-view" readonly aria-label="Datos calculados en JSON" data-i18n-aria="i.contract.aria"></textarea><div class="row"><button type="button" class="btn ghost" id="btn-copy-json" data-i18n="btn.copyJson">Copiar datos (JSON)</button></div></div></details>
         </div>
+        <p id="prov"></p>
+        <div class="row no-print"><button type="button" class="linkbtn" id="btn-print-chart">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 19h16"/></svg>
+          <span data-i18n="btn.printChart">Guardar la carta en PDF</span></button></div>
       </div>
-      <div style="display:grid;gap:8px"><h3 data-i18n="h.structure">Estructura de la carta</h3><dl id="t-struct"></dl></div>
-      <div style="display:grid;gap:8px"><h3 data-i18n="h.sensitivity">Sensibilidad a la hora</h3><div id="sens" class="small"></div></div>
-      <p id="prov" class="muted"></p>
-      </div>
-      </details>
     </div>
+  </div>
 
-    <div class="panel" aria-labelledby="h-interp">
-      <span class="eyebrow" data-i18n="i.eyebrow">Informe psicológico</span>
-      <h2 id="h-interp" data-i18n="i.h">Interpretación</h2>
-      <p class="small muted disclaimer" data-i18n="disclaimer"></p>
-      <div id="interp-missing" class="interp-box">
-        <p data-i18n-html="i.missing"><strong>El motor interpretativo no está conectado en esta versión.</strong></p>
-        <p class="small muted" data-i18n="i.missing2">Mientras tanto podés llevarte la carta calculada completa en formato de datos (JSON).</p>
-        <div class="row"><button type="button" class="btn ghost" id="btn-copy-json" data-i18n="btn.copyJson">Copiar datos (JSON)</button></div>
-      </div>
-      <div id="interp-connected" class="interp-box" hidden>
-        <p id="interp-conn-text" data-i18n="i.conn">Motor interpretativo conectado. Se envía solo la carta calculada (nombre de pila opcional, sin apellido).</p>
-        <p id="interp-unavail" class="note warn" hidden data-i18n="i.unavailable"></p>
-        <label class="f" id="code-row" hidden><span id="code-label" data-i18n="f.code">Código de acceso</span> <span class="hint" id="code-hint" data-i18n="f.code.hint">Te lo da quien administra ASTROINFORME.</span><input id="access-code" autocomplete="off" autocapitalize="characters" spellcheck="false" style="max-width:16rem"></label>
-        <div id="ts-box" hidden></div>
-        <div class="row"><button type="button" class="btn" id="btn-interp" data-i18n="btn.interp">Generar el informe</button></div>
-        <p id="demo-note" class="note warn" hidden data-i18n-html="demo.note"><strong>Simulación.</strong></p>
-        <label class="f" id="demo-which-row" hidden><span data-i18n="demo.which">Informe a cargar</span><select id="demo-which"></select></label>
-        <p id="interp-status" class="muted" hidden></p>
-        <details id="about-report" class="about-report"><summary data-i18n="about.sum">Sobre este informe</summary><div class="about-body" data-i18n-html="about.body"></div></details>
-        <figure id="fig-reader" class="art art-wide" hidden></figure>
-        <div id="audit-out" class="note" hidden></div>
-        <div id="report-out" hidden></div>
-        <figure id="fig-closure" class="art art-wide" hidden></figure>
-        <div id="feedback-box" class="feedback" hidden>
-          <h3 data-i18n="fb.h">Tu opinión sobre el informe</h3>
-          <p class="small muted" data-i18n="fb.note"></p>
-          <textarea id="fb-text" rows="7" data-i18n-ph="fb.ph" data-i18n-aria="fb.h"></textarea>
-          <div class="row"><button type="button" class="btn" id="btn-fb" data-i18n="btn.fb" disabled>Enviar comentario</button><span id="fb-count" class="small muted"></span></div>
-          <p id="fb-status" class="small" hidden></p>
+  <section class="offer" id="offer" aria-labelledby="h-interp">
+    <div class="wrap">
+      <figure id="fig-offer" class="art" hidden></figure>
+      <div class="offer-body">
+        <h2 id="h-interp" data-i18n="i.h">Tu informe personal</h2>
+        <p data-i18n="i.what"></p>
+        <ul><li data-i18n="i.b1"></li><li data-i18n="i.b2"></li><li data-i18n="i.b3"></li></ul>
+        <div id="interp-missing" hidden>
+          <p data-i18n-html="i.missing"></p>
         </div>
+        <div id="interp-connected" style="display:grid;gap:14px" hidden>
+          <p id="interp-unavail" class="note warn" hidden data-i18n="i.unavailable"></p>
+          <div class="fld" id="code-row" hidden><label for="access-code"><span id="code-label" data-i18n="f.code">Código de acceso</span> <span class="hint" id="code-hint" data-i18n="f.code.hint"></span></label><input id="access-code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX"></div>
+          <div class="fld"><label for="gender"><span data-i18n="f.gender">Tratamiento en el informe</span> <span class="hint" data-i18n="f.gender.hint"></span></label>
+            <select id="gender"><option value="UNSPECIFIED" data-i18n="gender.UNSPECIFIED">Sin indicar (formas sin género)</option><option value="FEMININE" data-i18n="gender.FEMININE">Femenino</option><option value="MASCULINE" data-i18n="gender.MASCULINE">Masculino</option><option value="NEUTRAL" data-i18n="gender.NEUTRAL">Neutro</option></select></div>
+          <div id="ts-box" hidden></div>
+          <p id="demo-note" class="note warn" hidden data-i18n-html="demo.note"></p>
+          <div class="fld" id="demo-which-row" hidden><label for="demo-which" data-i18n="demo.which">Informe a cargar</label><select id="demo-which"></select></div>
+          <button type="button" class="btn big" id="btn-interp" data-i18n="btn.interp">Pedir mi informe</button>
+          <p id="interp-status" class="note warn" hidden role="status"></p>
+          <button type="button" class="linkbtn" id="btn-back-report" hidden data-i18n="btn.backReport">Volver al informe</button>
+        </div>
+        <p class="disclaimer" data-i18n="disclaimer"></p>
       </div>
-      <div class="save-box">
-        <h3 data-i18n="save.h">Guardar</h3>
-        <p class="small muted" data-i18n="save.note"></p>
-        <div class="row"><button type="button" class="btn ghost" id="btn-print" data-i18n="btn.print">Imprimir o guardar en PDF</button><button type="button" class="btn ghost" id="btn-download" data-i18n="btn.download">Descargar (archivo HTML)</button></div>
-      </div>
-      <details><summary data-i18n="i.contract">Ver el contrato de datos (astroinforme.chart/v1)</summary><textarea id="payload-view" readonly aria-label="Datos calculados en JSON" data-i18n-aria="i.contract.aria"></textarea></details>
     </div>
   </section>
+</main>
 
-  <section class="panel" aria-labelledby="h-auto">
-    <h2 id="h-auto" data-i18n="auto.h">Qué funciona por sí solo</h2>
-    <div class="tbl-wrap"><table class="auto-tbl">
-      <tbody>
-        <tr><td data-i18n="auto.1"></td><td><span class="pill ok" data-i18n="pill.ok">Autónomo</span></td></tr>
-        <tr><td data-i18n="auto.2"></td><td><span class="pill ok" data-i18n="pill.ok">Autónomo</span></td></tr>
-        <tr><td data-i18n="auto.3"></td><td><span class="pill ok" data-i18n="pill.ok">Autónomo</span></td></tr>
-        <tr><td data-i18n="auto.4"></td><td><span class="pill ok" data-i18n="pill.ok">Autónomo</span></td></tr>
-        <tr><td data-i18n="auto.5"></td><td><span class="pill ok" data-i18n="pill.ok">Autónomo</span></td></tr>
-        <tr><td data-i18n="auto.6"></td><td><span class="pill ok" data-i18n="pill.ok">Autónomo</span></td></tr>
-        <tr><td data-i18n="auto.7"></td><td><span class="pill ok" data-i18n="pill.ok">Autónomo</span></td></tr>
-        <tr><td data-i18n="auto.8"></td><td><span class="pill no" id="pill-interp" data-i18n="pill.no">No conectado</span></td></tr>
-      </tbody>
-    </table></div>
-  </section>
+<!-- 3 · informe como página de lectura -->
+<div id="screen-report">
+  <div class="rep-bar">
+    <div class="wrap">
+      <button type="button" class="linkbtn" id="btn-to-chart" data-i18n="btn.toChart">Ver la carta</button>
+      <button type="button" class="btn" id="btn-print">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 19h16"/></svg>
+        <span data-i18n="btn.savePdf">Guardar PDF</span></button>
+    </div>
+  </div>
+  <article class="reading" id="reading">
+    <header class="rep-head">
+      <p class="eyebrow" id="rep-for"></p>
+      <h1 id="rep-title"></h1>
+      <p id="rep-meta"></p>
+    </header>
+    <details class="rep-index" id="rep-index"><summary id="rep-index-sum" data-i18n="rep.index">Índice</summary><ol id="rep-index-list"></ol></details>
+    <div id="report-out"></div>
+    <figure id="fig-closure" class="art" hidden></figure>
+    <div class="rep-end">
+      <p id="report-status" class="small muted" hidden></p>
+      <div id="audit-out" class="note" hidden></div>
+      <div class="row no-print">
+        <button type="button" class="btn ghost" id="btn-print-2"><span data-i18n="btn.savePdfLong">Guardar el informe en PDF</span></button>
+        <button type="button" class="btn ghost" id="btn-download" data-i18n="btn.download">Descargar (archivo HTML)</button>
+      </div>
+      <p class="small muted no-print" data-i18n="save.note"></p>
+      <div id="feedback-box" class="feedback" hidden>
+        <h3><label for="fb-text" data-i18n="fb.h">Tu opinión sobre el informe</label></h3>
+        <p class="small muted" data-i18n="fb.note"></p>
+        <textarea id="fb-text" rows="6" data-i18n-ph="fb.ph"></textarea>
+        <div class="row"><button type="button" class="btn" id="btn-fb" data-i18n="btn.fb" disabled>Enviar comentario</button><span id="fb-count" class="small muted"></span></div>
+        <p id="fb-status" class="small" hidden></p>
+      </div>
+      <p class="rep-disclaimer" data-i18n="disclaimer"></p>
+    </div>
+  </article>
+</div>
 
-  <section class="panel donation" id="donation" aria-labelledby="h-don" hidden>
+<!-- espera del informe -->
+<div id="wait" hidden role="dialog" aria-modal="true" aria-labelledby="wait-who">
+  <div class="wait-in">
+    <div class="wait-brand">ASTROINFORME</div>
+    <figure id="fig-reader" class="art" hidden></figure>
+    <p id="wait-who"></p>
+    <div id="wait-clock" aria-live="off">0:00</div>
+    <p style="color:#98a0ad" data-i18n="wait.usual">suele tardar entre cinco y siete minutos</p>
+    <p class="wait-steps" data-i18n="wait.steps"></p>
+    <div class="wait-alert"><strong data-i18n="wait.stay">Quedate en esta pantalla</strong><p data-i18n="wait.stayText"></p><p id="wait-awake" hidden data-i18n="wait.awake"></p></div>
+    <details id="about-report" class="about-report"><summary data-i18n="about.sum">Sobre este informe</summary><div class="about-body" data-i18n-html="about.body"></div></details>
+  </div>
+</div>
+
+<div class="wrap">
+  <section class="donation" id="donation" aria-labelledby="h-don" hidden>
     <h2 id="h-don" data-i18n="don.h">Aportes voluntarios</h2>
     <p data-i18n="don.text"></p>
     <p class="small muted" data-i18n="don.note"></p>
     <div class="row" id="donation-links"></div>
     <p class="small" id="donation-alias" hidden></p>
   </section>
+</div>
 
-  <footer>
+<footer>
+  <div class="wrap">
     <p class="credit"><span data-i18n="footer.credit">Ilustraciones:</span> <a href="https://barbaragutierrez.art" target="_blank" rel="noopener">Bárbara Gutiérrez</a></p>
     <p data-i18n="footer.calc"></p>
     <p data-i18n="footer.conv"></p>
-    <p data-i18n="disclaimer"></p>
     <p><a href="privacidad.html" id="privacy-link" data-i18n="footer.privacy">Privacidad</a> · <a href="https://github.com/barbara-netizen/astroinforme" target="_blank" rel="noopener" data-i18n="footer.code">Código fuente</a> · AGPL-3.0</p>
-  </footer>
-</div>
+  </div>
+</footer>
 <script type="module" src="app.js"></script>
 
 </body></html>
