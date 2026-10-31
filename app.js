@@ -582,6 +582,8 @@ async function obtainReport() {
   const headers = { "content-type": "application/json", ...(code ? { "x-astro-code": code } : {}), ...(ts.token ? { "x-turnstile-token": ts.token } : {}) };
   const chartBody = JSON.stringify(servicePayload(state.payload));
   const request_id = pendingRequestId(code, await payloadHash(chartBody));
+  // servicio 1.6: la generación sigue aunque el teléfono se bloquee; la app consulta el estado
+  if (state.health && state.health.jobs) return obtainReportJob(headers, chartBody, request_id, code);
   try {
     r = await fetch(serviceUrl(), { method: "POST", headers, body: JSON.stringify({ ...JSON.parse(chartBody), request_id }) });
   } catch (e) { resetTurnstile(); throw new ServiceError("i.err.upstream"); }
@@ -595,6 +597,34 @@ async function obtainReport() {
   if (!body) throw new ServiceError("i.badContract");
   clearPending();
   return { report: body.report || body, remaining: body.remaining, recovered: !!body.recovered };
+}
+
+// Generación desacoplada (servicio 1.6): POST /jobs crea el trabajo (o devuelve el estado de uno ya creado con el mismo
+// request_id) y después se consulta GET /jobs/<id>. Si el teléfono se bloquea, los temporizadores se pausan y la consulta
+// sigue al volver; el servicio no depende de la conexión. Un error de red durante la consulta no corta la espera.
+const JOB_POLL_MS = 8000, JOB_MAX_MS = 30 * 60 * 1000;
+const serviceError = (status, body) => {
+  const k = body && body.error ? "i.err." + body.error : null;
+  return k && L.t(k) !== k ? new ServiceError(k) : new ServiceError("i.status", { status });
+};
+async function obtainReportJob(headers, chartBody, request_id, code) {
+  let r, body = null;
+  try { r = await fetch(serviceUrl() + "jobs", { method: "POST", headers, body: JSON.stringify({ ...JSON.parse(chartBody), request_id }) }); }
+  catch (e) { resetTurnstile(); throw new ServiceError("i.err.upstream"); }
+  resetTurnstile();
+  try { body = await r.json(); } catch (e) { }
+  const t0 = Date.now();
+  for (;;) {
+    if (body && body.report) { clearPending(); return { report: body.report, remaining: body.remaining, recovered: !!body.recovered }; }
+    if (body && body.status === "failed") throw serviceError(r.status, body);
+    if (!body || (body.error && !body.status)) throw serviceError(r ? r.status : 0, body);
+    if (Date.now() - t0 > JOB_MAX_MS) throw new ServiceError("i.err.timeout");
+    await new Promise((res) => setTimeout(res, JOB_POLL_MS));
+    try {
+      r = await fetch(serviceUrl() + "jobs/" + encodeURIComponent(request_id), { headers: code ? { "x-astro-code": code } : {}, cache: "no-store" });
+      body = await r.json();
+    } catch (e) { body = { status: "pending" }; } // sin conexión por un momento: se vuelve a consultar
+  }
 }
 
 // ---------- comentario de quien probó el informe (versión piloto) ----------
@@ -659,6 +689,10 @@ function openWait() {
   const f = state.last && state.last.f;
   $("#wait-who").textContent = f && f.first ? t("wait.who", { name: f.first }) : t("wait.whoAnon");
   $("#wait-awake").hidden = true;
+  // con el servicio 1.6 la generación no depende de la conexión: el aviso cambia
+  const job = !!(state.health && state.health.jobs && !CONFIG.demo);
+  $("#wait-stay").dataset.i18n = job ? "wait.stayJob" : "wait.stay"; $("#wait-stay").textContent = t($("#wait-stay").dataset.i18n);
+  $("#wait-stay-text").dataset.i18n = job ? "wait.stayTextJob" : "wait.stayText"; $("#wait-stay-text").textContent = t($("#wait-stay-text").dataset.i18n);
   $("#about-report").open = false;
   $("#wait").hidden = false;
   document.documentElement.style.overflow = "hidden";

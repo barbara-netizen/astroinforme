@@ -28,6 +28,14 @@ El servicio de referencia está en `servicio/` (Cloudflare Worker): ver `servici
 
 - Rechazos inmediatos: estado HTTP 4xx/5xx y `{"error": "<código>"}`. Códigos: `code_required`, `code_invalid`, `quota_exhausted`, `budget_exhausted` (tope del mes), `daily_limit` (tope del día en acceso público), `visitor_limit` (un visitante ya usó su cupo del día), `bot_check` (verificación anti-robots fallida), `bad_request`, `bad_name` (nombre de pila inválido), `in_progress` (409: ese código ya tiene una generación en curso; `same_request` indica si es el mismo `request_id`), `forbidden_origin`, `not_configured`.
 - Recuperación: `{"report": …, "remaining": n, "recovered": true}`, inmediata, sin llamar al modelo.
+
+### Generación desacoplada (servicio 1.6)
+
+Si `/health` responde `"jobs": true`, la app usa este modo en lugar de la respuesta en flujo:
+
+- `POST <interpreterUrl>jobs`, con el mismo cuerpo y encabezados (el `request_id` es obligatorio). Respuesta 202 `{"job_id", "status": "queued"}`. Si ya existe un trabajo con ese `request_id`, devuelve su estado; si el informe guardado de ese pedido existe, lo entrega (`recovered: true`). Los rechazos son los mismos del modo en flujo.
+- `GET <interpreterUrl>jobs/<request_id>` (con `x-astro-code` si el pedido se hizo con código): `{"status": "queued" | "running"}`, o al final `{"status": "done", "report", "remaining"}` o `{"status": "failed", "error": "audit_failed" | "upstream"}`. `not_found` (404) si no existe o ya pasaron 48 h; `forbidden` (403) con otro código.
+- La generación sigue aunque la app se desconecte. La app consulta cada 8 s; un error de red durante la consulta no corta la espera.
 - Pedido aceptado: estado 200 y respuesta en flujo. Mientras trabaja, el servicio envía espacios cada 10 s; al final, un único JSON:
   - éxito: `{"report": <astroinforme.report/v1>, "remaining": <informes restantes del código>}`
   - fallo: `{"error": "audit_failed" | "upstream"}`

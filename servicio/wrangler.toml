@@ -8,3 +8,13 @@ keep_vars = true
 [[kv_namespaces]]
 binding = "ASTRO_KV"
 id = "3fe6f27f5f3844df8f90d1e9790291da"
+
+# Generación desacoplada de la conexión (servicio 1.6): un Durable Object por pedido, con almacenamiento SQLite
+# (el único disponible en el plan gratuito). La migración se aplica una sola vez, en el primer despliegue.
+[[durable_objects.bindings]]
+name = "REPORT_JOB"
+class_name = "ReportJob"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ReportJob"]

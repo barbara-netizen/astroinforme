@@ -12,7 +12,9 @@ Conecta la app web con la API de Claude **sin exponer la clave**. La app envía 
 6. **Auditoría técnica** (`audit.js`, la misma de la app; verifica solo las referencias que el informe declara) y **control de estilo** (`src/style.js`). Si alguno falla, pide una sola corrección (fase C) que atiende ambos y vuelve a auditar. El estilo nunca bloquea la entrega.
 7. Si la auditoría técnica sigue fallando, **no entrega el informe** (`audit_failed`) y no descuenta el cupo; el gasto queda registrado en el mes.
 8. Responde en flujo: manda espacios cada 10 s para que la conexión no se corte y, al final, un único JSON.
-9. **Recuperación (1.5):** con código, guarda el último informe 48 h junto con el `request_id` del pedido. Un reintento con el mismo `request_id` lo recibe sin generar ni descontar. Mientras una generación está en curso (marca `inflight:<CÓDIGO>`, que vence a los 20 min), otro pedido con ese código recibe `in_progress`. Límite conocido: si la app se desconecta, Cloudflare puede cancelar el trabajo 30 s después (ver `CHANGELOG_CLAUDE.md`). En ese caso no queda informe para recuperar y la marca vence sola.
+9. **Recuperación (1.5):** con código, guarda el último informe 48 h junto con el `request_id` del pedido. Un reintento con el mismo `request_id` lo recibe sin generar ni descontar. Mientras una generación está en curso (marca `inflight:<CÓDIGO>`, que vence a los 20 min), otro pedido con ese código recibe `in_progress`. En el modo en flujo, si la app se desconecta, Cloudflare puede cancelar el trabajo 30 s después; en ese caso no queda informe para recuperar y la marca vence sola. El modo desacoplado (punto 10) resuelve ese caso.
+10. **Generación desacoplada (1.6):** `POST /jobs` (con `request_id`) crea un trabajo en un Durable Object (`REPORT_JOB`, clase `ReportJob`, almacenamiento SQLite del plan gratuito) y responde enseguida (202). El trabajo corre en una alarma (hasta 15 min por ejecución) aunque la app esté desconectada; la app consulta `GET /jobs/<request_id>` cada 8 s. Las fases A y B se guardan al terminar: ante un error transitorio de la API, se reintenta hasta 3 veces desde la última fase guardada, sin volver a pagarla. El mismo `request_id` devuelve el estado del trabajo existente (no crea otro ni cobra). El estado de un pedido con código solo se ve con ese código. A las 48 h el objeto borra todo lo que guardó. El modo en flujo sigue disponible para la app anterior.
+11. **Registro de costos (1.6):** cada pedido deja `gen:<request_id>` en el KV durante 90 días: fecha, modelo, modo, costo total y por fase, si hubo corrección, resultado, intentos e idioma. Sin nombre, sin carta, sin informe.
 
 La app vuelve a hacer la auditoría al recibir el informe: no confía en la del servicio.
 
@@ -39,6 +41,7 @@ Vercel Hobby corta las funciones a los 5 minutos; un informe con corrección pue
 | `upstream` | La API de Claude no respondió o devolvió algo inválido |
 | `not_configured` | Falta la clave, el protocolo o el espacio KV |
 | `in_progress` | Ese código ya tiene una generación en curso (409) |
+| `timeout` (solo en la app) | La consulta de un trabajo superó los 30 minutos |
 | `bad_name` | El nombre de pila no cumple el formato (hasta tres palabras, solo letras) |
 | `bad_request` / `forbidden_origin` | Datos inválidos o pedido desde otra página |
 
