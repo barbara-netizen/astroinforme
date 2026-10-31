@@ -342,6 +342,12 @@ Devolv\xE9 SOLO un objeto JSON v\xE1lido, sin texto antes ni despu\xE9s, con est
 Reglas para technical_references_used: inclu\xED cada posici\xF3n, \xE1ngulo y aspecto que el texto menciona, con los valores exactos del
 JSON (deg = grados y minutos de "position"). Omit\xED "house" si no la mencion\xE1s o si la casa figura como no fiable. No incluyas
 aspectos que no est\xE9n en chart.aspects. Con hora desconocida no hay casas ni \xE1ngulos.
+Si el texto se apoya en una configuraci\xF3n, una regencia, un stellium o un recuento por elemento o modalidad, declaralo tambi\xE9n,
+copiando los valores de chart.derived (no los deduzcas):
+   {"type": "configuration", "configuration": "T_SQUARE", "apex": "MARS", "opposition": ["SUN", "MOON"]}  (GRAND_TRINE y GRAND_CROSS: "bodies"; YOD: "apex" y "base")
+   {"type": "rulership", "of": "ASC", "ruler": "SATURN"}  ("of": ASC, DSC, MC, IC, un n\xFAmero de casa o un planeta, seg\xFAn angle_rulers, house_rulers o dispositors)
+   {"type": "stellium", "by": "SIGN", "where": "PISCES", "bodies": ["SUN", "VENUS", "NEPTUNE"]}  ("by": SIGN o HOUSE, seg\xFAn stelliums)
+   {"type": "distribution", "group": "ELEMENT", "key": "WATER", "count": 4}  ("group": ELEMENT o MODALITY, seg\xFAn elements o modalities)
 
 AN\xC1LISIS ESTRUCTURAL (fase A):
 ${analisis}

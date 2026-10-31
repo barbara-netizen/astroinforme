@@ -48,6 +48,12 @@ Devolvé SOLO un objeto JSON válido, sin texto antes ni después, con esta form
 Reglas para technical_references_used: incluí cada posición, ángulo y aspecto que el texto menciona, con los valores exactos del
 JSON (deg = grados y minutos de "position"). Omití "house" si no la mencionás o si la casa figura como no fiable. No incluyas
 aspectos que no estén en chart.aspects. Con hora desconocida no hay casas ni ángulos.
+Si el texto se apoya en una configuración, una regencia, un stellium o un recuento por elemento o modalidad, declaralo también,
+copiando los valores de chart.derived (no los deduzcas):
+   {"type": "configuration", "configuration": "T_SQUARE", "apex": "MARS", "opposition": ["SUN", "MOON"]}  (GRAND_TRINE y GRAND_CROSS: "bodies"; YOD: "apex" y "base")
+   {"type": "rulership", "of": "ASC", "ruler": "SATURN"}  ("of": ASC, DSC, MC, IC, un número de casa o un planeta, según angle_rulers, house_rulers o dispositors)
+   {"type": "stellium", "by": "SIGN", "where": "PISCES", "bodies": ["SUN", "VENUS", "NEPTUNE"]}  ("by": SIGN o HOUSE, según stelliums)
+   {"type": "distribution", "group": "ELEMENT", "key": "WATER", "count": 4}  ("group": ELEMENT o MODALITY, según elements o modalities)
 
 ANÁLISIS ESTRUCTURAL (fase A):
 ${analisis}
