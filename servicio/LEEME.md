@@ -7,11 +7,12 @@ Conecta la app web con la API de Claude **sin exponer la clave**. La app envía 
 1. Si está configurado, verifica el control anti-robots de **Cloudflare Turnstile**.
 2. Verifica el **código de acceso** y su cupo, o, en **acceso público**, el límite por visitante y por día.
 3. Verifica el **tope mensual** de gasto del servicio.
-4. Envía a Claude solo los datos astrológicos, el nombre de pila y el tratamiento elegido. **Nunca** la fecha, la hora, el lugar ni el día juliano (la app ya no los envía).
+4. Valida la carta y la **reconstruye con una lista blanca** (`src/validate.js`): enums, rangos, coherencia entre longitud, signo y grado, y topes de tamaño. Descarta cualquier campo desconocido y controla el nombre de pila. Envía a Claude solo esos datos astrológicos, el nombre de pila y el tratamiento elegido. **Nunca** la fecha, la hora, el lugar ni el día juliano (la app ya no los envía).
 5. Fase A: análisis estructural (JSON). Fase B: redacción (contrato `astroinforme.report/v1`), con el tratamiento gramatical pedido.
-6. **Auditoría técnica** (`audit.js`, la misma de la app) y **control de estilo** (`src/style.js`). Si alguno falla, pide una sola corrección (fase C) que atiende ambos y vuelve a auditar. El estilo nunca bloquea la entrega.
+6. **Auditoría técnica** (`audit.js`, la misma de la app; verifica solo las referencias que el informe declara) y **control de estilo** (`src/style.js`). Si alguno falla, pide una sola corrección (fase C) que atiende ambos y vuelve a auditar. El estilo nunca bloquea la entrega.
 7. Si la auditoría técnica sigue fallando, **no entrega el informe** (`audit_failed`) y no descuenta el cupo; el gasto queda registrado en el mes.
 8. Responde en flujo: manda espacios cada 10 s para que la conexión no se corte y, al final, un único JSON.
+9. **Recuperación (1.5):** con código, guarda el último informe 48 h junto con el `request_id` del pedido. Un reintento con el mismo `request_id` lo recibe sin generar ni descontar. Mientras una generación está en curso (marca `inflight:<CÓDIGO>`, que vence a los 20 min), otro pedido con ese código recibe `in_progress`. Límite conocido: si la app se desconecta, Cloudflare puede cancelar el trabajo 30 s después (ver `CHANGELOG_CLAUDE.md`). En ese caso no queda informe para recuperar y la marca vence sola.
 
 La app vuelve a hacer la auditoría al recibir el informe: no confía en la del servicio.
 
@@ -37,6 +38,8 @@ Vercel Hobby corta las funciones a los 5 minutos; un informe con corrección pue
 | `audit_failed` | El informe no pasó la auditoría después de la corrección |
 | `upstream` | La API de Claude no respondió o devolvió algo inválido |
 | `not_configured` | Falta la clave, el protocolo o el espacio KV |
+| `in_progress` | Ese código ya tiene una generación en curso (409) |
+| `bad_name` | El nombre de pila no cumple el formato (hasta tres palabras, solo letras) |
 | `bad_request` / `forbidden_origin` | Datos inválidos o pedido desde otra página |
 
 La app muestra cada error en el idioma de la interfaz.
@@ -76,7 +79,7 @@ Los nombres de los menús de Cloudflare pueden variar un poco.
 | `ALLOWED_ORIGINS` | `https://barbara-netizen.github.io` | Páginas que pueden usar el servicio |
 | `AUDIT_STRICT` | `true` | `false` entrega el informe aunque la auditoría falle (la app muestra las discrepancias) |
 | `REQUIRE_CODE` | `true` | `false` = acceso público, con los dos límites siguientes; un código válido sigue funcionando con su cupo |
-| `VISITOR_DAILY_LIMIT` | `1` | Informes por visitante por día (acceso público). El visitante se reconoce por un resumen de su IP con sal secreta, que vence a los dos días; la IP no se guarda |
+| `VISITOR_DAILY_LIMIT` | `1` | Informes por visitante por día (acceso público). El visitante se reconoce por un resumen de su IP con sal secreta (seudónimo; quien tenga la sal podría recuperar la IP por fuerza bruta), que vence a los dos días; la IP no se guarda |
 | `DAILY_LIMIT` | `8` | Informes por día para todo el servicio (acceso público) |
 | `TURNSTILE_SECRET` | — | Secreto. Si existe, exige la verificación de Turnstile. La clave de sitio pública va en `config.js` → `turnstileSiteKey` |
 | `VISITOR_SALT` | la clave de la API | Secreto opcional para el resumen de la IP |
@@ -95,7 +98,8 @@ El límite de gasto del workspace en la Consola de Claude sigue siendo el tope r
 
 ```
 npm install
-npm test          # pruebas con la API simulada: códigos, cupos, tope, auditoría, corrección, privacidad
+npm test          # pruebas con la API simulada: códigos, cupos, tope, auditoría, corrección, privacidad,
+                  # validación adversarial, recuperación con request_id, generación en curso, auditoría argumental (diseño)
 npm run build     # genera dist/astroinforme-worker.js
 ```
 

@@ -7,7 +7,14 @@ const carta = JSON.parse(readFileSync(new URL("./carta-prueba.json", import.meta
 const ok = JSON.parse(readFileSync(new URL("./informe-ok.json", import.meta.url)));
 const bad = JSON.parse(JSON.stringify(ok)); bad.technical_references_used.push({ type: "position", body: "SUN", sign: "LEO", deg: "9°29'" });
 
-class KV { constructor(init = {}) { this.m = new Map(Object.entries(init)); } async get(k) { return this.m.has(k) ? this.m.get(k) : null; } async put(k, v) { this.m.set(k, String(v)); } }
+// KV simulado con vencimientos (expirationTtl) y un reloj que las pruebas pueden adelantar
+let now = Date.now(); export const advance = (s) => { now += s * 1000; };
+class KV {
+  constructor(init = {}) { this.m = new Map(Object.entries(init)); this.exp = new Map(); }
+  async get(k) { if (this.exp.has(k) && this.exp.get(k) <= now) { this.m.delete(k); this.exp.delete(k); } return this.m.has(k) ? this.m.get(k) : null; }
+  async put(k, v, o) { this.m.set(k, String(v)); if (o && o.expirationTtl) this.exp.set(k, now + o.expirationTtl * 1000); else this.exp.delete(k); }
+  async delete(k) { this.m.delete(k); this.exp.delete(k); }
+}
 const ORIGIN = "https://barbara-netizen.github.io";
 const env = (over = {}) => ({ ANTHROPIC_API_KEY: "sk-test", ACCESS_CODES: "ANA-7K2:2, PEDRO-9X4:1", ASTRO_KV: new KV({ protocol: "PROTOCOLO DE PRUEBA" }), ...over });
 
