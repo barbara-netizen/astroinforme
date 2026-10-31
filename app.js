@@ -340,13 +340,17 @@ function render(scroll = false) {
       : nm(u.item) + ": " + (u.field === "sign" ? t("sens.sign") + " " + u.alternatives.map((x) => term(x)).join(" / ") : H + " " + u.alternatives.map((x) => ROMAN[x]).join(" / "))}</li>`).join("") + "</ul>"
     : `<p>${esc(t("sens.none", { w: win }))}</p>`;
 
-  $("#prov").textContent = `${fmtOffset(opt.offsetMin)} · ${fmtUtc(opt.utcMs)} · ${state.place.lat.toFixed(4)}, ${state.place.lon.toFixed(4)}. ` + t("prov", {
+  $("#prov").textContent = provText(f, opt, chart);
+
+  if (scroll) renderInterpretation();
+}
+/** Línea de procedencia del cálculo, en el idioma activo (la usa también la descarga, en el idioma del informe). */
+function provText(f, opt, chart) {
+  return `${fmtOffset(opt.offsetMin)} · ${fmtUtc(opt.utcMs)} · ${state.place.lat.toFixed(4)}, ${state.place.lon.toFixed(4)}. ` + t("prov", {
     engine: chart.ephemeris.engine, flags: "SEFLG_SWIEPH|SEFLG_SPEED",
     sys: chart.houses ? chart.houses.system_effective : t("prov.noHouses"), pol: chart.aspect_policy, zone: f.zone,
     src: t(state.payload.birth.offset_source === "MANUAL" ? "prov.manual" : "prov.iana"), place: state.place.source, ver: E.ENGINE_VERSION,
   });
-
-  if (scroll) renderInterpretation();
 }
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 function humanBirth(f) {
@@ -772,10 +776,17 @@ async function callInterpreter() {
 // ---------- guardar: imprimir o descargar ----------
 function printSheet() { document.querySelectorAll(".more-tech").forEach((d) => { d.dataset.was = d.open ? "1" : ""; d.open = true; }); window.print(); }
 
+// La descarga se arma entera en el idioma del informe (si no hay informe, en el de la interfaz), aunque la interfaz
+// esté en otro: así no quedan títulos en un idioma y texto en otro.
 function downloadSheet() {
   if (!state.chart || !state.last) return;
-  const { f } = state.last, chart = state.chart, rep = state.lastReport, H = t("r.house");
-  const lang = rep && rep.language ? rep.language : L.getLang();
+  const rep = state.lastReport;
+  const ui = L.getLang(), lang = rep && L.LANGS.includes(rep.language) ? rep.language : ui;
+  L.setLang(lang);
+  try { buildDownload(lang); } finally { L.setLang(ui); }
+}
+function buildDownload(lang) {
+  const { f, opt } = state.last, chart = state.chart, rep = state.lastReport;
   const row = (cells, tag = "td") => `<tr>${cells.map((c) => `<${tag}>${c}</${tag}>`).join("")}</tr>`;
   const pos = chart.bodies.map((b) => row([esc(nm(b.id)), esc(`${b.deg} ${term(b.sign)}${b.retrograde ? " R" : ""}`), chart.houses ? ROMAN[b.house] : ""]));
   const asp = chart.aspects.map((a) => row([esc(`${nm(a.a)} ${term(a.aspect)} ${nm(a.b)}`), `${a.orb.toFixed(2)}°`]));
@@ -786,15 +797,15 @@ function downloadSheet() {
   const doc = `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
 <style>body{font:16px/1.6 Georgia,serif;color:#1c2230;background:#fff;max-width:44rem;margin:0 auto;padding:24px 16px}h1{font-weight:500;line-height:1.15}h2{font-weight:500;margin-top:1.8em}.m{font:13px/1.5 ui-monospace,Menlo,monospace;color:#5d6573}table{border-collapse:collapse;width:100%;font:13px/1.4 ui-monospace,Menlo,monospace}td,th{border-bottom:1px solid #ccc;padding:4px 8px 4px 0;text-align:left}details{margin:1.5em 0}footer{margin-top:3em;border-top:1px solid #ccc;padding-top:12px;font-size:13px;color:#5d6573}</style></head><body>
 <h1>${esc(title)}</h1>
-<p class="m">${esc($("#r-meta").textContent)}</p>
+<p class="m">${esc(humanBirth(f))}</p>
 <p class="m">${esc(ascLine)}</p>
 ${reportHTML}
 ${audit}
 <details${rep ? "" : " open"}><summary>${esc(t("dl.tech"))}</summary>
 <table>${row([t("th.point"), t("th.position"), chart.houses ? t("th.house") : ""], "th")}${pos.join("")}</table>
 <h3>${esc(t("h.aspects"))}</h3><table>${row([t("th.aspect"), t("th.orb")], "th")}${asp.join("")}</table>
-<p class="m">${esc($("#prov").textContent)}</p></details>
-<footer><p>${esc(t("disclaimer"))}</p><p>${esc(t("footer.credit"))} Bárbara Gutiérrez · barbaragutierrez.art</p><p>${esc(t("dl.generated", { date: new Date().toLocaleDateString(LOCALE[L.getLang()]) }))} https://barbara-netizen.github.io/astroinforme/</p></footer>
+<p class="m">${esc(provText(f, opt, chart))}</p></details>
+<footer><p>${esc(t("disclaimer"))}</p><p>${esc(t("footer.credit"))} Bárbara Gutiérrez · barbaragutierrez.art</p><p>${esc(t("dl.generated", { date: new Date().toLocaleDateString(LOCALE[lang]) }))} https://barbara-netizen.github.io/astroinforme/</p></footer>
 </body></html>`;
   const blob = new Blob([doc], { type: "text/html;charset=utf-8" });
   const a = document.createElement("a");
@@ -853,6 +864,14 @@ function init() {
   // al imprimir, los datos técnicos plegados se incluyen completos
   window.addEventListener("beforeprint", () => document.querySelectorAll(".more-tech").forEach((d) => { if (d.dataset.was === undefined) d.dataset.was = d.open ? "1" : ""; d.open = true; }));
   window.addEventListener("afterprint", () => document.querySelectorAll(".more-tech").forEach((d) => { d.open = d.dataset.was === "1"; delete d.dataset.was; }));
+  // impresión (Guardar PDF) en el idioma del informe: la página cambia de idioma mientras se imprime y después vuelve
+  window.addEventListener("beforeprint", () => {
+    const rl = state.lastReport && state.lastReport.language;
+    if (rl && L.LANGS.includes(rl) && rl !== L.getLang()) { state.printLangRestore = L.getLang(); applyLanguage(rl, { remember: false }); }
+  });
+  window.addEventListener("afterprint", () => {
+    if (state.printLangRestore) { const back = state.printLangRestore; state.printLangRestore = null; applyLanguage(back, { remember: false }); }
+  });
   setScreen("form", { push: false, top: false });
   try { history.replaceState({ screen: "form" }, ""); } catch (e) { }
   const allowed = limitLanguages();

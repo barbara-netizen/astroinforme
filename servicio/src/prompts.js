@@ -1,7 +1,7 @@
 // Indicaciones de las fases del motor interpretativo. El protocolo interpretativo NO está acá:
 // se guarda aparte (KV "protocol") y nunca se publica en el repositorio.
 
-export const IDIOMA = { es: "español rioplatense, con voseo", de: "alemán, tuteando (du)", en: "inglés" };
+export const IDIOMA = { es: "español rioplatense, con voseo", de: "alemán, tuteando (du)", en: "inglés británico (ortografía británica: organise, colour)" };
 
 // Tratamiento gramatical elegido por la persona (request.address_gender). Sin indicación: formas sin marca de género.
 export const TRATAMIENTO = {

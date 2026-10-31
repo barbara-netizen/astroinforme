@@ -327,8 +327,8 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
               <div class="fld" id="manual-offset-row" hidden><label for="manual-offset"><span data-i18n="f.offset">Desfase respecto de UTC</span> <span class="hint" data-i18n="f.offset.hint"></span></label><input id="manual-offset" placeholder="-3"></div>
               <label class="check"><input type="checkbox" id="manual-coords-toggle"> <span data-i18n="f.useCoords">Cargar coordenadas a mano</span></label>
               <div id="manual-coords" hidden style="display:grid;gap:8px">
-                <div class="pair"><input id="mc-lat" inputmode="decimal" aria-label="Latitud" placeholder="-34.6037" data-i18n-ph="ph.lat"><input id="mc-lon" inputmode="decimal" aria-label="Longitud" placeholder="-58.3816" data-i18n-ph="ph.lon"></div>
-                <input id="mc-label" aria-label="Nombre del lugar" placeholder="Nombre del lugar (opcional)" data-i18n-ph="ph.placeLabel">
+                <div class="pair"><input id="mc-lat" inputmode="decimal" aria-label="Latitud" data-i18n-aria="aria.lat" placeholder="-34.6037" data-i18n-ph="ph.lat"><input id="mc-lon" inputmode="decimal" aria-label="Longitud" data-i18n-aria="aria.lon" placeholder="-58.3816" data-i18n-ph="ph.lon"></div>
+                <input id="mc-label" aria-label="Nombre del lugar" data-i18n-aria="aria.placeLabel" placeholder="Nombre del lugar (opcional)" data-i18n-ph="ph.placeLabel">
                 <button type="button" class="btn ghost" id="mc-apply" data-i18n="btn.useCoords">Usar coordenadas</button>
               </div>
             </div>
