@@ -727,7 +727,7 @@ function finishProgress(ok) {
   chime();
   try { navigator.vibrate && navigator.vibrate(ok ? [200, 100, 200] : [400]); } catch (e) { }
   if (document.hidden) {
-    try { if ("Notification" in window && Notification.permission === "granted") new Notification("ASTROINFORME", { body: msg, tag: "astroinforme" }); } catch (e) { }
+    try { if ("Notification" in window && Notification.permission === "granted") new Notification("AsterOrbis", { body: msg, tag: "astroinforme" }); } catch (e) { }
   }
   const restore = () => { if (!document.hidden) { setTimeout(() => { document.title = notify.title; }, 8000); document.removeEventListener("visibilitychange", restore); } };
   document.addEventListener("visibilitychange", restore); restore();
@@ -810,7 +810,7 @@ ${audit}
   const blob = new Blob([doc], { type: "text/html;charset=utf-8" });
   const a = document.createElement("a");
   const slug = (f.first || "carta").normalize("NFD").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "carta";
-  a.href = URL.createObjectURL(blob); a.download = `astroinforme-${slug}-${state.payload.birth.local_date}.html`;
+  a.href = URL.createObjectURL(blob); a.download = `asterorbis-${slug}-${state.payload.birth.local_date}.html`;
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
@@ -831,6 +831,8 @@ function applyLanguage(lang, { remember = true } = {}) {
   if (state.lastReport) renderReport(state.lastReport);
   if (state.lastAudit) renderAudit(state.lastAudit);
   $("#privacy-link").href = "privacidad.html#" + lang;
+  document.title = t("app.title");
+  try { notify.title = document.title; } catch (e) { } // el aviso de fin restaura este título
   renderDonation();
 }
 
