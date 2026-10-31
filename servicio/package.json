@@ -3,8 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node test/worker.test.mjs",
+    "test": "node test/worker.test.mjs && node test/audit.test.mjs && node test/hardening.test.mjs && node test/argument.test.mjs",
     "build": "esbuild src/entry.js --bundle --format=esm --platform=neutral --outfile=dist/astroinforme-worker.js --banner:js=\"// ASTROINFORME — servicio interpretativo. Archivo generado desde servicio/src (npm run build). AGPL-3.0.\""
   },
-  "devDependencies": { "esbuild": "0.24.2" }
+  "devDependencies": {
+    "esbuild": "0.24.2"
+  }
 }

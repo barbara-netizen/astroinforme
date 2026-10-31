@@ -470,12 +470,22 @@ async function copyText(text, btn) {
 }
 
 const refLabel = (r) => r.type === "aspect" ? `${nm(r.a)} ${term(r.aspect)} ${nm(r.b)}`
-  : r.type === "angle" ? `${nm(r.angle)} ${t("a.in")} ${term(r.sign)} ${r.deg}` : `${nm(r.body)} ${t("a.in")} ${term(r.sign)} ${r.deg}${r.house != null ? ", " + t("r.house") + " " + ROMAN[r.house] : ""}`;
+  : r.type === "angle" ? `${nm(r.angle)} ${t("a.in")} ${term(r.sign)} ${r.deg}`
+  : r.type === "configuration" ? `${term(r.configuration)}: ${[r.apex, ...(r.opposition || r.base || r.bodies || [])].filter(Boolean).map(nm).join(", ")}`
+  : r.type === "rulership" ? `${t("a.ruler")} ${typeof r.of === "number" ? t("r.house") + " " + ROMAN[r.of] : nm(r.of)}: ${nm(r.ruler)}`
+  : r.type === "stellium" ? `Stellium ${t("a.in")} ${r.by === "HOUSE" ? t("r.house") + " " + ROMAN[r.where] : term(r.where)}`
+  : r.type === "distribution" ? `${term(r.key)}${r.count != null ? ": " + r.count : ""}${r.bodies ? " (" + r.bodies.map(nm).join(", ") + ")" : ""}`
+  : `${nm(r.body)} ${t("a.in")} ${term(r.sign)} ${r.deg}${r.house != null ? ", " + t("r.house") + " " + ROMAN[r.house] : ""}`;
 function problemText(p, ref) {
   const H = t("r.house");
   if (p.kind === "missing") return t("a.missing");
   if (p.field === "sign") return t("a.says", { r: term(p.report), c: term(p.chart) });
   if (p.field === "deg") return t("a.says", { r: p.report, c: p.chart });
+  if (p.field === "format") return t("a.badFormat", { r: p.report });
+  if (p.field === "configuration") return t("a.noConfig");
+  if (p.field === "stellium") return t("a.noStellium");
+  if (p.field === "ruler") return t("a.says", { r: nm(p.report), c: p.chart ? nm(p.chart) : "—" });
+  if (p.field === "count" || p.field === "group") return t("a.says", { r: p.report, c: p.chart });
   if (p.field === "house") return p.chart == null ? t("a.noHouses") : t("a.says", { r: `${H} ${ROMAN[p.report]}`, c: `${H} ${ROMAN[p.chart]}` });
   if (p.field === "angle") return t("a.noAngles");
   if (p.field === "aspect") return t("a.noAspect", { pol: state.payload.engine.aspect_policy });
@@ -487,9 +497,14 @@ function renderAudit(a) {
   const box = $("#audit-out");
   box.hidden = false;
   box.className = "note " + (a.ok ? "ok" : "warn");
+  // el alcance se muestra siempre: la auditoría cubre las referencias declaradas, no todo el texto
+  const unchecked = (a.unchecked || []).length, undeclared = a.undeclared_degrees || [];
   box.innerHTML = `<strong>${esc(t("a.head", { v: a.verified, t: a.total }))}${a.ok ? "." : esc(t("a.headBad", { n: a.issues.length }))}</strong>` +
     (a.ok ? "" : `<ul>${a.issues.map((i) => `<li>${esc(refLabel(i.ref))}: ${(i.problems || [i]).map((p) => esc(problemText(p, i.ref))).join("; ")}.</li>`).join("")}</ul>
-    <p class="small">${esc(t("a.foot"))}</p>`);
+    <p class="small">${esc(t("a.foot"))}</p>`) +
+    (unchecked ? `<p class="small">${esc(t("a.unchecked", { n: unchecked }))}</p>` : "") +
+    (undeclared.length ? `<p class="small">${esc(t("a.undeclared", { list: undeclared.map((u) => u.text).join(", ") }))}</p>` : "") +
+    `<p class="small">${esc(t("a.scope"))}</p>`;
 }
 
 function renderReport(rep) {
@@ -530,6 +545,28 @@ function servicePayload(p) {
     warnings: p.warnings.map((w) => ({ code: w.code })),
   };
 }
+// Identificador del pedido (servicio 1.5): si la respuesta no llega, el reintento con la misma carta y el mismo código
+// reutiliza el identificador y el servicio devuelve el informe ya generado sin descontar otro. Se olvida al recibir
+// un informe; una carta o un código distintos generan un identificador nuevo. Vale 48 horas, como la copia del servicio.
+const PENDING_KEY = "astroinforme.pending", PENDING_MS = 48 * 3600 * 1000;
+async function payloadHash(body) {
+  try {
+    const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body)));
+    return [...h.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch (e) { return null; }
+}
+function newRequestId() {
+  try { if (crypto.randomUUID) return crypto.randomUUID(); } catch (e) { }
+  const a = new Uint8Array(16); crypto.getRandomValues(a); return [...a].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function pendingRequestId(code, hash) {
+  let p = null; try { p = JSON.parse(localStorage.getItem(PENDING_KEY) || "null"); } catch (e) { }
+  if (p && hash && p.code === code && p.hash === hash && Date.now() - p.at < PENDING_MS) return p.id;
+  const id = newRequestId();
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify({ id, code, hash, at: Date.now() })); } catch (e) { }
+  return id;
+}
+function clearPending() { try { localStorage.removeItem(PENDING_KEY); } catch (e) { } }
 class ServiceError extends Error { constructor(key, params) { super(key); this.key = key; this.params = params; } }
 async function obtainReport() {
   if (CONFIG.demo) {
@@ -543,8 +580,10 @@ async function obtainReport() {
   try { localStorage.setItem("astroinforme.code", code); } catch (e) { }
   let r;
   const headers = { "content-type": "application/json", ...(code ? { "x-astro-code": code } : {}), ...(ts.token ? { "x-turnstile-token": ts.token } : {}) };
+  const chartBody = JSON.stringify(servicePayload(state.payload));
+  const request_id = pendingRequestId(code, await payloadHash(chartBody));
   try {
-    r = await fetch(serviceUrl(), { method: "POST", headers, body: JSON.stringify(servicePayload(state.payload)) });
+    r = await fetch(serviceUrl(), { method: "POST", headers, body: JSON.stringify({ ...JSON.parse(chartBody), request_id }) });
   } catch (e) { resetTurnstile(); throw new ServiceError("i.err.upstream"); }
   resetTurnstile(); // cada verificación sirve para un solo pedido
   // el servicio responde en flujo: espacios de mantenimiento y, al final, un único JSON
@@ -554,6 +593,7 @@ async function obtainReport() {
     throw k && L.t(k) !== k ? new ServiceError(k) : new ServiceError("i.status", { status: r.status });
   }
   if (!body) throw new ServiceError("i.badContract");
+  clearPending();
   return { report: body.report || body, remaining: body.remaining, recovered: !!body.recovered };
 }
 

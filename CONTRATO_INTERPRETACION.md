@@ -18,11 +18,16 @@ Con servicio conectado, la página consulta `GET <interpreterUrl>health` al carg
 
 El botón «Generar el informe» hace `POST interpreterUrl` con `Content-Type: application/json`, los encabezados opcionales `x-astro-code` y `x-turnstile-token`, y como cuerpo una **versión reducida** de `astroinforme.chart/v1`: `schema`, `engine`, `person.first_name`, `request`, `birth.time_precision` y `birth.time_precision_label`, `chart` sin `jd_ut` y solo los códigos de `warnings`. La fecha, la hora, el lugar, la zona y el instante UTC no salen del dispositivo.
 
+Desde el servicio 1.5 el cuerpo puede llevar además `request_id` (16 a 64 letras, números o guiones), elegido por la app para cada pedido. Si la respuesta no llega, la app reintenta con el mismo `request_id` (misma carta, mismo código) y el servicio devuelve el informe ya generado sin descontar otro. El `request_id` no llega al modelo. Un servicio anterior lo ignora.
+
+**Validación (1.5).** El servicio no reenvía lo que recibe: reconstruye la carta con una lista blanca (`servicio/src/validate.js`). Identificadores, signos, aspectos, configuraciones, precisiones y avisos deben pertenecer a sus listas. Las longitudes deben estar en rango y coincidir con el signo y el grado. Los arreglos tienen tope y cualquier campo desconocido se descarta. `person.first_name`: hasta 40 caracteres y tres palabras, solo letras (cualquier alfabeto), espacio, apóstrofo, punto o guion, en una sola línea; si no cumple, `bad_name`.
+
 El servicio de referencia está en `servicio/` (Cloudflare Worker): ver `servicio/LEEME.md`. La clave del modelo de lenguaje y el protocolo interpretativo viven solo en el servicio, nunca en la página ni en este repositorio.
 
 ### Respuesta
 
-- Rechazos inmediatos: estado HTTP 4xx/5xx y `{"error": "<código>"}`. Códigos: `code_required`, `code_invalid`, `quota_exhausted`, `budget_exhausted` (tope del mes), `daily_limit` (tope del día en acceso público), `visitor_limit` (un visitante ya usó su cupo del día), `bot_check` (verificación anti-robots fallida), `bad_request`, `forbidden_origin`, `not_configured`.
+- Rechazos inmediatos: estado HTTP 4xx/5xx y `{"error": "<código>"}`. Códigos: `code_required`, `code_invalid`, `quota_exhausted`, `budget_exhausted` (tope del mes), `daily_limit` (tope del día en acceso público), `visitor_limit` (un visitante ya usó su cupo del día), `bot_check` (verificación anti-robots fallida), `bad_request`, `bad_name` (nombre de pila inválido), `in_progress` (409: ese código ya tiene una generación en curso; `same_request` indica si es el mismo `request_id`), `forbidden_origin`, `not_configured`.
+- Recuperación: `{"report": …, "remaining": n, "recovered": true}`, inmediata, sin llamar al modelo.
 - Pedido aceptado: estado 200 y respuesta en flujo. Mientras trabaja, el servicio envía espacios cada 10 s; al final, un único JSON:
   - éxito: `{"report": <astroinforme.report/v1>, "remaining": <informes restantes del código>}`
   - fallo: `{"error": "audit_failed" | "upstream"}`
@@ -74,7 +79,7 @@ Identificadores internos en inglés (`SUN`, `SQUARE`, `SCORPIO`…). La traducci
     "corrected": false,
     "style_issues": []
   },
-  "engine": { "model": "…", "protocol_version": "…", "service": "1.1" }
+  "engine": { "model": "…", "protocol_version": "…", "service": "1.5" }
 }
 ```
 
@@ -83,7 +88,21 @@ Identificadores internos en inglés (`SUN`, `SQUARE`, `SCORPIO`…). La traducci
 ## Reglas que el motor interpretativo debe cumplir
 
 1. Usar solo datos presentes en el JSON de entrada. Nada de memoria ni de cálculo propio.
-2. Cada referencia técnica del texto figura en `technical_references_used`, y la auditoría verifica que exista en `chart`.
+2. Cada referencia técnica del texto figura en `technical_references_used`, y la auditoría verifica que exista en `chart`. **La auditoría verifica solo lo declarado en esa lista**; una afirmación de la prosa que no figure ahí no se verifica (como control complementario se informan los grados escritos en el texto que no corresponden a ninguna referencia declarada).
+
+   Tipos de referencia verificables (1.5; los cuatro últimos son nuevos y opcionales):
+
+   | `type` | Campos | Se compara con |
+   |---|---|---|
+   | `position` | `body`, `sign`, `deg`, `house` | `chart.bodies`, `chart.south_node` |
+   | `angle` | `angle` (ASC, DSC, MC, IC), `sign`, `deg` | `chart.houses` (y sensibilidad del signo del ángulo) |
+   | `aspect` | `a`, `b`, `aspect` | `chart.aspects` |
+   | `configuration` | `configuration` (T_SQUARE, GRAND_TRINE, GRAND_CROSS, YOD), `apex`, `opposition` / `base` / `bodies` | `derived.configurations` y la fiabilidad de sus aspectos |
+   | `rulership` | `of` (ASC, DSC, MC, IC, número de casa o planeta), `ruler` | `derived.angle_rulers`, `house_rulers`, `dispositors` (regente moderno o co-regente tradicional). Casas no angulares: el valor se compara, pero queda «sin verificar» porque el motor no calcula la sensibilidad horaria de esas cúspides |
+   | `stellium` | `by` (SIGN, HOUSE), `where`, `bodies` opcional | `derived.stelliums` |
+   | `distribution` | `group` (ELEMENT, MODALITY), `key`, `count` y/o `bodies` | `derived.elements`, `derived.modalities` |
+
+   Un tipo desconocido no se cuenta como verificado ni como error: queda en `unchecked`. El resumen del informe (`audit`) agrega `scope: "declared_references"`, `declared`, `unchecked` y `undeclared_degrees`; `all_references_present_in_chart` se conserva por compatibilidad y se refiere solo a las referencias declaradas.
 3. Los elementos con `reliable: false` se formulan con cautela o se omiten; la auditoría marca los que se usan como dato firme.
 4. Con `time_precision = UNKNOWN`: sin Ascendente, Medio Cielo, casas ni cúspides.
 5. Protocolo interpretativo: el de ASTROINFORME. No se publica en este repositorio; vive en el servicio interpretativo.
