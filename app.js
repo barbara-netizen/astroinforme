@@ -843,7 +843,10 @@ function initVisuals() {
 }
 
 function limitLanguages() {
-  const allowed = (CONFIG.languages && CONFIG.languages.length) ? CONFIG.languages.filter((l) => L.LANGS.includes(l)) : L.LANGS;
+  // enlace de prueba: con ?idiomas=todos en la dirección se muestran los tres idiomas aunque la configuración pública
+  // tenga solo uno (para revisar textos e informes en alemán e inglés antes de abrirlos)
+  let test = false; try { test = new URLSearchParams(location.search).get("idiomas") === "todos"; } catch (e) { }
+  const allowed = test ? L.LANGS : (CONFIG.languages && CONFIG.languages.length) ? CONFIG.languages.filter((l) => L.LANGS.includes(l)) : L.LANGS;
   for (const sel of [$("#ui-lang"), $("#lang")]) for (const o of [...sel.options]) if (!allowed.includes(o.value)) o.remove();
   $(".langsel").hidden = allowed.length < 2;
   return allowed;
