@@ -570,7 +570,14 @@ function pendingRequestId(code, hash) {
   try { localStorage.setItem(PENDING_KEY, JSON.stringify({ id, code, hash, at: Date.now() })); } catch (e) { }
   return id;
 }
-function clearPending() { try { localStorage.removeItem(PENDING_KEY); } catch (e) { } }
+function clearPending() { try { localStorage.removeItem(PENDING_KEY); } catch (e) { } const n = document.getElementById("resume-note"); if (n) n.hidden = true; }
+// al recargar la página durante la espera: si hay un pedido reciente sin entregar, se explica cómo retomarlo
+const RESUME_MS = 60 * 60 * 1000;
+function showResumeNote() {
+  let p = null; try { p = JSON.parse(localStorage.getItem(PENDING_KEY) || "null"); } catch (e) { }
+  const n = document.getElementById("resume-note");
+  if (n) n.hidden = !(p && p.id && Date.now() - p.at < RESUME_MS);
+}
 class ServiceError extends Error { constructor(key, params) { super(key); this.key = key; this.params = params; } }
 async function obtainReport() {
   if (CONFIG.demo) {
@@ -611,17 +618,27 @@ const serviceError = (status, body) => {
   const k = body && body.error ? "i.err." + body.error : null;
   return k && L.t(k) !== k ? new ServiceError(k) : new ServiceError("i.status", { status });
 };
-async function obtainReportJob(headers, chartBody, request_id, code) {
+async function obtainReportJob(headers, chartBody, request_id, code, retried = false) {
   let r, body = null;
   try { r = await fetch(serviceUrl() + "jobs", { method: "POST", headers, body: JSON.stringify({ ...JSON.parse(chartBody), request_id }) }); }
   catch (e) { resetTurnstile(); throw new ServiceError("i.err.upstream"); }
   resetTurnstile();
   try { body = await r.json(); } catch (e) { }
+  // ese identificador corresponde a un intento anterior que falló (sin descontar cupo): se pide de nuevo con otro
+  if (body && body.status === "failed" && body.retry && !retried) {
+    clearPending();
+    return obtainReportJob(headers, chartBody, pendingRequestId(code, await payloadHash(chartBody)), code, true);
+  }
   const t0 = Date.now();
   for (;;) {
     if (body && body.report) { clearPending(); return { report: body.report, remaining: body.remaining, recovered: !!body.recovered }; }
-    if (body && body.status === "failed") throw serviceError(r.status, body);
-    if (!body || (body.error && !body.status)) throw serviceError(r ? r.status : 0, body);
+    // un pedido fallido no descontó cupo; el próximo intento usa un identificador nuevo
+    if (body && body.status === "failed") { clearPending(); throw serviceError(r.status, body); }
+    if (!body || (body.error && !body.status)) {
+      // rechazo definitivo (código inválido, cupo agotado, datos inválidos): no queda nada que retomar
+      if (r && r.status >= 400 && r.status < 500 && !(body && body.error === "in_progress")) clearPending();
+      throw serviceError(r ? r.status : 0, body);
+    }
     if (Date.now() - t0 > JOB_MAX_MS) throw new ServiceError("i.err.timeout");
     await new Promise((res) => setTimeout(res, JOB_POLL_MS));
     try {
@@ -886,6 +903,7 @@ function init() {
   V.setLang(L.getLang());
   initVisuals();
   initFeedback();
+  showResumeNote();
   applyLanguage(L.getLang(), { remember: false });
   try { $("#access-code").value = localStorage.getItem("astroinforme.code") || ""; } catch (e) { }
   $("#ui-lang").addEventListener("change", (e) => applyLanguage(e.target.value));
