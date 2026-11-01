@@ -226,6 +226,10 @@ body[data-screen="report"] { background: var(--panel); }
 #rep-meta { font-size: 0.9rem; color: var(--muted); }
 .rep-index { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-bottom: 24px; }
 .save-now { background: var(--warn-bg); border-radius: 8px; padding: 14px 16px; margin: 0 0 18px; display: grid; gap: 12px; justify-items: start; font-size: 0.95rem; line-height: 1.5; }
+.brand, .wait-brand { display: inline-flex; align-items: center; gap: 0.45em; }
+.brand .logo, .wait-brand .logo { width: 1.25em; height: 1.25em; flex: none; }
+.wait-brand { justify-content: center; }
+.wait-brand .logo { --accent: #d6a752; }
 .rep-index ol { margin: 0; padding: 0 0 12px 20px; display: grid; gap: 4px; }
 #report-out { display: grid; gap: 0; }
 .rep-sec { scroll-margin-top: 64px; display: grid; gap: 14px; padding: 0 0 30px; font-size: 1.06rem; line-height: 1.65; }
@@ -289,7 +293,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
 
 <header class="bar">
   <div class="wrap">
-    <a href="#" class="brand" id="brand">AsterOrbis</a>
+    <a href="#" class="brand" id="brand"><svg class="logo" viewBox="0 0 100 100" aria-hidden="true" focusable="false"><circle cx="50" cy="50" r="44" fill="none" stroke="currentColor" stroke-width="4"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(0 50 50)" fill="var(--accent)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(45 50 50)" fill="var(--accent)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(90 50 50)" fill="var(--accent)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(135 50 50)" fill="var(--accent)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(180 50 50)" fill="var(--accent)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(225 50 50)" fill="var(--accent)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(270 50 50)" fill="var(--accent)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(315 50 50)" fill="var(--accent)"/><circle cx="50" cy="50" r="7" fill="currentColor"/></svg><span>AsterOrbis</span></a>
     <div class="bar-links">
       <label class="langsel"><span class="sr" data-i18n="ui.lang">Idioma</span><select id="ui-lang" aria-label="Idioma / Sprache / Language"><option value="es">ES</option><option value="de">DE</option><option value="en">EN</option></select></label>
     </div>
@@ -469,7 +473,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
 <!-- espera del informe -->
 <div id="wait" hidden role="dialog" aria-modal="true" aria-labelledby="wait-who">
   <div class="wait-in">
-    <div class="wait-brand">AsterOrbis</div>
+    <div class="wait-brand"><svg class="logo" viewBox="0 0 100 100" aria-hidden="true" focusable="false"><circle cx="50" cy="50" r="44" fill="none" stroke="currentColor" stroke-width="4"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(0 50 50)" fill="var(--accent)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(45 50 50)" fill="var(--accent)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(90 50 50)" fill="var(--accent)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(135 50 50)" fill="var(--accent)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(180 50 50)" fill="var(--accent)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(225 50 50)" fill="var(--accent)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(270 50 50)" fill="var(--accent)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(315 50 50)" fill="var(--accent)"/><circle cx="50" cy="50" r="7" fill="currentColor"/></svg><span>AsterOrbis</span></div>
     <figure id="fig-reader" class="art" hidden></figure>
     <p id="wait-who"></p>
     <div id="wait-clock" aria-live="off">0:00</div>
