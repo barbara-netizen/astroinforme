@@ -24,7 +24,7 @@ export const CONFIG = {
   //   La carta se calcula en el navegador con estos datos; el informe es un archivo fijo generado por el servicio.
   //   file vacío = no se muestra el enlace.
   sample: {
-    file: "",
+    file: "muestra/informe-lucia.json",
     first: "Lucía", date: "1985-03-14", time: "15:20", precision: "EXACT",
     lat: "-31.4167", lon: "-64.1833", placeLabel: "Córdoba, Argentina", gender: "FEMININE",
   },
