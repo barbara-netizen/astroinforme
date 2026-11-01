@@ -149,8 +149,9 @@ group("respuesta perdida con cupo restante: se recupera sin generar ni descontar
   // con el cupo agotado, el último pedido sigue recuperable; uno nuevo no recibe el informe anterior
   mockClaude([]);
   assert.equal((await run(req(withId(R2), "ANA-7K2"), e)).body.recovered, true);
-  assert.equal((await run(req(withId(R3), "ANA-7K2"), e)).body.error, "quota_exhausted");
-  assert.equal((await run(req(withId(R1), "ANA-7K2"), e)).body.error, "quota_exhausted", "solo se guarda el último informe");
+  // con el cupo agotado, cualquier pedido nuevo del mismo código recibe el último informe guardado (no genera ni cobra)
+  let again = await run(req(withId(R3), "ANA-7K2"), e);
+  assert.equal(again.body.recovered, true); assert.equal(state.calls.length, 0);
   // la app anterior (sin request_id) conserva su comportamiento
   assert.equal((await run(req(base, "ANA-7K2"), e)).body.recovered, true);
 

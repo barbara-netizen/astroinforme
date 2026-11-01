@@ -299,7 +299,7 @@ ${i.examples.map((e) => `  \xAB\u2026${e}\u2026\xBB`).join("\n")}`).join("\n");
 }
 
 // src/prompts.js
-var IDIOMA = { es: "espa\xF1ol rioplatense, con voseo", de: "alem\xE1n, tuteando (du)", en: "ingl\xE9s" };
+var IDIOMA = { es: "espa\xF1ol rioplatense, con voseo", de: "alem\xE1n, tuteando (du)", en: "ingl\xE9s brit\xE1nico (ortograf\xEDa brit\xE1nica: organise, colour)" };
 var TRATAMIENTO = {
   FEMININE: "Cuando el idioma exija concordancia de g\xE9nero para referirse a la persona, us\xE1 el femenino.",
   MASCULINE: "Cuando el idioma exija concordancia de g\xE9nero para referirse a la persona, us\xE1 el masculino.",
@@ -905,7 +905,7 @@ async function admit(request, env, cors, { requireCode, cap, incoming }) {
     const inflight = await kvGetJSON(kv, "inflight:" + code, null);
     if (inflight) return { response: json({ error: "in_progress", same_request: !!requestId && inflight.request_id === requestId }, 409, cors) };
     if (used >= limit) {
-      if (!requestId && savedReport(saved)) return { response: json({ report: savedReport(saved), remaining: 0, recovered: true }, 200, cors) };
+      if (savedReport(saved)) return { response: json({ report: savedReport(saved), remaining: 0, recovered: true }, 200, cors) };
       return { response: json({ error: "quota_exhausted", remaining: 0 }, 403, cors) };
     }
   }
