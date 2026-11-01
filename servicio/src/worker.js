@@ -22,16 +22,18 @@
 // Enlace KV (Settings → Bindings → KV namespace): nombre de variable ASTRO_KV.
 //   Clave "protocol": texto completo del protocolo interpretativo.
 //   Clave "style" (opcional): guía de estilo; se agrega al final del protocolo.
-//   El servicio guarda ahí "used:<CÓDIGO>", "rep:<CÓDIGO>" (último informe, 48 h), "inflight:<CÓDIGO>" (generación en
-//   curso, 20 min), "month:<AAAA-MM>", "day:<AAAA-MM-DD>" y "v:<AAAA-MM-DD>:<hash>".
+//   El servicio guarda ahí "used:<CÓDIGO>" (copia del cupo usado; la cuenta real está en el libro CODE_LEDGER),
+//   "rep:<CÓDIGO>" (último informe, 48 h), "gen:<request_id>" (costo por pedido, 90 días), "month:<AAAA-MM>",
+//   "day:<AAAA-MM-DD>" y "v:<AAAA-MM-DD>:<hash>".
 //   La IP del visitante nunca se guarda: solo un resumen seudónimo (SHA-256 con sal secreta), que vence a los dos días.
 
 import { auditReport, refText } from "../../audit.js";
 import { styleCheck, describeStyle } from "./style.js";
 import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION } from "./prompts.js";
 import { normalizePayload, normalizeRequestId } from "./validate.js";
+import { ledger } from "./ledger.js";
 
-export const SERVICE_VERSION = "1.6.1";
+export const SERVICE_VERSION = "1.7";
 const DEFAULT_MODEL = "claude-opus-5-5";
 const DEFAULT_ORIGINS = "https://barbara-netizen.github.io";
 // Precios por millón de tokens (USD), https://platform.claude.com/docs/en/about-claude/pricing (16-10-2026)
@@ -303,21 +305,25 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
   const codes = parseCodes(env.ACCESS_CODES);
   const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
   const useCode = requireCode || !!code;
-  let limit = null, used = 0;
+  let limit = null, used = 0, token = null;
   if (useCode) {
     if (!code) return json400("code_required", 401);
     if (!(code in codes)) return json400("code_invalid", 403);
     limit = codes[code];
-    used = +(await kv.get("used:" + code)) || 0;
+    if (!env.CODE_LEDGER) return json400("not_configured", 503);
+    const book = ledger(env, code);
     // recuperación explícita: la app reenvía el mismo request_id cuando no recibió la respuesta. Si ese pedido ya
     // terminó, se entrega el informe guardado (48 h) sin generar ni descontar nada. Un request_id nuevo genera otro.
     const saved = await kvGetJSON(kv, "rep:" + code, null);
-    if (requestId && saved && saved.request_id === requestId && savedReport(saved))
+    if (requestId && saved && saved.request_id === requestId && savedReport(saved)) {
+      used = (await book.get()).used;
       return { response: json({ report: savedReport(saved), remaining: Math.max(0, limit - used), recovered: true }, 200, cors) };
-    // una sola generación en curso por código: evita el doble gasto si se reintenta mientras el primer pedido sigue
-    const inflight = await kvGetJSON(kv, "inflight:" + code, null);
-    if (inflight) return { response: json({ error: "in_progress", same_request: !!requestId && inflight.request_id === requestId }, 409, cors) };
-    if (used >= limit) {
+    }
+    // reserva atómica en el libro del código: una sola generación en curso y nunca más informes que el cupo
+    const res = await book.reserve(requestId, limit);
+    if (res.error === "in_progress") return { response: json({ error: "in_progress", same_request: !!res.same_request }, 409, cors) };
+    used = res.used; token = res.token || null;
+    if (res.error === "quota_exhausted") {
       // con el cupo agotado se entrega el último informe guardado (48 h), solo si se pide para la misma carta y los
       // mismos datos: así quien ya lo recibió puede volver a abrirlo (por ejemplo, para descargar el PDF otra vez),
       // pero nadie recibe el informe de otra carta. Las copias anteriores a esta versión no tienen huella: se aceptan
@@ -328,7 +334,10 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
   }
   const mk = monthKey();
   const month = await kvGetJSON(kv, mk, { reports: 0, usd: 0, failed: 0 });
-  if (month.usd >= cap) return json400("budget_exhausted", 429);
+  if (month.usd >= cap) {
+    if (useCode) await ledger(env, code).release(token).catch(() => { });
+    return json400("budget_exhausted", 429);
+  }
 
   // acceso público: límite por visitante y por día; se reserva antes de llamar a Claude
   let vKey = null, vUsed = 0, dKey = null, dUsed = 0;
@@ -341,9 +350,7 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
     await kv.put(vKey, String(vUsed + 1), { expirationTtl: 172800 });
     await kv.put(dKey, String(dUsed + 1), { expirationTtl: 172800 });
   }
-  // marca de generación en curso: funciona como reserva del cupo del código mientras dura el trabajo
-  if (useCode) await kv.put("inflight:" + code, JSON.stringify({ request_id: requestId, at: new Date().toISOString() }), { expirationTtl: INFLIGHT_TTL });
-  return { job: { payload, fp, requestId, useCode, code: useCode ? code : null, limit, mk, vKey, vUsed, dKey, dUsed } };
+  return { job: { payload, fp, token, requestId, useCode, code: useCode ? code : null, limit, mk, vKey, vUsed, dKey, dUsed } };
 }
 
 /**
@@ -353,8 +360,8 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
  */
 export async function finalizeJob(env, job, spent, result, error, extra = {}) {
   const kv = env.ASTRO_KV;
-  const { useCode, code, requestId, limit, mk, vKey, vUsed, dKey, dUsed, fp } = job;
-  let out, outcome;
+  const { useCode, code, requestId, limit, mk, vKey, vUsed, dKey, dUsed, fp, token } = job;
+  let out, outcome, consumed = false;
   if (result) {
     const strict = env.AUDIT_STRICT !== "false";
     if (!result.audit.ok && strict) {
@@ -363,7 +370,8 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
     } else {
       let used = null;
       if (useCode) {
-        used = (+(await kv.get("used:" + code)) || 0) + 1; await kv.put("used:" + code, String(used));
+        // consumo idempotente: si el cierre del mismo pedido se repite (misma ficha de reserva), no descuenta dos veces
+        used = (await ledger(env, code).consume(token)).used; consumed = true;
         // copia del último informe del código durante 48 h, para recuperarlo con su request_id si no llegó a la pantalla
         await kv.put("rep:" + code, JSON.stringify({ request_id: requestId, fp: fp || null, report: result.report, at: new Date().toISOString() }), { expirationTtl: REPORT_TTL });
       }
@@ -379,7 +387,8 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
     // si la API falló, el visitante puede volver a intentar
     if (vKey) { await kv.put(vKey, String(vUsed), { expirationTtl: 172800 }).catch(() => { }); await kv.put(dKey, String(dUsed), { expirationTtl: 172800 }).catch(() => { }); }
   }
-  if (useCode) await kv.delete("inflight:" + code).catch(() => { });
+  // sin informe entregado, la reserva se libera sin descontar cupo
+  if (useCode && !consumed) await ledger(env, code).release(token).catch(() => { });
   // registro de costos por pedido, sin datos personales ni de la carta
   const genId = requestId || crypto.randomUUID();
   await kv.put("gen:" + genId, JSON.stringify({
@@ -416,6 +425,8 @@ export default {
         access: requireCode ? "code" : "public", turnstile: !!env.TURNSTILE_SECRET,
         // «jobs»: generación desacoplada de la conexión (servicio 1.6, Durable Object REPORT_JOB)
         jobs: !!env.REPORT_JOB,
+        // «ledger»: cupo por código con reserva atómica (servicio 1.7, Durable Object CODE_LEDGER)
+        ledger: !!env.CODE_LEDGER,
         // «available»: si hoy se puede pedir un informe (sin revelar el gasto)
         available: configured && month.usd < cap && (requireCode || day < +(env.DAILY_LIMIT || 8)),
         configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, style: !!(env.ASTRO_KV && (await env.ASTRO_KV.get("style"))), kv: !!env.ASTRO_KV, codes: Object.keys(parseCodes(env.ACCESS_CODES)).length } }, 200, cors);
@@ -464,7 +475,9 @@ export default {
       return json(await r.json(), 202, { ...cors, "cache-control": "no-store" });
     }
 
-    // modo anterior (app 1.5 o anterior): respuesta en flujo mientras dura la generación
+    // modo anterior (app 1.5 o anterior): respuesta en flujo mientras dura la generación. Apagado por defecto desde
+    // la 1.7: la app actual usa /jobs. Se puede reactivar con LEGACY_STREAM = "true" (lo usan las pruebas).
+    if (env.LEGACY_STREAM !== "true") return json({ error: "app_outdated" }, 410, cors);
     const adm = await admit(request, env, cors, { requireCode, cap, incoming: body.incoming });
     if (adm.response) return adm.response;
     const job = adm.job;

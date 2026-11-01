@@ -2,4 +2,5 @@
 // se exporta la clase del Durable Object (generación desacoplada, servicio 1.6), que el binding REPORT_JOB necesita.
 import worker from "./worker.js";
 export { ReportJob } from "./job.js";
+export { CodeLedger } from "./ledger.js";
 export default worker;

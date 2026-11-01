@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import worker from "../src/worker.js";
+import { CodeLedger } from "../src/ledger.js";
 
 export const carta = () => JSON.parse(readFileSync(new URL("./carta-prueba.json", import.meta.url)));
 export const informeOk = () => JSON.parse(readFileSync(new URL("./informe-ok.json", import.meta.url)));
@@ -17,7 +18,33 @@ export class KV {
   async put(k, v, o) { this.m.set(k, String(v)); if (o && o.expirationTtl) this.exp.set(k, now + o.expirationTtl * 1000); else this.exp.delete(k); }
   async delete(k) { this.m.delete(k); this.exp.delete(k); }
 }
-export const env = (over = {}) => ({ ANTHROPIC_API_KEY: "sk-test", ACCESS_CODES: "ANA-7K2:2, PEDRO-9X4:1, LUZ-3M8Q:3", ASTRO_KV: new KV({ protocol: "PROTOCOLO DE PRUEBA" }), ...over });
+/** Durable Objects simulados: almacenamiento en memoria; la alarma la dispara la prueba a mano. */
+export class FakeStorage {
+  constructor() { this.m = new Map(); this.alarm = null; }
+  async get(k) { return this.m.has(k) ? structuredClone(this.m.get(k)) : undefined; }
+  async put(k, v) { this.m.set(k, structuredClone(v)); }
+  async delete(k) { for (const x of [].concat(k)) this.m.delete(x); }
+  async deleteAll() { this.m.clear(); this.alarm = null; }
+  async setAlarm(t) { this.alarm = t; }
+  async getAlarm() { return this.alarm; }
+}
+export class FakeNamespace {
+  constructor(Cls) { this.Cls = Cls; this.objs = new Map(); this.env = null; }
+  idFromName(name) { return name; }
+  get(id) {
+    if (!this.objs.has(id)) this.objs.set(id, new this.Cls({ storage: new FakeStorage() }, this.env));
+    const o = this.objs.get(id);
+    return { fetch: (url, init) => o.fetch(new Request(url, init)) };
+  }
+  obj(id) { return this.objs.get(id); }
+}
+/** Estado del libro de cupo de un código (para las pruebas). */
+export async function ledgerState(e, code) {
+  const o = e.CODE_LEDGER.obj("code:" + code);
+  return o ? (await o.storage.get("s")) || null : null;
+}
+export const withLedger = (e) => { e.CODE_LEDGER = new FakeNamespace(CodeLedger); e.CODE_LEDGER.env = e; return e; };
+export const env = (over = {}) => withLedger({ ANTHROPIC_API_KEY: "sk-test", ACCESS_CODES: "ANA-7K2:2, PEDRO-9X4:1, LUZ-3M8Q:3", ASTRO_KV: new KV({ protocol: "PROTOCOLO DE PRUEBA" }), LEGACY_STREAM: "true", ...over });
 
 export const state = { calls: [] };
 /** API de Claude simulada, en flujo. onCall(n) se ejecuta antes de responder cada llamada (para simular concurrencia). */

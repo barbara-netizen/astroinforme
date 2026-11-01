@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import { normalizePayload, normalizeFirstName, LIMITS } from "../src/validate.js";
 import { chartForModel } from "../src/worker.js";
-import { carta, informeOk, clone, ANALISIS, KV, env, mockClaude, sentText, state, req, run, advance } from "./helpers.mjs";
+import { carta, informeOk, clone, ANALISIS, KV, env, mockClaude, sentText, state, req, run, advance, ledgerState } from "./helpers.mjs";
+import { ledger } from "../src/ledger.js";
 
 const base = carta();
 const ok = informeOk();
@@ -196,15 +197,15 @@ group("request_id mal formado: se ignora");
 group("generación en curso: no se inicia otra con el mismo código");
 {
   const e = env();
-  await e.ASTRO_KV.put("inflight:LUZ-3M8Q", JSON.stringify({ request_id: R1 }), { expirationTtl: 1200 });
+  await ledger(e, "LUZ-3M8Q").reserve(R1, 3);
   mockClaude([]);
   let r = await run(req(withId(R1), "LUZ-3M8Q"), e);
   assert.equal(r.status, 409); assert.equal(r.body.error, "in_progress"); assert.equal(r.body.same_request, true);
   r = await run(req(withId(R2), "LUZ-3M8Q"), e);
   assert.equal(r.body.error, "in_progress"); assert.equal(r.body.same_request, false);
   assert.equal(state.calls.length, 0);
-  // si el Worker se cortó y nunca borró la marca, vence sola
-  advance(1201);
+  // si el trabajo se cortó y nunca liberó la reserva, vence sola
+  const o = e.CODE_LEDGER.obj("code:LUZ-3M8Q"); const s = await o.storage.get("s"); s.inflight.exp = Date.now() - 1; await o.storage.put("s", s);
   mockClaude([ANALISIS, ok]);
   r = await run(req(withId(R2), "LUZ-3M8Q"), e);
   assert.ok(r.body.report);
@@ -214,16 +215,16 @@ group("la marca de generación en curso existe durante el trabajo y se borra al 
 {
   const e = env();
   let seen = null;
-  mockClaude([ANALISIS, ok], async () => { seen = await e.ASTRO_KV.get("inflight:LUZ-3M8Q"); });
+  mockClaude([ANALISIS, ok], async () => { seen = (await ledgerState(e, "LUZ-3M8Q")).inflight; });
   await run(req(withId(R1), "LUZ-3M8Q"), e);
-  assert.equal(JSON.parse(seen).request_id, R1);
-  assert.equal(await e.ASTRO_KV.get("inflight:LUZ-3M8Q"), null);
+  assert.equal(seen.request_id, R1);
+  assert.equal((await ledgerState(e, "LUZ-3M8Q")).inflight, null);
   mockClaude([ANALISIS, "500"]);
   assert.equal((await run(req(withId(R2), "LUZ-3M8Q"), e)).body.error, "upstream");
-  assert.equal(await e.ASTRO_KV.get("inflight:LUZ-3M8Q"), null);
+  assert.equal((await ledgerState(e, "LUZ-3M8Q")).inflight, null);
   mockClaude([ANALISIS, bad, bad]);
   assert.equal((await run(req(withId(R3), "LUZ-3M8Q"), e)).body.error, "audit_failed");
-  assert.equal(await e.ASTRO_KV.get("inflight:LUZ-3M8Q"), null);
+  assert.equal((await ledgerState(e, "LUZ-3M8Q")).inflight, null);
   assert.equal(await e.ASTRO_KV.get("used:LUZ-3M8Q"), "1");
 }
 
@@ -238,12 +239,53 @@ group("totales del mes: se releen antes de escribir (no se pisa lo que sumó otr
   assert.equal(m.reports, 4); assert.equal(m.failed, 1); assert.ok(m.usd > 5, String(m.usd));
 }
 
-group("el uso del código también se relee al terminar");
+group("cupo atómico (1.7): dos pedidos simultáneos con el mismo código no generan dos informes");
 {
   const e = env();
-  mockClaude([ANALISIS, ok], async (i) => { if (i === 2) await e.ASTRO_KV.put("used:LUZ-3M8Q", "1"); });
-  const r = await run(req(withId(R1), "LUZ-3M8Q"), e);
-  assert.equal(await e.ASTRO_KV.get("used:LUZ-3M8Q"), "2"); assert.equal(r.body.remaining, 1);
+  // la API tarda: el segundo pedido llega mientras el primero está generando
+  mockClaude([ANALISIS, ok], () => new Promise((res) => setTimeout(res, 20)));
+  const [a, b] = await Promise.all([run(req(withId(R1), "PEDRO-9X4"), e), run(req(withId(R2), "PEDRO-9X4"), e)]);
+  const bodies = [a.body, b.body];
+  assert.equal(bodies.filter((x) => x.report).length, 1, "uno solo recibe el informe");
+  assert.equal(bodies.filter((x) => x.error === "in_progress").length, 1, "el otro recibe in_progress");
+  assert.equal(state.calls.length, 2, "una sola generación (fases A y B)");
+  assert.equal((await ledgerState(e, "PEDRO-9X4")).used, 1);
+  assert.equal(await e.ASTRO_KV.get("used:PEDRO-9X4"), "1", "la copia en el KV sigue al libro");
+}
+
+group("el libro toma el uso previo del KV la primera vez (códigos usados antes de la 1.7)");
+{
+  const e = env();
+  await e.ASTRO_KV.put("used:ANA-7K2", "2");
+  mockClaude([]);
+  assert.equal((await run(req(withId(R1), "ANA-7K2"), e)).body.error, "quota_exhausted");
+  assert.equal(state.calls.length, 0);
+}
+
+group("reservas simultáneas sobre el libro: solo una prospera");
+{
+  const e = env();
+  const book = ledger(e, "PEDRO-9X4");
+  const rs = await Promise.all([1, 2, 3, 4, 5].map((i) => book.reserve("job-00000000000000" + i, 1)));
+  assert.equal(rs.filter((r) => r.reserved).length, 1);
+  assert.equal(rs.filter((r) => r.error === "in_progress").length, 4);
+}
+
+group("el consumo es idempotente por reserva: repetir el cierre no descuenta dos veces");
+{
+  const e = env();
+  const book = ledger(e, "LUZ-3M8Q");
+  const r = await book.reserve(R1, 3);
+  assert.equal((await book.consume(r.token)).used, 1);
+  assert.equal((await book.consume(r.token)).duplicate, true);
+  assert.equal((await book.get()).used, 1);
+}
+
+group("sin el libro de cupo configurado, los pedidos con código responden not_configured");
+{
+  const e = env(); delete e.CODE_LEDGER;
+  mockClaude([]);
+  assert.equal((await run(req(withId(R1), "LUZ-3M8Q"), e)).body.error, "not_configured");
 }
 
 console.log(`OK — ${n} grupos de pruebas de endurecimiento (1.5)`);

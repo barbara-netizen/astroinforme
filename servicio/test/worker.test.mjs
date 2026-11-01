@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import worker, { parseCodes, costUSD, chartForModel } from "../src/worker.js";
+import { withLedger } from "./helpers.mjs";
 
 const carta = JSON.parse(readFileSync(new URL("./carta-prueba.json", import.meta.url)));
 const ok = JSON.parse(readFileSync(new URL("./informe-ok.json", import.meta.url)));
@@ -16,7 +17,7 @@ class KV {
   async delete(k) { this.m.delete(k); this.exp.delete(k); }
 }
 const ORIGIN = "https://barbara-netizen.github.io";
-const env = (over = {}) => ({ ANTHROPIC_API_KEY: "sk-test", ACCESS_CODES: "ANA-7K2:2, PEDRO-9X4:1", ASTRO_KV: new KV({ protocol: "PROTOCOLO DE PRUEBA" }), ...over });
+const env = (over = {}) => withLedger({ ANTHROPIC_API_KEY: "sk-test", ACCESS_CODES: "ANA-7K2:2, PEDRO-9X4:1", ASTRO_KV: new KV({ protocol: "PROTOCOLO DE PRUEBA" }), LEGACY_STREAM: "true", ...over });
 
 let calls = [], turnstileOK = true, turnstileCalls = 0;
 function mockClaude(sequence) {

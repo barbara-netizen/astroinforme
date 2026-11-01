@@ -18,3 +18,12 @@ class_name = "ReportJob"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ReportJob"]
+
+# Cupo por código con reserva atómica (servicio 1.7): un Durable Object por código.
+[[durable_objects.bindings]]
+name = "CODE_LEDGER"
+class_name = "CodeLedger"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["CodeLedger"]
