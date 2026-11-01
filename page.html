@@ -230,6 +230,11 @@ body[data-screen="report"] { background: var(--panel); }
 .rep-index { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-bottom: 24px; }
 .sample-note { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 0 0 18px; display: grid; gap: 6px; font-size: 0.95rem; line-height: 1.5; }
 .sample-link { margin: 0; }
+.author { border-top: 1px solid var(--line); margin: 28px 0 8px; padding-top: 20px; display: grid; gap: 16px; }
+.author-h { font-family: var(--f-display); font-size: 1.25rem; font-weight: 400; margin: 0 0 8px; }
+.author p { margin: 0 0 10px; line-height: 1.6; }
+@media (min-width: 760px) { .author:has(.author-art:not([hidden])) { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); align-items: start; } }
+@media print { .author { break-inside: avoid; } }
 .save-now { background: var(--warn-bg); border-radius: 8px; padding: 14px 16px; margin: 0 0 18px; display: grid; gap: 12px; justify-items: start; font-size: 0.95rem; line-height: 1.5; }
 .brand, .wait-brand { display: inline-flex; align-items: center; gap: 0.45em; }
 .brand .logo, .wait-brand .logo { width: 1.25em; height: 1.25em; flex: none; }
@@ -429,6 +434,14 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
           <button type="button" class="linkbtn" id="btn-back-report" hidden data-i18n="btn.backReport">Volver al informe</button>
         </div>
         <p class="disclaimer" data-i18n="disclaimer"></p>
+        <section class="author" aria-labelledby="h-author-1">
+      <figure class="art author-art" id="fig-author-1" hidden></figure>
+      <div>
+        <h2 class="author-h" id="h-author-1" data-i18n="author.h">Quién hace AsterOrbis</h2>
+        <p data-i18n="author.body"></p>
+        <p data-i18n="author.paid" class="author-paid" hidden></p>
+      </div>
+    </section>
       </div>
     </div>
   </section>
@@ -463,6 +476,14 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
     <details class="rep-index" id="rep-index"><summary id="rep-index-sum" data-i18n="rep.index">Índice</summary><ol id="rep-index-list"></ol></details>
     <div id="report-out"></div>
     <figure id="fig-closure" class="art" hidden></figure>
+    <section class="author" aria-labelledby="h-author-2">
+      <figure class="art author-art" id="fig-author-2" hidden></figure>
+      <div>
+        <h2 class="author-h" id="h-author-2" data-i18n="author.h">Quién hace AsterOrbis</h2>
+        <p data-i18n="author.body"></p>
+        <p data-i18n="author.paid" class="author-paid" hidden></p>
+      </div>
+    </section>
     <div class="rep-end">
       <p id="report-status" class="small muted" hidden></p>
       <div id="audit-out" class="note" hidden></div>
