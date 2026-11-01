@@ -936,6 +936,7 @@ function init() {
   $("#btn-interp").addEventListener("click", callInterpreter);
   $("#btn-print").addEventListener("click", printSheet);
   $("#btn-print-2").addEventListener("click", printSheet);
+  $("#btn-print-3").addEventListener("click", printSheet);
   $("#btn-print-chart").addEventListener("click", printSheet);
   $("#btn-edit").addEventListener("click", () => setScreen("form"));
   $("#btn-to-chart").addEventListener("click", () => setScreen("chart"));
