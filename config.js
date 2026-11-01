@@ -18,6 +18,14 @@ export const CONFIG = {
   languages: ["es"],
   // pilot: franja de «versión piloto» con el conejo y el recuadro de comentario al final del informe.
   pilot: true,
+  // sample: informe de muestra para una persona ficticia, visible antes de pedir uno propio (enlace «?muestra»).
+  //   La carta se calcula en el navegador con estos datos; el informe es un archivo fijo generado por el servicio.
+  //   file vacío = no se muestra el enlace.
+  sample: {
+    file: "",
+    first: "Lucía", date: "1985-03-14", time: "15:20", precision: "EXACT",
+    lat: "-31.4167", lon: "-64.1833", placeLabel: "Córdoba, Argentina", gender: "FEMININE",
+  },
   donation: {
     links: [
       // { amount: "$ 3.000", url: "https://mpago.la/..." },

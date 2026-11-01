@@ -771,6 +771,7 @@ async function callInterpreter() {
     clearInterval(notify.timer);
     renderReport(rep);
     renderAudit(audit);
+    $("#sample-note").hidden = true; $("#save-now").hidden = false; state.sample = false;
     V.clear($("#fig-closure"));
     if (audit.ok) V.show($("#fig-closure"), "closure_serendipity");
     const rs = $("#report-status");
@@ -983,6 +984,30 @@ function loadDemoCase(c) {
   state.demoReports = c.reports;
   ensureEngine().then(() => calculate()).catch(() => { });
 }
+// informe de muestra («?muestra»): carta ficticia calculada aquí y un informe fijo generado por el servicio
+const SAMPLE = CONFIG.sample && CONFIG.sample.file ? CONFIG.sample : null;
+if (SAMPLE) $("#sample-link-row").hidden = false;
+async function loadSample() {
+  const s = SAMPLE;
+  $("#fname").value = s.first; $("#bdate").value = s.date; $("#btime").value = s.time; $("#prec").value = s.precision;
+  $("#btime").disabled = false; $("#no-time").checked = false;
+  $("#manual-coords-toggle").checked = true; $("#manual-coords").hidden = false;
+  $("#mc-lat").value = s.lat; $("#mc-lon").value = s.lon; $("#mc-label").value = s.placeLabel;
+  $("#mc-apply").click();
+  if (s.gender) $("#gender").value = s.gender;
+  await ensureEngine(); await calculate();
+  if (!state.payload) return;
+  let rep = null;
+  try { rep = await fetch(s.file, { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)); } catch (e) { }
+  if (!rep || rep.schema !== "astroinforme.report/v1") { const st = $("#interp-status"); st.hidden = false; st.textContent = t("sample.missing"); return; }
+  const audit = auditReport(rep, state.payload);
+  state.lastReport = rep; state.lastAudit = audit; state.sample = true;
+  renderReport(rep); renderAudit(audit);
+  V.clear($("#fig-closure")); if (audit.ok) V.show($("#fig-closure"), "closure_serendipity");
+  $("#sample-note").hidden = false; $("#save-now").hidden = true; $("#report-status").hidden = true;
+  setScreen("report");
+}
+if (SAMPLE && new URLSearchParams(location.search).has("muestra")) loadSample().catch(() => { });
 if (CONFIG.demo && CONFIG.demoCases) {
   const wrap = document.createElement("label"); wrap.className = "f demo-case";
   wrap.innerHTML = `<span>Carta de prueba</span><select id="demo-case">${CONFIG.demoCases.map((c, i) => `<option value="${i}">${esc(c.label)}</option>`).join("")}</select>`;

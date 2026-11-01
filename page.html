@@ -228,6 +228,8 @@ body[data-screen="report"] { background: var(--panel); }
 .rep-head h1 { font-style: italic; font-size: clamp(2rem, 8vw, 2.8rem); line-height: 1.12; }
 #rep-meta { font-size: 0.9rem; color: var(--muted); }
 .rep-index { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+.sample-note { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 0 0 18px; display: grid; gap: 6px; font-size: 0.95rem; line-height: 1.5; }
+.sample-link { margin: 0; }
 .save-now { background: var(--warn-bg); border-radius: 8px; padding: 14px 16px; margin: 0 0 18px; display: grid; gap: 12px; justify-items: start; font-size: 0.95rem; line-height: 1.5; }
 .brand, .wait-brand { display: inline-flex; align-items: center; gap: 0.45em; }
 .brand .logo, .wait-brand .logo { width: 1.25em; height: 1.25em; flex: none; }
@@ -410,6 +412,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
         <h2 id="h-interp" data-i18n="i.h">Tu informe personal</h2>
         <p data-i18n="i.what"></p>
         <ul><li data-i18n="i.b1"></li><li data-i18n="i.b2"></li><li data-i18n="i.b3"></li></ul>
+        <p class="sample-link" id="sample-link-row" hidden><a href="?muestra" id="sample-link" data-i18n="sample.link">Ver un informe de muestra</a></p>
         <div id="interp-missing" hidden>
           <p data-i18n-html="i.missing"></p>
         </div>
@@ -442,6 +445,10 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
     </div>
   </div>
   <article class="reading" id="reading">
+    <aside class="sample-note" id="sample-note" hidden>
+      <strong data-i18n="sample.h"></strong>
+      <span data-i18n="sample.text"></span>
+    </aside>
     <header class="rep-head">
       <p class="eyebrow" id="rep-for"></p>
       <h1 id="rep-title"></h1>
