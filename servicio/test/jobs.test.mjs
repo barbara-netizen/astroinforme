@@ -1,34 +1,14 @@
 // Pruebas 1.6: generación desacoplada (Durable Object con alarma), reanudación por fases y registro de costos.
 import assert from "node:assert/strict";
 import { ReportJob, MAX_ATTEMPTS } from "../src/job.js";
-import { carta, informeOk, clone, ANALISIS, env as baseEnv, mockClaude, state, req, run, ORIGIN } from "./helpers.mjs";
+import { carta, informeOk, clone, ANALISIS, env as baseEnv, mockClaude, state, req, run, ORIGIN, FakeNamespace, ledgerState } from "./helpers.mjs";
 import worker, { streamErrorStatus, readStream, callClaude } from "../src/worker.js";
 
 const ok = informeOk();
 const bad = clone(ok); bad.technical_references_used.push({ type: "position", body: "SUN", sign: "LEO", deg: "9°29'" });
 let n = 0; const group = () => { n++; };
 
-// Durable Object simulado: almacenamiento en memoria y alarma que la prueba dispara a mano
-class FakeStorage {
-  constructor() { this.m = new Map(); this.alarm = null; }
-  async get(k) { return this.m.has(k) ? structuredClone(this.m.get(k)) : undefined; }
-  async put(k, v) { this.m.set(k, structuredClone(v)); }
-  async delete(k) { for (const x of [].concat(k)) this.m.delete(x); }
-  async deleteAll() { this.m.clear(); this.alarm = null; }
-  async setAlarm(t) { this.alarm = t; }
-  async getAlarm() { return this.alarm; }
-}
-class FakeNamespace {
-  constructor() { this.objs = new Map(); this.env = null; }
-  idFromName(name) { return name; }
-  get(id) {
-    if (!this.objs.has(id)) this.objs.set(id, new ReportJob({ storage: new FakeStorage() }, this.env));
-    const o = this.objs.get(id);
-    return { fetch: (url, init) => o.fetch(new Request(url, init)) };
-  }
-  obj(id) { return this.objs.get(id); }
-}
-const env = (over = {}) => { const e = baseEnv(over); e.REPORT_JOB = new FakeNamespace(); e.REPORT_JOB.env = e; return e; };
+const env = (over = {}) => { const e = baseEnv(over); e.REPORT_JOB = new FakeNamespace(ReportJob); e.REPORT_JOB.env = e; return e; };
 const ID = "job-000000000000001", ID2 = "job-000000000000002";
 const post = (id, code = "LUZ-3M8Q", c = carta()) => new Request("https://astro.example.workers.dev/jobs", {
   method: "POST", headers: { "content-type": "application/json", origin: ORIGIN, ...(code ? { "x-astro-code": code } : {}) }, body: JSON.stringify({ ...c, request_id: id }) });
@@ -38,7 +18,7 @@ const call = async (r, e) => { const res = await worker.fetch(r, e, {}); return 
 group("health anuncia el modo desacoplado");
 {
   const h = await call(new Request("https://x/health"), env());
-  assert.equal(h.body.version, "1.6.1"); assert.equal(h.body.jobs, true);
+  assert.equal(h.body.version, "1.7"); assert.equal(h.body.jobs, true);
   const h2 = await call(new Request("https://x/health"), baseEnv());
   assert.equal(h2.body.jobs, false);
 }
@@ -50,7 +30,7 @@ group("camino feliz: el pedido vuelve enseguida, la alarma genera y el estado en
   let r = await call(post(ID), e);
   assert.equal(r.status, 202); assert.equal(r.body.status, "queued"); assert.equal(state.calls.length, 0, "no llama al modelo dentro del pedido");
   assert.ok(e.REPORT_JOB.obj(ID).storage.alarm != null, "programa la alarma");
-  assert.ok(await e.ASTRO_KV.get("inflight:LUZ-3M8Q"), "reserva el cupo");
+  assert.equal((await ledgerState(e, "LUZ-3M8Q")).inflight.request_id, ID, "reserva el cupo");
   r = await call(get(ID), e);
   assert.equal(r.body.status, "queued");
   // la app se desconecta: la generación no depende de ella
@@ -59,7 +39,7 @@ group("camino feliz: el pedido vuelve enseguida, la alarma genera y el estado en
   r = await call(get(ID), e);
   assert.equal(r.body.status, "done"); assert.equal(r.body.report.schema, "astroinforme.report/v1"); assert.equal(r.body.remaining, 2);
   assert.equal(await e.ASTRO_KV.get("used:LUZ-3M8Q"), "1");
-  assert.equal(await e.ASTRO_KV.get("inflight:LUZ-3M8Q"), null);
+  assert.equal((await ledgerState(e, "LUZ-3M8Q")).inflight, null);
   assert.equal(JSON.parse(await e.ASTRO_KV.get("rep:LUZ-3M8Q")).request_id, ID);
   const gen = JSON.parse(await e.ASTRO_KV.get("gen:" + ID));
   assert.equal(gen.mode, "job"); assert.equal(gen.outcome, "delivered"); assert.ok(gen.usd > 0); assert.ok(gen.phases.a > 0 && gen.phases.b > 0);
@@ -122,7 +102,7 @@ group("errores persistentes: se agotan los intentos y el pedido falla sin descon
   const r = await call(get(ID), e);
   assert.equal(r.body.status, "failed"); assert.equal(r.body.error, "upstream");
   assert.equal(await e.ASTRO_KV.get("used:LUZ-3M8Q"), null);
-  assert.equal(await e.ASTRO_KV.get("inflight:LUZ-3M8Q"), null, "libera la reserva para reintentar");
+  assert.equal((await ledgerState(e, "LUZ-3M8Q")).inflight, null, "libera la reserva para reintentar");
   const month = JSON.parse(await e.ASTRO_KV.get("month:" + new Date().toISOString().slice(0, 7)));
   assert.ok(month.usd > 0 && month.failed === 1, "el gasto parcial cuenta para el tope");
 }
@@ -235,6 +215,14 @@ group("errores dentro del flujo y cortes de red se clasifican como transitorios"
   globalThis.fetch = async () => sse(ev({ type: "message_start", message: { usage: {} } }) + ev({ type: "error", error: { type: "overloaded_error", message: "Overloaded" } }));
   await e.REPORT_JOB.obj(ID).alarm();
   assert.equal((await call(get(ID), e)).body.status, "queued", "vuelve a la cola en lugar de fallar");
+}
+
+group("cupo atómico: pedidos /jobs simultáneos con el mismo código crean un solo trabajo");
+{
+  const e = env();
+  const rs = await Promise.all([ID, ID2, "job-000000000000003"].map((id) => call(post(id, "PEDRO-9X4"), e)));
+  assert.equal(rs.filter((r) => r.status === 202).length, 1);
+  assert.equal(rs.filter((r) => r.body.error === "in_progress").length, 2);
 }
 
 group("sin el binding del Durable Object, /jobs responde not_configured");
