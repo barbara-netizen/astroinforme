@@ -19,7 +19,7 @@ const A = {
   boundaries_wire: { type: "image", file: "assets/07-limites-glamur-alambre.jpg", title: "Glamur Atado con Alambre", size: [720, 556], fit: "cover", focal: "50% 50%" },
   texture_purple: { type: "image", file: "assets/09-textura-moradotas.jpg", title: "Moradotas", size: [1210, 908], fit: "cover", focal: "50% 50%" },
   brand_guardian: { type: "image", file: "assets/02-marca-guardian-del-universo.jpg", title: "Guardián del Universo", size: [604, 460], fit: "contain", focal: "50% 35%" },
-  relationships_venus: { type: "video", file: "assets/05-vinculos-venus-angel.mp4", poster: "assets/05-vinculos-venus-angel-poster.jpg", title: "Venus Angel", size: [720, 720], loop: false, fit: "cover", focal: "50% 40%" },
+  relationships_steps: { type: "image", file: "assets/05-vinculos-otros-pasos.jpg", title: "Otros pasos", size: [1210, 685], fit: "cover", focal: "50% 50%" },
   pilot_rabbit: { type: "video", file: "assets/10-piloto-conejo-cuantico.mp4", poster: "assets/10-piloto-conejo-cuantico-poster.jpg", title: "Conejo cuántico", size: [360, 326], loop: true, fit: "cover", focal: "50% 50%" },
   emotional_swimmers: { type: "video", file: "assets/06-emocional-nadadoras.mp4", poster: "assets/06-emocional-nadadoras-poster.jpg", title: "Nadadoras", size: [720, 720], loop: true, fit: "cover", focal: "50% 60%" },
 };
@@ -28,7 +28,7 @@ const A = {
 // Dentro del informe las animaciones se reproducen una vez y quedan en su fotograma fijo.
 export const SECTION_ART = {
   identity: "identity_biographies", emotional: "emotional_dream", saturn: "boundaries_wire",
-  relationships: "relationships_venus", roots: "texture_purple", neptune: "emotional_swimmers", myth: "brand_guardian",
+  relationships: "relationships_steps", roots: "texture_purple", neptune: "emotional_swimmers", myth: "brand_guardian",
 };
 
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
