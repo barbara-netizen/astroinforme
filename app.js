@@ -823,7 +823,7 @@ ${audit}
 <table>${row([t("th.point"), t("th.position"), chart.houses ? t("th.house") : ""], "th")}${pos.join("")}</table>
 <h3>${esc(t("h.aspects"))}</h3><table>${row([t("th.aspect"), t("th.orb")], "th")}${asp.join("")}</table>
 <p class="m">${esc(provText(f, opt, chart))}</p></details>
-<footer><p>${esc(t("disclaimer"))}</p><p>${esc(t("footer.credit"))} Bárbara Gutiérrez · barbaragutierrez.art</p><p>${esc(t("dl.generated", { date: new Date().toLocaleDateString(LOCALE[lang]) }))} https://barbara-netizen.github.io/astroinforme/</p></footer>
+<footer><p>${esc(t("author.body"))}</p><p>${esc(t("disclaimer"))}</p><p>${esc(t("footer.credit"))} Bárbara Gutiérrez · barbaragutierrez.art</p><p>${esc(t("dl.generated", { date: new Date().toLocaleDateString(LOCALE[lang]) }))} https://barbara-netizen.github.io/astroinforme/</p></footer>
 </body></html>`;
   const blob = new Blob([doc], { type: "text/html;charset=utf-8" });
   const a = document.createElement("a");
@@ -860,6 +860,8 @@ function initVisuals() {
   // la portada animada se ve de entrada; con movimiento reducido, V.show muestra su fotograma fijo
   V.show($("#fig-hero"), "intro_embroidery");
   V.show($("#fig-offer"), "report_reader");
+  // obra para «Quién hace AsterOrbis» (clave author_work en visuals.js; mientras no exista, el recuadro queda sin imagen)
+  for (const f of ["#fig-author-1", "#fig-author-2"]) V.show($(f), "author_work");
 }
 
 function limitLanguages() {
@@ -984,6 +986,9 @@ function loadDemoCase(c) {
   state.demoReports = c.reports;
   ensureEngine().then(() => calculate()).catch(() => { });
 }
+// «Quién hace AsterOrbis»: la frase sobre el pago aparece solo cuando el informe se cobra
+for (const el of document.querySelectorAll(".author-paid")) el.hidden = !CONFIG.paid;
+
 // informe de muestra («?muestra»): carta ficticia calculada aquí y un informe fijo generado por el servicio
 const SAMPLE = CONFIG.sample && CONFIG.sample.file ? CONFIG.sample : null;
 if (SAMPLE) $("#sample-link-row").hidden = false;

@@ -18,6 +18,8 @@ export const CONFIG = {
   languages: ["es"],
   // pilot: franja de «versión piloto» con el conejo y el recuadro de comentario al final del informe.
   pilot: true,
+  // paid: el informe se cobra (muestra la frase sobre el pago en «Quién hace AsterOrbis»).
+  paid: false,
   // sample: informe de muestra para una persona ficticia, visible antes de pedir uno propio (enlace «?muestra»).
   //   La carta se calcula en el navegador con estos datos; el informe es un archivo fijo generado por el servicio.
   //   file vacío = no se muestra el enlace.
