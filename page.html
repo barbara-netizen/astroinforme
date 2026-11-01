@@ -262,12 +262,21 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
   /* desde el informe se imprime el informe y, a continuación, la carta completa */
   body[data-screen="report"] #screen-chart { display: block !important; break-before: page; }
   .chart-grid { display: block; }
+  /* contenedores verticales en grilla: en papel van como bloques, para que ningún renglón quede partido entre páginas */
+  .chart-right, .tech, .tech details > div, dl#t-struct, #report-out, .rep-end, .rep-head, .chart-head { display: block; }
+  .chart-right > * + *, .tech details > div > * + *, .rep-end > * + *, .rep-head > * + * { margin-top: 10px; }
+  .tech summary { break-after: avoid; }
   .chart-left { position: static; }
   #wheel { max-width: 12cm; }
   .tech details > summary::after { content: ""; }
   .reading { max-width: none; padding: 0; }
-  .rep-sec { break-inside: auto; }
-  .rep-sec h2 { break-after: avoid; }
+  /* al imprimir, las secciones no son grilla: Chrome parte mal las grillas entre páginas (títulos cortados por la mitad) */
+  .rep-sec { display: block; break-inside: auto; padding-bottom: 18px; }
+  .rep-sec > * + * { margin-top: 12px; }
+  .rep-sec h2 { break-after: avoid; break-inside: avoid; page-break-after: avoid; }
+  .rep-sec p { orphans: 3; widows: 3; }
+  /* una ilustración nunca se parte entre dos páginas, y no queda sola al pie separada de su sección */
+  .rep-sec .art, #fig-closure { break-inside: avoid; page-break-inside: avoid; break-after: avoid; }
   .rep-sec .art, #fig-closure, .rep-myth { margin: 6px 0; }
   .rep-sec .art img, #fig-closure img { max-height: 9cm; width: auto; max-width: 100%; }
   .rep-sec .art video, #fig-closure video { display: none !important; }
