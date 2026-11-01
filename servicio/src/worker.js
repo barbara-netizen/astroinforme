@@ -301,8 +301,9 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
     const inflight = await kvGetJSON(kv, "inflight:" + code, null);
     if (inflight) return { response: json({ error: "in_progress", same_request: !!requestId && inflight.request_id === requestId }, 409, cors) };
     if (used >= limit) {
-      // compatibilidad con la app anterior (sin request_id): con el cupo agotado se entrega el último informe guardado
-      if (!requestId && savedReport(saved)) return { response: json({ report: savedReport(saved), remaining: 0, recovered: true }, 200, cors) };
+      // con el cupo agotado se entrega el último informe guardado (48 h): quien ya lo recibió puede volver a abrirlo,
+      // por ejemplo para descargar el PDF otra vez. El código es personal, así que es su propio informe.
+      if (savedReport(saved)) return { response: json({ report: savedReport(saved), remaining: 0, recovered: true }, 200, cors) };
       return { response: json({ error: "quota_exhausted", remaining: 0 }, 403, cors) };
     }
   }

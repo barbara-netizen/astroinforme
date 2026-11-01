@@ -172,6 +172,17 @@ group("modo en flujo (app anterior): sigue funcionando y también deja registro 
   assert.equal(JSON.parse(await e.ASTRO_KV.get("gen:" + ID)).mode, "stream");
 }
 
+group("código agotado: un pedido nuevo en modo desacoplado recibe el informe guardado, sin generar");
+{
+  const e = env();
+  mockClaude([ANALISIS, ok]);
+  await call(post(ID, "PEDRO-9X4"), e);
+  await e.REPORT_JOB.obj(ID).alarm();
+  mockClaude([]);
+  const r = await call(post(ID2, "PEDRO-9X4"), e);
+  assert.equal(r.body.recovered, true); assert.ok(r.body.report); assert.equal(state.calls.length, 0);
+}
+
 group("sin el binding del Durable Object, /jobs responde not_configured");
 {
   assert.equal((await call(post(ID), baseEnv())).body.error, "not_configured");
