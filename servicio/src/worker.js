@@ -31,7 +31,7 @@ import { styleCheck, describeStyle } from "./style.js";
 import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION } from "./prompts.js";
 import { normalizePayload, normalizeRequestId } from "./validate.js";
 
-export const SERVICE_VERSION = "1.6";
+export const SERVICE_VERSION = "1.6.1";
 const DEFAULT_MODEL = "claude-opus-5-5";
 const DEFAULT_ORIGINS = "https://barbara-netizen.github.io";
 // Precios por millón de tokens (USD), https://platform.claude.com/docs/en/about-claude/pricing (16-10-2026)
@@ -118,7 +118,8 @@ function describeIssues(audit) {
 // ---------------------------------------------------------------- llamada a Claude
 export async function callClaude(env, { system, user, maxTokens }) {
   const model = env.MODEL || DEFAULT_MODEL;
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
+  let r;
+  try { r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
     // en flujo: la API exige streaming para respuestas largas (el informe pide hasta 32.000 tokens)
@@ -127,7 +128,10 @@ export async function callClaude(env, { system, user, maxTokens }) {
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: user }],
     }),
-  });
+  }); } catch (err) {
+    // corte de red o de conexión: sin estado HTTP, cuenta como error transitorio y se reintenta
+    const e = new Error("upstream"); e.status = null; e.detail = "fetch: " + String((err && err.message) || err); throw e;
+  }
   if (!r.ok) {
     const body = await r.json().catch(() => null);
     const e = new Error("upstream"); e.status = r.status; e.detail = body && body.error ? `${body.error.type}: ${body.error.message}` : null; throw e;
@@ -143,6 +147,12 @@ export async function callClaude(env, { system, user, maxTokens }) {
   return readStream(r, model);
 }
 
+/** Estado HTTP equivalente a un error que llega dentro del flujo (la respuesta ya empezó con 200). */
+export function streamErrorStatus(err) {
+  const t = err && err.type;
+  return t === "overloaded_error" ? 529 : t === "rate_limit_error" ? 429 : t === "api_error" ? 500 : t === "timeout_error" ? 504 : 400;
+}
+
 /** Lee la respuesta en flujo (server-sent events) y la arma completa. */
 export async function readStream(r, model) {
   const reader = r.body.getReader(), dec = new TextDecoder();
@@ -152,7 +162,7 @@ export async function readStream(r, model) {
     if (ev.type === "message_start" && ev.message && ev.message.usage) usage = { ...ev.message.usage };
     else if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") text += ev.delta.text;
     else if (ev.type === "message_delta") { if (ev.usage) usage = { ...usage, ...ev.usage }; if (ev.delta && ev.delta.stop_reason) stop = ev.delta.stop_reason; }
-    else if (ev.type === "error") { const e = new Error("upstream"); e.status = 200; e.detail = ev.error ? `${ev.error.type}: ${ev.error.message}` : "stream error"; throw e; }
+    else if (ev.type === "error") { const e = new Error("upstream"); e.status = streamErrorStatus(ev.error); e.detail = ev.error ? `${ev.error.type}: ${ev.error.message}` : "stream error"; throw e; }
   };
   for (;;) {
     const { value, done } = await reader.read();
@@ -165,7 +175,8 @@ export async function readStream(r, model) {
     }
     if (done) break;
   }
-  if (!stop) { const e = new Error("upstream"); e.status = 200; e.detail = "stream ended without stop_reason"; throw e; }
+  // el flujo se cortó antes de terminar (conexión caída): sin estado HTTP, cuenta como transitorio
+  if (!stop) { const e = new Error("upstream"); e.status = null; e.detail = "stream ended without stop_reason"; throw e; }
   return { text, usage, stop, model };
 }
 
@@ -254,6 +265,11 @@ async function addToMonth(kv, mk, { usd = 0, reports = 0, failed = 0 }) {
   await kv.put(mk, JSON.stringify(m));
 }
 /** Copia guardada del último informe de un código. Formato 1.5: { request_id, report, at }; antes, el informe solo. */
+/** Huella de los datos del pedido (carta, idioma, tratamiento, nombre): sirve para no entregar el informe de otra carta. */
+export async function payloadFingerprint(payload) {
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(payload))));
+  return [...h.slice(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 const savedReport = (s) => (s && s.report ? s.report : s && s.schema ? s : null);
 export const GEN_TTL = 90 * 86400; // registro de costos por pedido: 90 días
 
@@ -278,6 +294,7 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
   const requestId = normalizeRequestId(incoming && incoming.request_id);
   const kv = env.ASTRO_KV;
   const ip = request.headers.get("cf-connecting-ip") || "";
+  const fp = await payloadFingerprint(payload);
 
   // verificación anti-robots (si está configurada)
   if (env.TURNSTILE_SECRET && !(await verifyTurnstile(env.TURNSTILE_SECRET, request.headers.get("x-turnstile-token"), ip))) return json400("bot_check", 403);
@@ -301,9 +318,11 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
     const inflight = await kvGetJSON(kv, "inflight:" + code, null);
     if (inflight) return { response: json({ error: "in_progress", same_request: !!requestId && inflight.request_id === requestId }, 409, cors) };
     if (used >= limit) {
-      // con el cupo agotado se entrega el último informe guardado (48 h): quien ya lo recibió puede volver a abrirlo,
-      // por ejemplo para descargar el PDF otra vez. El código es personal, así que es su propio informe.
-      if (savedReport(saved)) return { response: json({ report: savedReport(saved), remaining: 0, recovered: true }, 200, cors) };
+      // con el cupo agotado se entrega el último informe guardado (48 h), solo si se pide para la misma carta y los
+      // mismos datos: así quien ya lo recibió puede volver a abrirlo (por ejemplo, para descargar el PDF otra vez),
+      // pero nadie recibe el informe de otra carta. Las copias anteriores a esta versión no tienen huella: se aceptan
+      // hasta que venzan (48 h desde el despliegue).
+      if (savedReport(saved) && (saved.fp == null || saved.fp === fp)) return { response: json({ report: savedReport(saved), remaining: 0, recovered: true }, 200, cors) };
       return { response: json({ error: "quota_exhausted", remaining: 0 }, 403, cors) };
     }
   }
@@ -324,7 +343,7 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
   }
   // marca de generación en curso: funciona como reserva del cupo del código mientras dura el trabajo
   if (useCode) await kv.put("inflight:" + code, JSON.stringify({ request_id: requestId, at: new Date().toISOString() }), { expirationTtl: INFLIGHT_TTL });
-  return { job: { payload, requestId, useCode, code: useCode ? code : null, limit, mk, vKey, vUsed, dKey, dUsed } };
+  return { job: { payload, fp, requestId, useCode, code: useCode ? code : null, limit, mk, vKey, vUsed, dKey, dUsed } };
 }
 
 /**
@@ -334,7 +353,7 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
  */
 export async function finalizeJob(env, job, spent, result, error, extra = {}) {
   const kv = env.ASTRO_KV;
-  const { useCode, code, requestId, limit, mk, vKey, vUsed, dKey, dUsed } = job;
+  const { useCode, code, requestId, limit, mk, vKey, vUsed, dKey, dUsed, fp } = job;
   let out, outcome;
   if (result) {
     const strict = env.AUDIT_STRICT !== "false";
@@ -346,7 +365,7 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
       if (useCode) {
         used = (+(await kv.get("used:" + code)) || 0) + 1; await kv.put("used:" + code, String(used));
         // copia del último informe del código durante 48 h, para recuperarlo con su request_id si no llegó a la pantalla
-        await kv.put("rep:" + code, JSON.stringify({ request_id: requestId, report: result.report, at: new Date().toISOString() }), { expirationTtl: REPORT_TTL });
+        await kv.put("rep:" + code, JSON.stringify({ request_id: requestId, fp: fp || null, report: result.report, at: new Date().toISOString() }), { expirationTtl: REPORT_TTL });
       }
       await addToMonth(kv, mk, { usd: spent.usd, reports: 1 });
       out = { report: result.report, remaining: useCode ? Math.max(0, limit - used) : null }; outcome = "delivered";
@@ -433,7 +452,12 @@ export default {
       const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
       // si ese pedido ya existe (reintento, recarga de la página), se devuelve su estado: no se crea otro ni se cobra
       const prev = await stub.fetch("https://job/status", { method: "POST", body: JSON.stringify({ code }) });
-      if (prev.status !== 404) return json(await prev.json(), prev.status, { ...cors, "cache-control": "no-store" });
+      if (prev.status !== 404) {
+        const pb = await prev.json();
+        // un pedido que falló no descontó cupo: se avisa que puede reintentarse con un identificador nuevo
+        if (pb.status === "failed") pb.retry = true;
+        return json(pb, prev.status, { ...cors, "cache-control": "no-store" });
+      }
       const adm = await admit(request, env, cors, { requireCode, cap, incoming: body.incoming });
       if (adm.response) return adm.response;
       const r = await stub.fetch("https://job/start", { method: "POST", body: JSON.stringify(adm.job) });

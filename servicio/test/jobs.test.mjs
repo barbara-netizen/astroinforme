@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { ReportJob, MAX_ATTEMPTS } from "../src/job.js";
 import { carta, informeOk, clone, ANALISIS, env as baseEnv, mockClaude, state, req, run, ORIGIN } from "./helpers.mjs";
-import worker from "../src/worker.js";
+import worker, { streamErrorStatus, readStream, callClaude } from "../src/worker.js";
 
 const ok = informeOk();
 const bad = clone(ok); bad.technical_references_used.push({ type: "position", body: "SUN", sign: "LEO", deg: "9°29'" });
@@ -38,7 +38,7 @@ const call = async (r, e) => { const res = await worker.fetch(r, e, {}); return 
 group("health anuncia el modo desacoplado");
 {
   const h = await call(new Request("https://x/health"), env());
-  assert.equal(h.body.version, "1.6"); assert.equal(h.body.jobs, true);
+  assert.equal(h.body.version, "1.6.1"); assert.equal(h.body.jobs, true);
   const h2 = await call(new Request("https://x/health"), baseEnv());
   assert.equal(h2.body.jobs, false);
 }
@@ -181,6 +181,60 @@ group("código agotado: un pedido nuevo en modo desacoplado recibe el informe gu
   mockClaude([]);
   const r = await call(post(ID2, "PEDRO-9X4"), e);
   assert.equal(r.body.recovered, true); assert.ok(r.body.report); assert.equal(state.calls.length, 0);
+}
+
+group("código agotado: para otra carta no se entrega el informe guardado");
+{
+  const e = env();
+  mockClaude([ANALISIS, ok]);
+  await call(post(ID, "PEDRO-9X4"), e);
+  await e.REPORT_JOB.obj(ID).alarm();
+  assert.ok(JSON.parse(await e.ASTRO_KV.get("rep:PEDRO-9X4")).fp, "la copia guarda la huella de los datos");
+  mockClaude([]);
+  const otra = clone(carta()); otra.person.first_name = "Otra";
+  const r = await call(post(ID2, "PEDRO-9X4", otra), e);
+  assert.equal(r.status, 403); assert.equal(r.body.error, "quota_exhausted"); assert.equal(r.body.report, undefined);
+  assert.equal(state.calls.length, 0);
+  // copia anterior a la huella (servicio 1.6): se acepta hasta que venza
+  const rep = JSON.parse(await e.ASTRO_KV.get("rep:PEDRO-9X4")); delete rep.fp;
+  await e.ASTRO_KV.put("rep:PEDRO-9X4", JSON.stringify(rep));
+  assert.equal((await call(post("job-000000000000003", "PEDRO-9X4", otra), e)).body.recovered, true);
+}
+
+group("pedido fallido: al reenviarlo con el mismo request_id se avisa que puede reintentarse");
+{
+  const e = env();
+  await call(post(ID), e);
+  for (let i = 0; i < MAX_ATTEMPTS; i++) { mockClaude(i === 0 ? [ANALISIS, "500"] : ["500"]); await e.REPORT_JOB.obj(ID).alarm(); }
+  const r = await call(post(ID), e);
+  assert.equal(r.body.status, "failed"); assert.equal(r.body.retry, true);
+  // con un identificador nuevo se genera de nuevo, sin cupo descontado
+  mockClaude([]);
+  assert.equal((await call(post(ID2), e)).status, 202);
+  assert.equal(await e.ASTRO_KV.get("used:LUZ-3M8Q"), null);
+}
+
+group("errores dentro del flujo y cortes de red se clasifican como transitorios");
+{
+  assert.equal(streamErrorStatus({ type: "overloaded_error" }), 529);
+  assert.equal(streamErrorStatus({ type: "rate_limit_error" }), 429);
+  assert.equal(streamErrorStatus({ type: "api_error" }), 500);
+  assert.equal(streamErrorStatus({ type: "invalid_request_error" }), 400);
+  const ev = (o) => `event: ${o.type}\ndata: ${JSON.stringify(o)}\n\n`;
+  const sse = (s) => new Response(s, { headers: { "content-type": "text/event-stream" } });
+  let err = await readStream(sse(ev({ type: "message_start", message: { usage: {} } }) + ev({ type: "error", error: { type: "overloaded_error", message: "Overloaded" } })), "m").catch((x) => x);
+  assert.equal(err.status, 529);
+  err = await readStream(sse(ev({ type: "message_start", message: { usage: {} } })), "m").catch((x) => x);
+  assert.equal(err.status, null, "flujo cortado sin final");
+  globalThis.fetch = async () => { throw new TypeError("network connection lost"); };
+  err = await callClaude(baseEnv(), { system: "s", user: "u", maxTokens: 10 }).catch((x) => x);
+  assert.equal(err.message, "upstream"); assert.equal(err.status, null);
+  // en el trabajo desacoplado, un error de sobrecarga dentro del flujo se reintenta
+  const e = env();
+  await call(post(ID), e);
+  globalThis.fetch = async () => sse(ev({ type: "message_start", message: { usage: {} } }) + ev({ type: "error", error: { type: "overloaded_error", message: "Overloaded" } }));
+  await e.REPORT_JOB.obj(ID).alarm();
+  assert.equal((await call(get(ID), e)).body.status, "queued", "vuelve a la cola en lugar de fallar");
 }
 
 group("sin el binding del Durable Object, /jobs responde not_configured");
