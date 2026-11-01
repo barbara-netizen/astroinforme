@@ -226,6 +226,7 @@ body[data-screen="report"] { background: var(--panel); }
 .rep-head h1 { font-style: italic; font-size: clamp(2rem, 8vw, 2.8rem); line-height: 1.12; }
 #rep-meta { font-size: 0.9rem; color: var(--muted); }
 .rep-index { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+.save-now { background: var(--warn-bg); border-radius: 8px; padding: 14px 16px; margin: 0 0 18px; display: grid; gap: 12px; justify-items: start; font-size: 0.95rem; line-height: 1.5; }
 .rep-index ol { margin: 0; padding: 0 0 12px 20px; display: grid; gap: 4px; }
 #report-out { display: grid; gap: 0; }
 .rep-sec { scroll-margin-top: 64px; display: grid; gap: 14px; padding: 0 0 30px; font-size: 1.06rem; line-height: 1.65; }
@@ -437,6 +438,12 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
       <h1 id="rep-title"></h1>
       <p id="rep-meta"></p>
     </header>
+    <aside class="save-now no-print" id="save-now">
+      <p><strong data-i18n="savenow.h">Guardalo ahora.</strong> <span data-i18n="savenow.text"></span></p>
+      <button type="button" class="btn" id="btn-print-3">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 19h16"/></svg>
+        <span data-i18n="btn.savePdf">Guardar PDF</span></button>
+    </aside>
     <details class="rep-index" id="rep-index"><summary id="rep-index-sum" data-i18n="rep.index">Índice</summary><ol id="rep-index-list"></ol></details>
     <div id="report-out"></div>
     <figure id="fig-closure" class="art" hidden></figure>
