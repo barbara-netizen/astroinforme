@@ -28,3 +28,11 @@ El tope de gasto mensual sigue siendo una lectura del KV. Pedidos simultáneos d
 - Reservas simultáneas sobre el libro: solo una prospera. La prueba falla si se quita la serialización.
 - Pedidos simultáneos en flujo y en `/jobs` con el mismo código.
 - Migración del uso previo, consumo idempotente y binding ausente.
+
+## 1.7.1 — primera parte del paso 3
+
+- **Origen obligatorio.** Fuera de `/health`, se rechaza todo pedido sin `Origin` o con un origen no permitido. Antes, un pedido sin `Origin` (un script) pasaba.
+- **Límite de frecuencia.** Binding `RATE_LIMITER` de Cloudflare: 6 pedidos que generan o escriben por minuto y por código, o por visitante si no hay código. Las consultas de estado no cuentan. Es aproximado y se cuenta por ubicación; el cupo exacto sigue en el libro. Sin el binding, no limita.
+- **El código se verifica antes de crear el objeto del pedido.** Un código falso ya no crea Durable Objects.
+- `/health` ya no informa cuántos códigos hay, solo si hay alguno.
+- Pendiente del paso 3: licencias generadas por la plataforma de pago (depende de elegir proveedor).

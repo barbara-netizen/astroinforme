@@ -18,7 +18,7 @@ const call = async (r, e) => { const res = await worker.fetch(r, e, {}); return 
 group("health anuncia el modo desacoplado");
 {
   const h = await call(new Request("https://x/health"), env());
-  assert.equal(h.body.version, "1.7"); assert.equal(h.body.jobs, true);
+  assert.equal(h.body.version, "1.7.1"); assert.equal(h.body.jobs, true);
   const h2 = await call(new Request("https://x/health"), baseEnv());
   assert.equal(h2.body.jobs, false);
 }
@@ -223,6 +223,20 @@ group("cupo atómico: pedidos /jobs simultáneos con el mismo código crean un s
   const rs = await Promise.all([ID, ID2, "job-000000000000003"].map((id) => call(post(id, "PEDRO-9X4"), e)));
   assert.equal(rs.filter((r) => r.status === 202).length, 1);
   assert.equal(rs.filter((r) => r.body.error === "in_progress").length, 2);
+}
+
+group("origen obligatorio, código verificado antes de tocar el pedido y límite de frecuencia");
+{
+  const e = env();
+  const sinOrigen = new Request("https://astro.example.workers.dev/jobs/" + ID, { headers: { "x-astro-code": "LUZ-3M8Q" } });
+  assert.equal((await call(sinOrigen, e)).body.error, "forbidden_origin");
+  assert.equal((await call(post(ID, "FALSO-0000"), e)).body.error, "code_invalid");
+  assert.equal(e.REPORT_JOB.objs.size, 0, "no se creó ningún objeto de pedido");
+  let n = 0; e.RATE_LIMITER = { limit: async ({ key }) => { assert.equal(key, "c:LUZ-3M8Q"); return { success: ++n <= 1 }; } };
+  assert.equal((await call(post(ID), e)).status, 202);
+  assert.equal((await call(post(ID2), e)).body.error, "rate_limited");
+  // las consultas de estado no cuentan para el límite
+  assert.equal((await call(get(ID), e)).body.status, "queued");
 }
 
 group("sin el binding del Durable Object, /jobs responde not_configured");

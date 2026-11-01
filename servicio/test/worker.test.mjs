@@ -101,7 +101,7 @@ assert.equal((await run(req(carta, "ANA-7K2"), e2)).body.error, "budget_exhauste
 
 // 8. salud y preflight
 const h = await worker.fetch(new Request("https://x/health"), env(), {}); const hb = await h.json();
-assert.deepEqual(hb.configured, { api_key: true, protocol: true, style: false, kv: true, codes: 2 });
+assert.deepEqual(hb.configured, { api_key: true, protocol: true, style: false, kv: true, codes: true });
 assert.equal(hb.access, "code"); assert.equal(hb.available, true); assert.equal(hb.turnstile, false);
 const o = await worker.fetch(new Request("https://x/", { method: "OPTIONS", headers: { origin: ORIGIN } }), env(), {});
 assert.equal(o.status, 204); assert.match(o.headers.get("access-control-allow-headers"), /x-astro-code/);

@@ -33,7 +33,7 @@ import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION
 import { normalizePayload, normalizeRequestId } from "./validate.js";
 import { ledger } from "./ledger.js";
 
-export const SERVICE_VERSION = "1.7";
+export const SERVICE_VERSION = "1.7.1";
 const DEFAULT_MODEL = "claude-opus-5-5";
 const DEFAULT_ORIGINS = "https://barbara-netizen.github.io";
 // Precios por millón de tokens (USD), https://platform.claude.com/docs/en/about-claude/pricing (16-10-2026)
@@ -408,6 +408,12 @@ async function readBody(request, cors) {
 
 export const JOB_PREFIX = "/jobs";
 
+/** Límite de frecuencia (binding RATE_LIMITER de Cloudflare, aproximado y por ubicación). Sin el binding, no limita. */
+export async function rateLimited(env, key) {
+  if (!env.RATE_LIMITER) return false;
+  try { const { success } = await env.RATE_LIMITER.limit({ key }); return !success; } catch (e) { return false; }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const cors = corsHeaders(request, env);
@@ -429,16 +435,21 @@ export default {
         ledger: !!env.CODE_LEDGER,
         // «available»: si hoy se puede pedir un informe (sin revelar el gasto)
         available: configured && month.usd < cap && (requireCode || day < +(env.DAILY_LIMIT || 8)),
-        configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, style: !!(env.ASTRO_KV && (await env.ASTRO_KV.get("style"))), kv: !!env.ASTRO_KV, codes: Object.keys(parseCodes(env.ACCESS_CODES)).length } }, 200, cors);
+        configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, style: !!(env.ASTRO_KV && (await env.ASTRO_KV.get("style"))), kv: !!env.ASTRO_KV, codes: Object.keys(parseCodes(env.ACCESS_CODES)).length > 0 } }, 200, cors);
     }
-    if (!cors["access-control-allow-origin"] && request.headers.get("origin")) return json({ error: "forbidden_origin" }, 403, cors);
+    // fuera de /health, solo se atiende a la app: el navegador siempre envía Origin en estos pedidos. Un pedido sin
+    // Origin (un script) también se rechaza. No reemplaza al código de acceso, pero evita el uso directo trivial.
+    if (!cors["access-control-allow-origin"] || !request.headers.get("origin")) return json({ error: "forbidden_origin" }, 403, cors);
+    const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
+    // límite de frecuencia de los pedidos que generan o escriben (no de las consultas de estado)
+    if (request.method === "POST" && (await rateLimited(env, code ? "c:" + code : "ip:" + (await visitorId(request.headers.get("cf-connecting-ip") || "", env.VISITOR_SALT || env.ANTHROPIC_API_KEY)))))
+      return json({ error: "rate_limited" }, 429, cors);
 
     // estado de un trabajo desacoplado: GET /jobs/<request_id>
     if (request.method === "GET" && url.pathname.startsWith(JOB_PREFIX + "/")) {
       if (!env.REPORT_JOB) return json({ error: "not_configured" }, 503, cors);
       const id = normalizeRequestId(decodeURIComponent(url.pathname.slice(JOB_PREFIX.length + 1)));
       if (!id) return json({ error: "bad_request" }, 400, cors);
-      const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
       const r = await env.REPORT_JOB.get(env.REPORT_JOB.idFromName(id)).fetch("https://job/status", { method: "POST", body: JSON.stringify({ code }) });
       return json(await r.json(), r.status, { ...cors, "cache-control": "no-store" });
     }
@@ -459,8 +470,10 @@ export default {
       if (!env.REPORT_JOB) return json({ error: "not_configured" }, 503, cors);
       const id = normalizeRequestId(body.incoming && body.incoming.request_id);
       if (!id) return json({ error: "bad_request" }, 400, cors);
+      // el código se verifica antes de tocar el Durable Object del pedido
+      if (code && !(code in parseCodes(env.ACCESS_CODES))) return json({ error: "code_invalid" }, 403, cors);
+      if (requireCode && !code) return json({ error: "code_required" }, 401, cors);
       const stub = env.REPORT_JOB.get(env.REPORT_JOB.idFromName(id));
-      const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
       // si ese pedido ya existe (reintento, recarga de la página), se devuelve su estado: no se crea otro ni se cobra
       const prev = await stub.fetch("https://job/status", { method: "POST", body: JSON.stringify({ code }) });
       if (prev.status !== 404) {

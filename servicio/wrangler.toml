@@ -27,3 +27,13 @@ class_name = "CodeLedger"
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["CodeLedger"]
+
+# Límite de frecuencia (servicio 1.7.1): 6 pedidos que generan o escriben por minuto y por código (o por visitante sin
+# código). Es aproximado y se cuenta por ubicación de Cloudflare; el cupo atómico sigue en CODE_LEDGER.
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 6
+  period = 60
