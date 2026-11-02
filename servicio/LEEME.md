@@ -79,7 +79,7 @@ Los nombres de los menús de Cloudflare pueden variar un poco.
 | Variable | Por defecto | Uso |
 |---|---|---|
 | `MODEL` | `claude-opus-5-5` | `claude-sonnet-5-5` cuesta la mitad |
-| `ALLOWED_ORIGINS` | `https://barbara-netizen.github.io` | Páginas que pueden usar el servicio |
+| `ALLOWED_ORIGINS` | `https://asterorbis.com`, `https://www.asterorbis.com`, `https://barbara-netizen.github.io` | Páginas que pueden usar el servicio |
 | `AUDIT_STRICT` | `true` | `false` entrega el informe aunque la auditoría falle (la app muestra las discrepancias) |
 | `REQUIRE_CODE` | `true` | `false` = acceso público, con los dos límites siguientes; un código válido sigue funcionando con su cupo |
 | `VISITOR_DAILY_LIMIT` | `1` | Informes por visitante por día (acceso público). El visitante se reconoce por un resumen de su IP con sal secreta (seudónimo; quien tenga la sal podría recuperar la IP por fuerza bruta), que vence a los dos días; la IP no se guarda |
