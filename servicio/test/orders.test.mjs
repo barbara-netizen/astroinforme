@@ -157,8 +157,96 @@ group("idempotencia al crear: el mismo intento devuelve el mismo pedido");
   const key = idem();
   const a = await call(createReq({ idempotency_key: key }), e);
   const b = await call(createReq({ idempotency_key: key }), e);
-  assert.equal(b.body.order_id, a.body.order_id); assert.equal(b.body.existed, true); assert.equal(b.body.token, undefined);
+  assert.equal(b.body.order_id, a.body.order_id); assert.equal(b.body.existed, true);
+  assert.equal(b.body.token, a.body.token, "si la primera respuesta se perdió, el reintento recupera la clave");
+  assert.equal(b.body.checkout_url, a.body.checkout_url);
   assert.equal(e.ORDERS.objs.size, 1);
+}
+
+group("CORS: el navegador puede enviar la clave del pedido; los códigos ORDER: no se aceptan desde afuera");
+{
+  const e = env();
+  const pre = await worker.fetch(new Request("https://svc.example/orders/x", { method: "OPTIONS", headers: { origin: ORIGIN } }), e, {});
+  assert.match(pre.headers.get("access-control-allow-headers"), /x-order-token/);
+  const c = await call(createReq(), e); const id = c.body.order_id;
+  await webhook(e, paid(id)); mockClaude([ANALISIS, ok]); await runJob(e, id);
+  const r = await call(new Request("https://svc.example/jobs/" + id, { headers: { origin: ORIGIN, "x-astro-code": "ORDER:" + id } }), e);
+  assert.equal(r.status, 403); assert.equal(r.body.report, undefined);
+}
+
+group("vigilancia: un pedido pago cuyo trabajo nunca arrancó sale de «starting» y entra en excepciones; el reintento entrega");
+{
+  const e = env();
+  const c = await call(createReq(), e); const id = c.body.order_id;
+  // el Worker se corta justo después de registrar el pago: el evento queda registrado pero el trabajo no arranca
+  const st = e.ORDERS.obj(id).storage;
+  await e.ORDERS.get(id).fetch("https://order/payment", { method: "POST", body: JSON.stringify({ eventId: "ev-cut", provider: "sim", tx: { status: "paid", orderId: id, externalId: "p1", amountMinor: 1500, currency: "USD", productRef: "informe_completo" } }) });
+  assert.equal((await order(e, id)).generation.status, "starting");
+  assert.ok(st.alarm && st.alarm < Date.now() + 11 * 60 * 1000, "vigilancia programada");
+  // el proveedor reintenta el mismo evento: duplicado, sin arrancar
+  await webhook(e, paid(id), "ev-cut");
+  const o0 = await order(e, id); o0.generation.startedAt = new Date(Date.now() - 11 * 60 * 1000).toISOString(); await st.put("o", o0);
+  await e.ORDERS.obj(id).alarm();
+  assert.equal((await order(e, id)).generation.status, "failed");
+  assert.equal(JSON.parse(await e.ASTRO_KV.get("exc:" + id)).reason, "generation_stuck");
+  const r = await call(new Request(`https://svc.example/admin/orders/${id}/retry`, { method: "POST", headers: { authorization: "Bearer admin-xyz" } }), e);
+  assert.equal(r.body.ok, true);
+  mockClaude([ANALISIS, ok]); await runJob(e, id + "-r1");
+  assert.equal((await order(e, id)).generation.status, "delivered");
+}
+
+group("reintento mientras el trabajo original sigue: no queda trabado; la entrega del original cuenta");
+{
+  const e = env();
+  const c = await call(createReq(), e); const id = c.body.order_id;
+  await webhook(e, paid(id));                       // arranca el trabajo original (id)
+  const st = e.ORDERS.obj(id).storage;
+  const o0 = await st.get("o"); o0.generation.status = "failed"; await st.put("o", o0);   // vigilancia lo dio por perdido
+  const r = await call(new Request(`https://svc.example/admin/orders/${id}/retry`, { method: "POST", headers: { authorization: "Bearer admin-xyz" } }), e);
+  assert.equal(r.body.ok, false); assert.equal(r.body.reason, "in_progress");
+  assert.equal((await order(e, id)).generation.status, "failed", "no queda en «starting»");
+  mockClaude([ANALISIS, ok]); await runJob(e, id);   // el original termina
+  const o = await order(e, id);
+  assert.equal(o.generation.status, "delivered"); assert.equal(o.generation.jobId, id);
+  assert.ok((await call(getReq(id, c.body.token), e)).body.report);
+  assert.equal(await e.ASTRO_KV.get("exc:" + id), null);
+}
+
+group("doble cobro y reembolso de otro pago: el pedido no cambia y queda para revisión");
+{
+  const e = env();
+  const c = await call(createReq(), e); const id = c.body.order_id;
+  await webhook(e, paid(id));
+  await webhook(e, { ...paid(id), id: "simpay_otro" });
+  assert.equal(JSON.parse(await e.ASTRO_KV.get("exc:" + id)).reason, "duplicate_payment");
+  await webhook(e, { ...paid(id), id: "simpay_otro", status: "refunded" });
+  assert.equal((await order(e, id)).payment.status, "paid", "el reembolso del segundo pago no anula el primero");
+  assert.equal(e.REPORT_JOB.objs.size, 1);
+}
+
+group("retención: reembolso sin entrega borra la carta; a los 7 días se borra también en pedidos pagos no entregados");
+{
+  const e = env();
+  const c = await call(createReq(), e); const id = c.body.order_id;
+  await webhook(e, paid(id, { status: "refunded" }));
+  assert.equal(await e.ORDERS.obj(id).storage.get("payload"), undefined);
+  const e2 = env();
+  const c2 = await call(createReq(), e2); const id2 = c2.body.order_id;
+  await webhook(e2, paid(id2, { amount_minor: 1 }));   // mismatch: conserva la carta para revisión…
+  const st = e2.ORDERS.obj(id2).storage;
+  const o = await st.get("o"); o.createdAt = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString(); await st.put("o", o);
+  await e2.ORDERS.obj(id2).alarm();                    // …hasta los 7 días
+  assert.equal(await st.get("payload"), undefined);
+}
+
+group("un aviso de otro proveedor o sin producto no habilita la generación");
+{
+  const e = env();
+  const c = await call(createReq(), e); const id = c.body.order_id;
+  await e.ORDERS.get(id).fetch("https://order/payment", { method: "POST", body: JSON.stringify({ eventId: "x1", provider: "dodo", tx: { status: "paid", orderId: id, externalId: "p", amountMinor: 1500, currency: "USD", productRef: "informe_completo" } }) });
+  assert.equal((await order(e, id)).payment.status, "created");
+  await webhook(e, paid(id, { product: null }));
+  assert.equal((await order(e, id)).payment.status, "mismatch");
 }
 
 group("validaciones al crear: modo, proveedor, precio, consentimiento, carta");
@@ -195,6 +283,9 @@ group("pedido sin pagar vence: se borra la carta y queda cancelado");
 {
   const e = env();
   const c = await call(createReq(), e); const id = c.body.order_id;
+  await e.ORDERS.obj(id).alarm();
+  assert.ok(await e.ORDERS.obj(id).storage.get("payload"), "antes de los 7 días no vence");
+  const st = e.ORDERS.obj(id).storage; const o = await st.get("o"); o.createdAt = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString(); await st.put("o", o);
   await e.ORDERS.obj(id).alarm();
   assert.equal(await e.ORDERS.obj(id).storage.get("payload"), undefined);
   assert.equal((await order(e, id)).payment.status, "cancelled");

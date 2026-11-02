@@ -16,6 +16,13 @@
 //   /create /view /checkout /payment /started /generation /retry /refund
 
 export const PENDING_TTL_MS = 7 * 24 * 3600 * 1000; // un pedido sin pagar conserva la carta 7 días
+export const START_WATCH_MS = 10 * 60 * 1000;          // si una generación no arrancó en 10 min, se marca como fallida
+export const RUN_WATCH_MS = 75 * 60 * 1000;            // si no terminó en 75 min (3 intentos de hasta 15 min y esperas), también
+
+/** Marca un pedido en la cola de excepciones (sin datos de la carta ni del informe). */
+async function flag(env, id, reason) {
+  if (env && env.ASTRO_KV) await env.ASTRO_KV.put("exc:" + id, JSON.stringify({ order_id: id, reason, at: new Date().toISOString() })).catch(() => { });
+}
 const EVENTS_KEEP = 50;
 const ok = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json; charset=utf-8" } });
 
@@ -67,14 +74,19 @@ export class OrderDO {
         const tx = b.tx || {};
         if (b.eventId && o.payment.events.includes(b.eventId)) return ok({ action: "none", duplicate: true, order: publicView(o) });
         if (b.eventId) o.payment.events = [...o.payment.events, b.eventId].slice(-EVENTS_KEEP);
-        if (tx.orderId !== o.id) { await this.save(o); return ok({ action: "none", ignored: "other_order", order: publicView(o) }); }
-        if (tx.externalId) o.payment.externalId = o.payment.externalId || tx.externalId;
+        if (tx.orderId !== o.id || (b.provider && b.provider !== o.provider)) { await this.save(o); return ok({ action: "none", ignored: "other_order", order: publicView(o) }); }
+        // otro pago distinto del que habilitó el pedido (doble cobro, o reembolso de ese otro pago): no cambia el
+        // pedido; queda para revisión
+        if (o.payment.externalId && tx.externalId && tx.externalId !== o.payment.externalId && ["paid", "refunded"].includes(tx.status)) {
+          await this.save(o);
+          return ok({ action: "none", exception: tx.status === "paid" ? "duplicate_payment" : "refund_other_payment", order: publicView(o) });
+        }
         let action = "none", exception = null;
         if (tx.status === "paid") {
           const wrong = [];
           if (tx.amountMinor !== o.amountMinor) wrong.push("amount");
           if (tx.currency !== o.currency) wrong.push("currency");
-          if (o.productRef && tx.productRef && tx.productRef !== o.productRef) wrong.push("product");
+          if (o.productRef && tx.productRef !== o.productRef) wrong.push("product");
           // un pago ya reembolsado, o un pedido marcado por importe incorrecto, no vuelve a habilitar la generación:
           // queda para revisión (cola de excepciones)
           if (o.payment.status === "refunded" || o.payment.status === "mismatch") { /* sin cambios */ }
@@ -82,7 +94,7 @@ export class OrderDO {
             o.payment.status = "mismatch"; o.payment.mismatch = { fields: wrong, amountMinor: tx.amountMinor, currency: tx.currency, productRef: tx.productRef };
             exception = "payment_mismatch";
           } else {
-            if (o.payment.status !== "paid") { o.payment.status = "paid"; o.payment.paidAt = new Date().toISOString(); }
+            if (o.payment.status !== "paid") { o.payment.status = "paid"; o.payment.paidAt = new Date().toISOString(); o.payment.externalId = o.payment.externalId || tx.externalId; }
             if (o.generation.status === "none") {
               o.generation.status = "starting"; o.generation.attempts = 1; o.generation.jobId = o.id; o.generation.startedAt = new Date().toISOString();
               action = "start";
@@ -90,24 +102,30 @@ export class OrderDO {
           }
         } else if (tx.status === "refunded") {
           o.payment.status = "refunded";
+          if (o.generation.status !== "delivered") await this.storage.delete("payload");
         } else if (["failed", "cancelled"].includes(tx.status)) {
           if (!["paid", "refunded", "mismatch"].includes(o.payment.status)) o.payment.status = tx.status;
         } else if (tx.status === "pending" && o.payment.status === "created") {
           o.payment.status = "pending";
         }
         await this.save(o);
+        if (action === "start") await this.storage.setAlarm(Date.now() + START_WATCH_MS);
         const payload = action === "start" ? await this.storage.get("payload") : undefined;
         if (action === "start" && !payload) { o.generation.status = "failed"; o.generation.lastOutcome = "payload_missing"; await this.save(o); return ok({ action: "none", exception: "payload_missing", order: publicView(o) }); }
         return ok({ action, exception, jobId: o.generation.jobId, payload, order: publicView(o), internal: { externalId: o.payment.externalId, provider: o.provider } });
       }
 
       if (path === "/started") {
-        if (b.jobId === o.generation.jobId && o.generation.status === "starting") { o.generation.status = "running"; await this.save(o); }
+        if (b.jobId === o.generation.jobId && o.generation.status === "starting") { o.generation.status = "running"; await this.save(o); await this.storage.setAlarm(Date.now() + RUN_WATCH_MS); }
         return ok({ order: publicView(o) });
       }
       if (path === "/generation") {
-        if (b.jobId !== o.generation.jobId) return ok({ ignored: true, order: publicView(o) });
+        const ownJob = typeof b.jobId === "string" && (b.jobId === o.id || b.jobId.startsWith(o.id + "-r"));
+        // un trabajo anterior del mismo pedido que termina bien también cuenta como entrega (por ejemplo, si un
+        // reintento se lanzó mientras el primero seguía); un fallo de un trabajo que ya no es el vigente se ignora
+        if (!ownJob || (b.jobId !== o.generation.jobId && b.outcome !== "delivered")) return ok({ ignored: true, order: publicView(o) });
         if (b.outcome === "delivered") {
+          o.generation.jobId = b.jobId;
           o.generation.status = "delivered"; o.generation.deliveredAt = new Date().toISOString(); o.generation.lastOutcome = "delivered";
           await this.storage.delete("payload"); // el trabajo conserva su copia 48 h para la entrega; el pedido ya no la necesita
         } else if (o.generation.status !== "delivered") {
@@ -131,16 +149,33 @@ export class OrderDO {
     });
   }
 
-  /** Vencimiento: un pedido que no se pagó en 7 días pierde la carta y queda cancelado. */
+  /**
+   * Alarma del pedido:
+   *  - vigilancia de la generación: si quedó en «starting» o «running» más de lo previsto (el Worker se cortó, el
+   *    trabajo no arrancó), pasa a «failed» y entra en la cola de excepciones para reintentar o reembolsar;
+   *  - vencimiento: a los 7 días, un pedido sin pagar pierde la carta y queda cancelado; un pedido pagado que no se
+   *    entregó también pierde la carta (queda en excepciones para reembolso).
+   */
   async alarm() {
     return this.serial(async () => {
       const o = await this.storage.get("o");
       if (!o) return;
-      if (!["paid", "refunded", "mismatch"].includes(o.payment.status)) {
-        await this.storage.delete("payload");
-        o.payment.status = "cancelled"; o.generation.lastOutcome = o.generation.lastOutcome || "expired_unpaid";
-        await this.save(o);
+      const now = Date.now(), started = o.generation.startedAt ? Date.parse(o.generation.startedAt) : 0;
+      if (o.generation.status === "starting" || o.generation.status === "running") {
+        const limit = o.generation.status === "starting" ? START_WATCH_MS : RUN_WATCH_MS;
+        if (now - started >= limit) {
+          o.generation.lastOutcome = o.generation.status === "starting" ? "start_lost" : "timeout"; o.generation.status = "failed";
+          await this.save(o); await flag(this.env, o.id, "generation_stuck");
+        } else { await this.storage.setAlarm(started + limit); return; }
       }
+      const created = Date.parse(o.createdAt);
+      if (now - created < PENDING_TTL_MS) { await this.storage.setAlarm(created + PENDING_TTL_MS); return; }
+      if (o.generation.status !== "delivered" && (await this.storage.get("payload"))) {
+        await this.storage.delete("payload");
+        if (o.payment.status === "paid") await flag(this.env, o.id, "payload_expired");
+      }
+      if (!["paid", "refunded", "mismatch"].includes(o.payment.status)) { o.payment.status = "cancelled"; o.generation.lastOutcome = o.generation.lastOutcome || "expired_unpaid"; }
+      await this.save(o);
     });
   }
 }

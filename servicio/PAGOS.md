@@ -81,4 +81,9 @@ Binding nuevo en `wrangler.toml`: `ORDERS` (clase `OrderDO`, migración `v3`). S
   - los nombres de los campos de `GET /payments/{id}`;
   - si `total_amount` incluye impuestos o precio en moneda local;
   - el evento de reembolso.
+- **Endurecimiento pendiente (revisión independiente del 2-nov, riesgo bajo):**
+  - la firma de Mercado Pago no limita la antigüedad de `ts`; antes de fijar una ventana, ver cómo firma Mercado Pago los reintentos;
+  - los avisos IPN antiguos (`?topic=payment&id=`) no se aceptan, porque solo se usan los webhooks firmados;
+  - `/admin` no pasa por el límite de frecuencia;
+  - el simulador no debe activarse nunca en producción, porque su página de pago no tiene autenticación.
 - **Gumroad (servicio 1.8):** queda apagado. Según el documento de opciones de cobro, prohíbe vender servicios de IA que se cumplen fuera de Gumroad, que es el caso de AsterOrbis. Decidir si se borra.

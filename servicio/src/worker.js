@@ -55,7 +55,7 @@ export function corsHeaders(request, env) {
   const origin = request.headers.get("origin") || "";
   const allowed = (env.ALLOWED_ORIGINS || DEFAULT_ORIGINS).split(",").map((s) => s.trim()).filter(Boolean);
   const ok = allowed.includes("*") || allowed.includes(origin);
-  return ok ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code, x-turnstile-token", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
+  return ok ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code, x-turnstile-token, x-order-token", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
 }
 
 /**
@@ -105,7 +105,7 @@ export async function verifyLicense(env, key) {
 
 /** Datos de un código: { limit, kind, order? }, { error, status } o null si no existe. */
 export async function resolveCode(env, code) {
-  if (!code) return null;
+  if (!code || code.startsWith("ORDER:")) return null; // cupo interno de pedidos pagos: nunca se acepta como código
   const codes = await allCodes(env);
   if (code in codes) return { limit: codes[code], kind: "code" };
   if (env.GUMROAD_PRODUCT_ID && LICENSE_RE.test(code)) return verifyLicense(env, code);
@@ -519,6 +519,7 @@ export default {
     // Origin (un script) también se rechaza. No reemplaza al código de acceso, pero evita el uso directo trivial.
     if (!cors["access-control-allow-origin"] || !request.headers.get("origin")) return json({ error: "forbidden_origin" }, 403, cors);
     const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
+    if (code.startsWith("ORDER:")) return json({ error: "code_invalid" }, 403, cors);
     // límite de frecuencia de los pedidos que generan o escriben (no de las consultas de estado)
     if (request.method === "POST" && (await rateLimited(env, code ? "c:" + code : "ip:" + (await visitorId(request.headers.get("cf-connecting-ip") || "", env.VISITOR_SALT || env.ANTHROPIC_API_KEY)))))
       return json({ error: "rate_limited" }, 429, cors);
