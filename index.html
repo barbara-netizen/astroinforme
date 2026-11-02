@@ -7,7 +7,7 @@
 :root {
   --bg: #eceeea; --panel: #f7f8f5; --ink: #1c2230; --muted: #5d6573; --line: #c9cdc6; --field: #a9aea6;
   --accent: #8a5a12; --hard: #9b2d36; --soft: #2f6a63; --warn-bg: #f3e7cf; --bad-bg: #f2d9da; --ok-bg: #dbe8e3; --pick: #f3e7cf;
-  --logo-ring: #5F8FAE; --logo-petal: #C4473E; --logo-core: #F4E9D9; --logo-name: #1F3A50;
+  --logo-ring: #5F8FAE; --logo-petal: #C4473E; --logo-core: #F4E9D9; --logo-name: #1F3A50; --intro-bg: #FDF8F2;
   --offer-bg: #1c2230; --offer-ink: #e3e5e0; --offer-muted: #c9cdc6; --offer-field: #11151c; --offer-btn: #d6a752;
   --f-display: "Bodoni Moda", "Didot", Georgia, serif;
   --f-body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -18,12 +18,12 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #11151c; --panel: #181d26; --ink: #e3e5e0; --muted: #98a0ad; --line: #2c3340; --field: #3a4252;
   --accent: #d6a752; --hard: #e07a82; --soft: #7cc0b5; --warn-bg: #3a2f1a; --bad-bg: #3d2226; --ok-bg: #1d3330; --pick: #3a2f1a;
-  --logo-ring: #5F8FAE; --logo-petal: #C4473E; --logo-core: #F4E9D9; --logo-name: var(--ink);
+  --logo-ring: #5F8FAE; --logo-petal: #C4473E; --logo-core: #F4E9D9; --logo-name: var(--ink); --intro-bg: var(--bg);
   --offer-bg: #0b0e13; --offer-field: #181d26; color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #11151c; --panel: #181d26; --ink: #e3e5e0; --muted: #98a0ad; --line: #2c3340; --field: #3a4252;
   --accent: #d6a752; --hard: #e07a82; --soft: #7cc0b5; --warn-bg: #3a2f1a; --bad-bg: #3d2226; --ok-bg: #1d3330; --pick: #3a2f1a;
-  --logo-ring: #5F8FAE; --logo-petal: #C4473E; --logo-core: #F4E9D9; --logo-name: var(--ink);
+  --logo-ring: #5F8FAE; --logo-petal: #C4473E; --logo-core: #F4E9D9; --logo-name: var(--ink); --intro-bg: var(--bg);
   --offer-bg: #0b0e13; --offer-field: #181d26; color-scheme: dark }
 
 html { -webkit-text-size-adjust: 100%; }
@@ -229,6 +229,21 @@ body[data-screen="report"] { background: var(--panel); }
 .rep-head h1 { font-style: italic; font-size: clamp(2rem, 8vw, 2.8rem); line-height: 1.12; }
 #rep-meta { font-size: 0.9rem; color: var(--muted); }
 .rep-index { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+/* intro: el logo se arma (aro, pétalos, centro, nombre) y la pantalla se desvanece; ~2,6 s, una vez por sesión */
+.intro-splash { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: var(--intro-bg); animation: intro-out .45s ease 2.25s forwards; cursor: pointer; }
+.intro-splash[hidden] { display: none; }
+.intro-inner { display: grid; justify-items: center; gap: 18px; }
+.intro-logo { width: min(34vw, 150px); height: auto; overflow: visible; }
+.intro-logo .ir { fill: none; stroke: var(--logo-ring); stroke-width: 5; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100; transform: rotate(-90deg); transform-origin: 50px 50px; animation: intro-ring .75s cubic-bezier(.6,0,.3,1) .15s forwards; }
+.intro-logo .ip { fill: var(--logo-petal); transform-box: view-box; transform-origin: 50px 50px; transform: rotate(var(--r)) scale(0); animation: intro-petal .5s cubic-bezier(.25,1.4,.5,1) forwards; animation-delay: calc(.55s + var(--i) * 70ms); }
+.intro-logo .ic { fill: var(--logo-core); transform-box: view-box; transform-origin: 50px 50px; transform: scale(0); animation: intro-core .35s cubic-bezier(.25,1.6,.5,1) 1.2s forwards; }
+.intro-name { font-family: var(--f-display); font-size: clamp(1.6rem, 7vw, 2.4rem); color: var(--logo-name); letter-spacing: .4em; opacity: 0; animation: intro-name .7s ease-out 1.3s forwards; }
+@keyframes intro-ring { to { stroke-dashoffset: 0; } }
+@keyframes intro-petal { to { transform: rotate(var(--r)) scale(1); } }
+@keyframes intro-core { to { transform: scale(1); } }
+@keyframes intro-name { to { opacity: 1; letter-spacing: .14em; } }
+@keyframes intro-out { to { opacity: 0; visibility: hidden; } }
+@media print { .intro-splash { display: none !important; } }
 .sample-note { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 0 0 18px; display: grid; gap: 6px; font-size: 0.95rem; line-height: 1.5; }
 .sample-link { margin: 0; }
 .author { border-top: 1px solid var(--line); margin: 28px 0 8px; padding-top: 20px; display: grid; gap: 16px; }
@@ -302,6 +317,12 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
 }
 </style>
 
+<div id="intro" class="intro-splash" aria-hidden="true" hidden>
+  <div class="intro-inner">
+    <svg class="intro-logo" viewBox="0 0 100 100" focusable="false"><circle class="ir" cx="50" cy="50" r="44" pathLength="100"/><ellipse class="ip" style="--r:0deg;--i:0" cx="50" cy="34" rx="6.5" ry="12"/><ellipse class="ip" style="--r:45deg;--i:1" cx="50" cy="34" rx="6.5" ry="12"/><ellipse class="ip" style="--r:90deg;--i:2" cx="50" cy="34" rx="6.5" ry="12"/><ellipse class="ip" style="--r:135deg;--i:3" cx="50" cy="34" rx="6.5" ry="12"/><ellipse class="ip" style="--r:180deg;--i:4" cx="50" cy="34" rx="6.5" ry="12"/><ellipse class="ip" style="--r:225deg;--i:5" cx="50" cy="34" rx="6.5" ry="12"/><ellipse class="ip" style="--r:270deg;--i:6" cx="50" cy="34" rx="6.5" ry="12"/><ellipse class="ip" style="--r:315deg;--i:7" cx="50" cy="34" rx="6.5" ry="12"/><circle class="ic" cx="50" cy="50" r="7"/></svg>
+    <div class="intro-name">AsterOrbis</div>
+  </div>
+</div>
 <header class="bar">
   <div class="wrap">
     <a href="#" class="brand" id="brand"><svg class="logo" viewBox="0 0 100 100" aria-hidden="true" focusable="false"><circle cx="50" cy="50" r="44" fill="none" stroke="var(--logo-ring)" stroke-width="5"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(0 50 50)" fill="var(--logo-petal)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(45 50 50)" fill="var(--logo-petal)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(90 50 50)" fill="var(--logo-petal)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(135 50 50)" fill="var(--logo-petal)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(180 50 50)" fill="var(--logo-petal)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(225 50 50)" fill="var(--logo-petal)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(270 50 50)" fill="var(--logo-petal)"/><ellipse cx="50" cy="34" rx="6.5" ry="12" transform="rotate(315 50 50)" fill="var(--logo-petal)"/><circle cx="50" cy="50" r="7" fill="var(--logo-core)"/></svg><span>AsterOrbis</span></a>
