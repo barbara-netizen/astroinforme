@@ -2,7 +2,7 @@
 
 Carta natal calculada en el navegador con Swiss Ephemeris. Ilustraciones: [Bárbara Gutiérrez](https://barbaragutierrez.art).
 
-Aplicación: https://asterorbis.com/ (antes https://barbara-netizen.github.io/astroinforme/, que redirige)
+Aplicación: https://asterorbis.com/ (antes https://barbara-netizen.github.io/astroinforme/, que redirige a la nueva dirección)
 
 Página estática que calcula la carta natal en el navegador de quien la abre. No necesita servidor propio, base de datos, cuenta de Claude ni clave de API.
 
