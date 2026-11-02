@@ -355,9 +355,9 @@ const UI = {
     "AsterOrbis has no company behind it. It is a project by Bárbara Gutiérrez, a visual artist and writer, made in Buenos Aires. She defined how a chart is read (from the psychological astrology of Liz Greene and Howard Sasportas, in dialogue with Jung), painted and animated the images, and set the standards each text is written to. Each report is written by Claude, an artificial intelligence made by Anthropic, and the chart is calculated with Swiss Ephemeris.",
   ],
   "author.mother": [
-    "Bárbara conoció el lenguaje de la astrología gracias a su madre, Maria Etcheverry Boneo, que la estudió y la enseñó durante décadas. Levantaba sus cartas con las efemérides, papel, lápiz y una calculadora.",
-    "Die Sprache der Astrologie lernte Bárbara durch ihre Mutter kennen, Maria Etcheverry Boneo, die sie jahrzehntelang studierte und unterrichtete. Ihre Horoskope erstellte sie mit den Ephemeriden, Papier, Bleistift und einem Taschenrechner.",
-    "Bárbara learned the language of astrology from her mother, Maria Etcheverry Boneo, who studied and taught it for decades. She drew up her charts with the ephemerides, paper, pencil and a calculator.",
+    "Bárbara conoció el lenguaje de la astrología gracias a su madre, María Etcheverry Boneo, que la estudió y la enseñó durante décadas. Levantaba sus cartas con las efemérides, papel, lápiz y una calculadora.",
+    "Die Sprache der Astrologie lernte Bárbara durch ihre Mutter kennen, María Etcheverry Boneo, die sie jahrzehntelang studierte und unterrichtete. Ihre Horoskope erstellte sie mit den Ephemeriden, Papier, Bleistift und einem Taschenrechner.",
+    "Bárbara learned the language of astrology from her mother, María Etcheverry Boneo, who studied and taught it for decades. She drew up her charts with the ephemerides, paper, pencil and a calculator.",
   ],
   "author.dedication": ["A ella le dedico este proyecto. — Bárbara", "Ihr widme ich dieses Projekt. — Bárbara", "I dedicate this project to her. — Bárbara"],
   "author.paid": ["Lo que pagás cubre el costo de generar el informe y sostiene el proyecto.", "Was du bezahlst, deckt die Kosten für die Erstellung des Berichts und trägt das Projekt.", "What you pay covers the cost of generating the report and keeps the project going."],
