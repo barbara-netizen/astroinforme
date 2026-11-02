@@ -362,6 +362,7 @@ const UI = {
     "Bárbara learned the language of astrology from her mother, María Etcheverry Boneo, who studied and taught it for decades. She drew up her charts with the ephemerides, paper, pencil and a calculator.",
   ],
   "author.dedication": ["A ella le dedico este proyecto. — Bárbara", "Ihr widme ich dieses Projekt. — Bárbara", "I dedicate this project to her. — Bárbara"],
+  "author.go": ["Empezar con tu carta ↓", "Mit deinem Horoskop beginnen ↓", "Start with your chart ↓"],
   "author.paid": ["Lo que pagás cubre el costo de generar el informe y sostiene el proyecto.", "Was du bezahlst, deckt die Kosten für die Erstellung des Berichts und trägt das Projekt.", "What you pay covers the cost of generating the report and keeps the project going."],
   "sample.link": ["Ver un informe de muestra", "Einen Musterbericht ansehen", "See a sample report"],
   "sample.h": ["Informe de muestra", "Musterbericht", "Sample report"],
