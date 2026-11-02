@@ -330,11 +330,11 @@ const UI = {
   "don.alias": ["También por transferencia al alias {alias}.", "Auch per Überweisung an den Alias {alias}.", "Also by bank transfer to the alias {alias}."],
   "footer.credit": ["Ilustraciones:", "Illustrationen:", "Illustrations:"],
   "footer.calc": [
-    "Cálculo: Swiss Ephemeris de Astrodienst AG, versión WebAssembly @swisseph/browser (AGPL-3.0). Lugares: GeoNames (CC BY 4.0) vía all-the-cities. Zonas: tz-lookup (CC0) y la base IANA del navegador.",
-    "Berechnung: Swiss Ephemeris von Astrodienst AG, WebAssembly-Version @swisseph/browser (AGPL-3.0). Orte: GeoNames (CC BY 4.0) über all-the-cities. Zonen: tz-lookup (CC0) und die IANA-Datenbank des Browsers.",
-    "Calculation: Swiss Ephemeris by Astrodienst AG, WebAssembly build @swisseph/browser (AGPL-3.0). Places: GeoNames (CC BY 4.0) via all-the-cities. Zones: tz-lookup (CC0) and the browser's IANA database.",
+    "Cálculo: Swiss Ephemeris, versión WebAssembly @swisseph/browser (AGPL-3.0). Lugares: GeoNames (CC BY 4.0) vía all-the-cities. Zonas: tz-lookup (CC0) y la base IANA del navegador.",
+    "Berechnung: Swiss Ephemeris, WebAssembly-Version @swisseph/browser (AGPL-3.0). Orte: GeoNames (CC BY 4.0) über all-the-cities. Zonen: tz-lookup (CC0) und die IANA-Datenbank des Browsers.",
+    "Calculation: Swiss Ephemeris, WebAssembly build @swisseph/browser (AGPL-3.0). Places: GeoNames (CC BY 4.0) via all-the-cities. Zones: tz-lookup (CC0) and the browser's IANA database.",
   ],
-  "footer.conv": ["Tropical, geocéntrico, posiciones aparentes, convención de Astro.com. Uso gratuito.", "Tropisch, geozentrisch, scheinbare Positionen, Konvention von Astro.com. Kostenlose Nutzung.", "Tropical, geocentric, apparent positions, Astro.com convention. Free to use."],
+  "footer.conv": ["Zodíaco tropical, carta geocéntrica, posiciones aparentes.", "Tropischer Tierkreis, geozentrisches Horoskop, scheinbare Positionen.", "Tropical zodiac, geocentric chart, apparent positions."],
   "footer.privacy": ["Privacidad", "Datenschutz", "Privacy"],
   disclaimer: [
     "AsterOrbis ofrece una lectura simbólica de la carta natal desde la astrología psicológica. No es un diagnóstico ni un consejo profesional, y no reemplaza la atención psicológica o médica.",
