@@ -20,6 +20,7 @@ const A = {
   texture_purple: { type: "image", file: "assets/09-textura-moradotas.jpg", title: "Moradotas", size: [1210, 908], fit: "cover", focal: "50% 50%" },
   brand_guardian: { type: "image", file: "assets/02-marca-guardian-del-universo.jpg", title: "Guardián del Universo", size: [604, 460], fit: "contain", focal: "50% 35%" },
   relationships_steps: { type: "image", file: "assets/05-vinculos-otros-pasos.jpg", title: "Otros pasos", size: [1210, 685], fit: "cover", focal: "50% 50%" },
+  author_work: { type: "image", file: "assets/11-autoria-mary-playa-union.jpg", title: "Mary en Playa Unión", size: [1600, 798], fit: "contain", focal: "50% 50%" },
   pilot_rabbit: { type: "video", file: "assets/10-piloto-conejo-cuantico.mp4", poster: "assets/10-piloto-conejo-cuantico-poster.jpg", title: "Conejo cuántico", size: [360, 326], loop: true, fit: "cover", focal: "50% 50%" },
   emotional_swimmers: { type: "video", file: "assets/06-emocional-nadadoras.mp4", poster: "assets/06-emocional-nadadoras-poster.jpg", title: "Nadadoras", size: [720, 720], loop: true, fit: "cover", focal: "50% 60%" },
 };
