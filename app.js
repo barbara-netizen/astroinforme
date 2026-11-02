@@ -990,6 +990,9 @@ function loadDemoCase(c) {
 // Con config.intro = false se quita aquí.
 if (!CONFIG.intro && !new URLSearchParams(location.search).has("intro")) { const el = document.getElementById("intro"); if (el) el.remove(); }
 
+// «Empezar con tu carta»: baja al formulario sin tocar el historial (el botón atrás del celular sigue funcionando igual)
+document.querySelectorAll('.author-go a').forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); const h = document.getElementById("form-start"); if (h) h.scrollIntoView({ behavior: "smooth", block: "start" }); }));
+
 // «Quién hace AsterOrbis»: la frase sobre el pago aparece solo cuando el informe se cobra
 for (const el of document.querySelectorAll(".author-paid")) el.hidden = !CONFIG.paid;
 

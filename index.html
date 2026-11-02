@@ -251,6 +251,10 @@ body[data-screen="report"] { background: var(--panel); }
 .author p { margin: 0 0 10px; line-height: 1.6; }
 .author-ded { font-family: var(--f-display); font-style: italic; font-size: 1.1rem; }
 .author-art { margin: 16px 0 18px; }
+.author-first { border-top: 0; margin: 0 0 8px; padding-top: 20px; border-bottom: 1px solid var(--line); padding-bottom: 20px; }
+.author-first .author-art { margin: 0; }
+.author-go { margin-top: 14px; }
+@media (min-width: 900px) { .author-first { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: center; padding-top: 32px; } }
 @media print { .author { break-inside: avoid; } }
 .save-now { background: var(--warn-bg); border-radius: 8px; padding: 14px 16px; margin: 0 0 18px; display: grid; gap: 12px; justify-items: start; font-size: 0.95rem; line-height: 1.5; }
 .brand, .wait-brand { display: inline-flex; align-items: center; gap: 0.45em; }
@@ -350,6 +354,17 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
 
 <!-- 1 · datos -->
 <main id="screen-form" class="wrap">
+  <section class="author author-first" aria-labelledby="h-author-1">
+    <figure class="art author-art" id="fig-author-1" hidden></figure>
+    <div>
+      <h2 class="author-h" id="h-author-1" data-i18n="author.h">Quién hace AsterOrbis</h2>
+      <p data-i18n="author.body"></p>
+      <p data-i18n="author.mother"></p>
+      <p class="author-ded" data-i18n="author.dedication"></p>
+      <p data-i18n="author.paid" class="author-paid" hidden></p>
+      <p class="author-go"><a href="#form-start" data-i18n="author.go">Empezar con tu carta ↓</a></p>
+    </div>
+  </section>
   <div class="layout">
     <div class="hero"><figure id="fig-hero" class="art" hidden></figure></div>
     <div>
@@ -362,7 +377,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
         <span data-i18n="resume.text"></span>
       </aside>
       <div class="intro">
-        <h1 data-i18n="form.h">Tu carta natal</h1>
+        <h1 id="form-start" data-i18n="form.h">Tu carta natal</h1>
         <p data-i18n="form.lede"></p>
       </div>
       <div class="form-col">
@@ -473,16 +488,6 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
           <button type="button" class="linkbtn" id="btn-back-report" hidden data-i18n="btn.backReport">Volver al informe</button>
         </div>
         <p class="disclaimer" data-i18n="disclaimer"></p>
-        <section class="author" aria-labelledby="h-author-1">
-      <div>
-        <h2 class="author-h" id="h-author-1" data-i18n="author.h">Quién hace AsterOrbis</h2>
-        <p data-i18n="author.body"></p>
-        <figure class="art author-art" id="fig-author-1" hidden></figure>
-        <p data-i18n="author.mother"></p>
-        <p class="author-ded" data-i18n="author.dedication"></p>
-        <p data-i18n="author.paid" class="author-paid" hidden></p>
-      </div>
-    </section>
       </div>
     </div>
   </section>
