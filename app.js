@@ -454,6 +454,7 @@ function renderInterpretationChrome() {
   $("#interp-unavail").hidden = !unavailable || paused;
   if (paused) $("#code-row").hidden = true;
   $("#btn-interp").hidden = paused;
+  renderBuyBox(paused);
   $("#btn-interp").disabled = paused || (unavailable && !($("#access-code").value || "").trim());
   if (CONFIG.demo) {
     const reports = state.demoReports || CONFIG.demoReports || [];
@@ -588,6 +589,66 @@ function appMode() {
   return state.health && state.health.mode === "disabled" ? "disabled" : m;
 }
 const isPilot = () => appMode() === "pilot";
+// ---------- compra (modo "paid"): pedido interno → checkout del proveedor → confirmación por webhook → informe
+// La app nunca envía datos natales al proveedor: crea el pedido en el servicio de AsterOrbis con la carta calculada
+// (como un pedido con código) y abre el enlace de pago, que solo lleva el identificador opaco del pedido.
+const ORDER_KEY = "astroinforme.order", ORDER_MS = 7 * 24 * 3600 * 1000;
+const PROVIDER_LABEL = { mercadopago: "buy.mp", dodo: "buy.dodo", sim: "buy.sim" };
+function renderBuyBox(paused) {
+  const box = $("#buy-box"); if (!box) return;
+  const providers = (state.health && state.health.payments) || [];
+  const show = appMode() === "paid" && !paused && !CONFIG.demo && !!serviceUrl() && providers.length > 0;
+  box.hidden = !show;
+  if (!show) return;
+  const wrap = $("#buy-buttons"), sig = providers.join("|") + L.getLang();
+  if (wrap.dataset.sig !== sig) {
+    wrap.innerHTML = ""; wrap.dataset.sig = sig;
+    for (const p of providers) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "btn big"; b.textContent = t(PROVIDER_LABEL[p] || "buy.generic");
+      b.addEventListener("click", () => buyReport(p)); wrap.append(b);
+    }
+  }
+}
+function savedOrder() {
+  try { const o = JSON.parse(localStorage.getItem(ORDER_KEY) || "null"); return o && Date.now() - o.at < ORDER_MS ? o : null; } catch (e) { return null; }
+}
+async function buyReport(provider) {
+  const status = $("#interp-status");
+  if (!$("#buy-consent").checked) { status.hidden = false; status.textContent = t("i.err.consent_required"); $("#buy-consent").focus(); return; }
+  status.hidden = true;
+  const payload = servicePayload(state.payload);
+  const body = { provider, product: "informe_completo", payload, idempotency_key: newRequestId(),
+    consent: { accepted: true, terms_version: CONFIG.termsVersion || "2026-11-draft", disclaimer_version: "2026-11-02" } };
+  let r, res = null;
+  try { r = await fetch(serviceUrl() + "orders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); res = await r.json(); }
+  catch (e) { status.hidden = false; status.textContent = t("i.fail", { msg: t("i.err.upstream") }); return; }
+  if (!r.ok || !res || !res.checkout_url || !res.token) { const se = serviceError(r.status, res); status.hidden = false; status.textContent = t("i.fail", { msg: t(se.key, se.params) }); return; }
+  // se guarda en este navegador para retomar al volver del pago: el pedido, su clave y la carta (sin fecha, hora ni lugar)
+  try { localStorage.setItem(ORDER_KEY, JSON.stringify({ id: res.order_id, token: res.token, payload, at: Date.now() })); } catch (e) { }
+  location.href = res.checkout_url;
+}
+/** Espera la confirmación del pago y la entrega del informe de un pedido (al volver del checkout). */
+async function pollOrder(o) {
+  const t0 = Date.now();
+  for (;;) {
+    let body = null;
+    try { const r = await fetch(serviceUrl() + "orders/" + encodeURIComponent(o.id), { headers: { "x-order-token": o.token }, cache: "no-store" }); body = await r.json(); if (r.status === 403 || r.status === 404) throw new ServiceError("i.err.not_found"); }
+    catch (e) { if (e instanceof ServiceError) throw e; }
+    if (body && body.report) return { report: body.report };
+    if (body && body.report_expired) throw new ServiceError("i.err.report_expired");
+    if (body && ["failed", "cancelled"].includes(body.payment_status)) throw new ServiceError("i.err.payment_failed");
+    if (body && (body.payment_status === "mismatch" || body.payment_status === "refunded" || body.generation_status === "failed")) throw new ServiceError("i.err.order_problem");
+    if (Date.now() - t0 > JOB_MAX_MS) throw new ServiceError("i.err.timeout");
+    await new Promise((res) => setTimeout(res, JOB_POLL_MS));
+  }
+}
+function resumeOrderFromUrl() {
+  const q = new URLSearchParams(location.search);
+  const id = q.get("pedido"); if (!id) return;
+  const o = savedOrder();
+  if (!o || o.id !== id) return;
+  callInterpreter(() => pollOrder(o), o.payload);
+}
 class ServiceError extends Error { constructor(key, params) { super(key); this.key = key; this.params = params; } }
 async function obtainReport() {
   if (CONFIG.demo) {
@@ -760,10 +821,10 @@ function finishProgress(ok) {
   document.addEventListener("visibilitychange", restore); restore();
 }
 
-async function callInterpreter() {
+async function callInterpreter(fetcher = obtainReport, auditPayload = null) {
   const btn = $("#btn-interp"), status = $("#interp-status");
   // los errores que se detectan antes de enviar se muestran sin abrir la espera
-  if (!CONFIG.demo && !publicAccess() && !($("#access-code").value || "").trim()) {
+  if (fetcher === obtainReport && !CONFIG.demo && !publicAccess() && !($("#access-code").value || "").trim()) {
     status.hidden = false; status.textContent = t("i.fail", { msg: t("i.err.code_required") }); $("#access-code").focus(); return;
   }
   btn.disabled = true;
@@ -773,10 +834,10 @@ async function callInterpreter() {
   if (CONFIG.demo) $("#wait-clock").textContent = "…"; else startProgress();
   let ok = false;
   try {
-    const { report: rep, remaining, recovered } = await obtainReport();
+    const { report: rep, remaining, recovered } = await fetcher();
     if (!rep || rep.schema !== "astroinforme.report/v1" || !Array.isArray(rep.sections)) throw new ServiceError("i.badContract");
     // la auditoría se rehace siempre aquí, aunque el servicio ya la haya hecho
-    const audit = auditReport(rep, state.payload);
+    const audit = auditReport(rep, auditPayload || state.payload);
     state.lastReport = rep; state.lastAudit = audit;
     clearInterval(notify.timer);
     renderReport(rep);
@@ -964,7 +1025,7 @@ function init() {
   $("#prec").addEventListener("change", (e) => { $("#no-time").checked = e.target.value === "UNKNOWN"; syncTime(); });
   $("#birth-form").addEventListener("submit", (e) => { e.preventDefault(); $("#ambig").hidden = true; calculate(); });
   $("#btn-copy-json").addEventListener("click", (e) => copyText(JSON.stringify(state.payload, null, 2), e.currentTarget));
-  $("#btn-interp").addEventListener("click", callInterpreter);
+  $("#btn-interp").addEventListener("click", () => callInterpreter());
   $("#btn-print").addEventListener("click", printSheet);
   $("#btn-print-2").addEventListener("click", printSheet);
   $("#btn-print-3").addEventListener("click", printSheet);
@@ -1030,6 +1091,8 @@ async function loadSample() {
   setScreen("report");
 }
 if (SAMPLE && new URLSearchParams(location.search).has("muestra")) loadSample().catch(() => { });
+// regreso del checkout (modo "paid"): retoma la espera del pedido guardado en este navegador
+if (serviceUrl() && !CONFIG.demo) resumeOrderFromUrl();
 if (CONFIG.demo && CONFIG.demoCases) {
   const wrap = document.createElement("label"); wrap.className = "f demo-case";
   wrap.innerHTML = `<span>Carta de prueba</span><select id="demo-case">${CONFIG.demoCases.map((c, i) => `<option value="${i}">${esc(c.label)}</option>`).join("")}</select>`;

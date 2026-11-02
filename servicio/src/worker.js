@@ -32,8 +32,10 @@ import { styleCheck, describeStyle } from "./style.js";
 import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION } from "./prompts.js";
 import { normalizePayload, normalizeRequestId } from "./validate.js";
 import { ledger } from "./ledger.js";
+import { routePayments, routeOrders, notifyOrderGeneration } from "./orders.js";
+import { getProvider, providerNames } from "./payments/provider.js";
 
-export const SERVICE_VERSION = "1.9";
+export const SERVICE_VERSION = "2.0";
 const DEFAULT_MODEL = "claude-opus-5-5";
 // la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
 const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
@@ -119,7 +121,7 @@ export function parseCodes(s) {
   return out;
 }
 
-const monthKey = (d = new Date()) => `month:${d.toISOString().slice(0, 7)}`;
+export const monthKey = (d = new Date()) => `month:${d.toISOString().slice(0, 7)}`;
 const dayKey = (d = new Date()) => `day:${d.toISOString().slice(0, 10)}`;
 
 /** Resumen seudónimo del visitante: SHA-256 de la IP con sal secreta, recortado. La IP no se guarda.
@@ -450,9 +452,11 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
     at: new Date().toISOString(), model: env.MODEL || DEFAULT_MODEL, service: SERVICE_VERSION, mode: extra.mode || "stream",
     access: useCode ? (job.codeKind || "code") : "public",
     // referencia para conciliar reclamos: número de orden de la compra (licencias) o el código (códigos de regalo)
-    ref: useCode ? (job.codeKind === "license" ? (job.order ? "order:" + job.order : null) : job.code) : null, usd: +spent.usd.toFixed(4), phases: spent.phases || {}, corrected: !!(result && result.corrected),
+    ref: useCode ? (job.codeKind === "license" ? (job.order ? "order:" + job.order : null) : job.codeKind === "order" ? "order:" + job.orderId : job.code) : null, usd: +spent.usd.toFixed(4), phases: spent.phases || {}, corrected: !!(result && result.corrected),
     outcome, attempts: extra.attempts || 1, lang: job.payload.request.report_language,
   }), { expirationTtl: GEN_TTL }).catch(() => { });
+  // pedido pago: el pedido registra cómo terminó la generación (entregado o fallido, para la cola de excepciones)
+  if (job.codeKind === "order") await notifyOrderGeneration(env, job.orderId, requestId, outcome).catch(() => { });
   return out;
 }
 
@@ -499,12 +503,18 @@ export default {
         // «jobs»: generación desacoplada de la conexión (servicio 1.6, Durable Object REPORT_JOB)
         jobs: !!env.REPORT_JOB,
         mode: serviceMode(env),
+        // proveedores de pago configurados (solo los nombres; en modo "paid")
+        payments: serviceMode(env) === "paid" ? providerNames().filter((n) => getProvider(env, n)) : [],
         // «ledger»: cupo por código con reserva atómica (servicio 1.7, Durable Object CODE_LEDGER)
         ledger: !!env.CODE_LEDGER,
         // «available»: si hoy se puede pedir un informe (sin revelar el gasto)
         available: configured && serviceMode(env) !== "disabled" && month.usd < cap && (requireCode || day < +(env.DAILY_LIMIT || 8)),
         configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, style: !!(env.ASTRO_KV && (await env.ASTRO_KV.get("style"))), kv: !!env.ASTRO_KV, codes: Object.keys(await allCodes(env)).length > 0 } }, 200, cors);
     }
+    // avisos de pago (webhooks), checkout simulado y administración: no vienen de la app, no llevan Origin
+    const pay = await routePayments(request, env, cors, url);
+    if (pay) return pay;
+
     // fuera de /health, solo se atiende a la app: el navegador siempre envía Origin en estos pedidos. Un pedido sin
     // Origin (un script) también se rechaza. No reemplaza al código de acceso, pero evita el uso directo trivial.
     if (!cors["access-control-allow-origin"] || !request.headers.get("origin")) return json({ error: "forbidden_origin" }, 403, cors);
@@ -512,6 +522,12 @@ export default {
     // límite de frecuencia de los pedidos que generan o escriben (no de las consultas de estado)
     if (request.method === "POST" && (await rateLimited(env, code ? "c:" + code : "ip:" + (await visitorId(request.headers.get("cf-connecting-ip") || "", env.VISITOR_SALT || env.ANTHROPIC_API_KEY)))))
       return json({ error: "rate_limited" }, 429, cors);
+
+    // pedidos pagos (modo "paid"): POST /orders y GET /orders/<id>
+    if (url.pathname === "/orders" || url.pathname.startsWith("/orders/")) {
+      const r = await routeOrders(request, env, cors, url);
+      if (r) return r;
+    }
 
     // estado de un trabajo desacoplado: GET /jobs/<request_id>
     if (request.method === "GET" && url.pathname.startsWith(JOB_PREFIX + "/")) {
