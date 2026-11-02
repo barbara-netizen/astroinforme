@@ -19,7 +19,7 @@ export const CONFIG = {
   // pilot: franja de «versión piloto» con el conejo y el recuadro de comentario al final del informe.
   pilot: true,
   // intro: animación del logo al abrir la app, una vez por sesión («?intro» la muestra siempre, para probarla).
-  intro: false,
+  intro: true,
   // paid: el informe se cobra (muestra la frase sobre el pago en «Quién hace AsterOrbis»).
   paid: false,
   // sample: informe de muestra para una persona ficticia, visible antes de pedir uno propio (enlace «?muestra»).
