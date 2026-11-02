@@ -823,7 +823,7 @@ ${audit}
 <table>${row([t("th.point"), t("th.position"), chart.houses ? t("th.house") : ""], "th")}${pos.join("")}</table>
 <h3>${esc(t("h.aspects"))}</h3><table>${row([t("th.aspect"), t("th.orb")], "th")}${asp.join("")}</table>
 <p class="m">${esc(provText(f, opt, chart))}</p></details>
-<footer><p>${esc(t("author.body"))}</p><p>${esc(t("disclaimer"))}</p><p>${esc(t("footer.credit"))} Bárbara Gutiérrez · barbaragutierrez.art</p><p>${esc(t("dl.generated", { date: new Date().toLocaleDateString(LOCALE[lang]) }))} https://barbara-netizen.github.io/astroinforme/</p></footer>
+<footer><p>${esc(t("author.body"))}</p><p>${esc(t("author.mother"))}</p><p>${esc(t("author.dedication"))}</p><p>${esc(t("disclaimer"))}</p><p>${esc(t("footer.credit"))} Bárbara Gutiérrez · barbaragutierrez.art</p><p>${esc(t("dl.generated", { date: new Date().toLocaleDateString(LOCALE[lang]) }))} https://barbara-netizen.github.io/astroinforme/</p></footer>
 </body></html>`;
   const blob = new Blob([doc], { type: "text/html;charset=utf-8" });
   const a = document.createElement("a");
