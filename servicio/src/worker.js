@@ -33,7 +33,7 @@ import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION
 import { normalizePayload, normalizeRequestId } from "./validate.js";
 import { ledger } from "./ledger.js";
 
-export const SERVICE_VERSION = "1.7.1";
+export const SERVICE_VERSION = "1.7.2";
 const DEFAULT_MODEL = "claude-opus-5-5";
 const DEFAULT_ORIGINS = "https://barbara-netizen.github.io";
 // Precios por millón de tokens (USD), https://platform.claude.com/docs/en/about-claude/pricing (16-10-2026)
@@ -53,6 +53,16 @@ export function corsHeaders(request, env) {
   const allowed = (env.ALLOWED_ORIGINS || DEFAULT_ORIGINS).split(",").map((s) => s.trim()).filter(Boolean);
   const ok = allowed.includes("*") || allowed.includes(origin);
   return ok ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code, x-turnstile-token", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
+}
+
+/**
+ * Códigos válidos: los del secreto ACCESS_CODES más los de la clave «codes» del KV (mismo formato). La clave del KV
+ * permite agregar códigos sin reescribir el secreto, que no se puede leer desde el panel. Si un código está en los
+ * dos lugares, vale el cupo del secreto.
+ */
+export async function allCodes(env) {
+  const extra = env.ASTRO_KV ? parseCodes(await env.ASTRO_KV.get("codes").catch(() => null)) : {};
+  return { ...extra, ...parseCodes(env.ACCESS_CODES) };
 }
 
 export function parseCodes(s) {
@@ -243,7 +253,7 @@ export async function handleFeedback(request, env, cors, requireCode) {
   const text = String((body && body.text) || "").replace(/\s+\n/g, "\n").trim();
   if (text.length < FEEDBACK_MIN) return json({ error: "feedback_short", min: FEEDBACK_MIN }, 400, cors);
   if (text.length > FEEDBACK_MAX) return json({ error: "feedback_long", max: FEEDBACK_MAX }, 400, cors);
-  const codes = parseCodes(env.ACCESS_CODES);
+  const codes = await allCodes(env);
   let code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
   if (code && !(code in codes)) return json({ error: "code_invalid" }, 403, cors);
   if (!code && requireCode) return json({ error: "code_required" }, 401, cors);
@@ -302,7 +312,7 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
   if (env.TURNSTILE_SECRET && !(await verifyTurnstile(env.TURNSTILE_SECRET, request.headers.get("x-turnstile-token"), ip))) return json400("bot_check", 403);
 
   // código de acceso y cupo; en acceso público, un código válido usa su propio cupo
-  const codes = parseCodes(env.ACCESS_CODES);
+  const codes = await allCodes(env);
   const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
   const useCode = requireCode || !!code;
   let limit = null, used = 0, token = null;
@@ -435,7 +445,7 @@ export default {
         ledger: !!env.CODE_LEDGER,
         // «available»: si hoy se puede pedir un informe (sin revelar el gasto)
         available: configured && month.usd < cap && (requireCode || day < +(env.DAILY_LIMIT || 8)),
-        configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, style: !!(env.ASTRO_KV && (await env.ASTRO_KV.get("style"))), kv: !!env.ASTRO_KV, codes: Object.keys(parseCodes(env.ACCESS_CODES)).length > 0 } }, 200, cors);
+        configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, style: !!(env.ASTRO_KV && (await env.ASTRO_KV.get("style"))), kv: !!env.ASTRO_KV, codes: Object.keys(await allCodes(env)).length > 0 } }, 200, cors);
     }
     // fuera de /health, solo se atiende a la app: el navegador siempre envía Origin en estos pedidos. Un pedido sin
     // Origin (un script) también se rechaza. No reemplaza al código de acceso, pero evita el uso directo trivial.
@@ -471,7 +481,7 @@ export default {
       const id = normalizeRequestId(body.incoming && body.incoming.request_id);
       if (!id) return json({ error: "bad_request" }, 400, cors);
       // el código se verifica antes de tocar el Durable Object del pedido
-      if (code && !(code in parseCodes(env.ACCESS_CODES))) return json({ error: "code_invalid" }, 403, cors);
+      if (code && !(code in (await allCodes(env)))) return json({ error: "code_invalid" }, 403, cors);
       if (requireCode && !code) return json({ error: "code_required" }, 401, cors);
       const stub = env.REPORT_JOB.get(env.REPORT_JOB.idFromName(id));
       // si ese pedido ya existe (reintento, recarga de la página), se devuelve su estado: no se crea otro ni se cobra
