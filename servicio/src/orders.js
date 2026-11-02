@@ -42,7 +42,13 @@ async function clearException(env, orderId) { if (env.ASTRO_KV) await env.ASTRO_
 export async function startOrderJob(env, orderId, jobId, payload, providerRef) {
   const code = ORDER_CODE_PREFIX + orderId;
   const res = await ledger(env, code).reserve(jobId, 1);
-  if (res.error) return { started: false, reason: res.error }; // en curso o ya entregado: no se genera otro
+  if (res.error) {
+    // en curso o ya entregado: no se genera otro; el pedido no queda en «starting» (sale de ahí y va a revisión;
+    // si el trabajo anterior entrega, el aviso de entrega lo corrige)
+    await call(orderStub(env, orderId), "generation", { jobId, outcome: "start_" + res.error });
+    await flagException(env, orderId, "start_" + res.error);
+    return { started: false, reason: res.error };
+  }
   const job = { payload, fp: await payloadFingerprint(payload), token: res.token, codeKind: "order", orderId, order: providerRef || null,
     requestId: jobId, useCode: true, code, limit: 1, mk: monthKey(), vKey: null, vUsed: 0, dKey: null, dUsed: 0 };
   const stub = env.REPORT_JOB.get(env.REPORT_JOB.idFromName(jobId));
@@ -80,25 +86,31 @@ async function createOrder(request, env, cors) {
   if (!norm.ok) return json({ error: norm.error }, 400, cors);
 
   // idempotencia: el mismo intento de compra (por ejemplo, doble toque o reintento de red) devuelve el mismo pedido
-  const prevId = env.ASTRO_KV ? await env.ASTRO_KV.get("idem:" + idem) : null;
-  if (prevId) {
-    const saved = await kvGetJSON(env.ASTRO_KV, "ck:" + prevId, null);
-    return json({ order_id: prevId, checkout_url: saved && saved.url, existed: true }, 200, cors);
+  // la clave de idempotencia la genera la app y es secreta como la del pedido: con ella se devuelve el mismo pedido,
+  // su clave y su enlace de pago aunque la primera respuesta se haya perdido
+  const prev = env.ASTRO_KV ? await kvGetJSON(env.ASTRO_KV, "idem:" + idem, null) : null;
+  if (prev && prev.id) {
+    if (prev.url) return json({ order_id: prev.id, token: prev.token, checkout_url: prev.url, existed: true }, 200, cors);
+    return checkout(prev.id, prev.token);
   }
   const id = "ord-" + randHex(16), token = randHex(24);
   const order = { id, product, provider: providerName, amountMinor: price.amountMinor, currency: price.currency, productRef: price.productRef,
     lang: norm.payload.request.report_language, tokenHash: await sha256Hex(token), idemKey: idem,
     consent: { terms_version: c.terms_version, disclaimer_version: String(c.disclaimer_version || ""), at: new Date().toISOString() } };
   await call(orderStub(env, id), "create", { order, payload: norm.payload });
-  if (env.ASTRO_KV) await env.ASTRO_KV.put("idem:" + idem, id, { expirationTtl: 7 * 86400 });
-  const appOrigin = request.headers.get("origin");
-  const serviceOrigin = new URL(request.url).origin;
-  let ck;
-  try { ck = await provider.createCheckout(env, { id, product, amountMinor: price.amountMinor, currency: price.currency, lang: order.lang }, { appOrigin, serviceOrigin }); }
-  catch (e) { console.log(JSON.stringify({ event: "checkout_error", provider: providerName, status: e.status || null })); return json({ error: "checkout_unavailable", order_id: id }, 502, cors); }
-  await call(orderStub(env, id), "checkout", { externalCheckoutId: ck.externalCheckoutId });
-  if (env.ASTRO_KV) await env.ASTRO_KV.put("ck:" + id, JSON.stringify({ url: ck.url }), { expirationTtl: 7 * 86400 });
-  return json({ order_id: id, token, checkout_url: ck.url }, 201, cors);
+  if (env.ASTRO_KV) await env.ASTRO_KV.put("idem:" + idem, JSON.stringify({ id, token }), { expirationTtl: 7 * 86400 });
+  return checkout(id, token, 201);
+
+  async function checkout(oid, tok, okStatus = 200) {
+    const appOrigin = request.headers.get("origin");
+    const serviceOrigin = new URL(request.url).origin;
+    let ck;
+    try { ck = await provider.createCheckout(env, { id: oid, product, amountMinor: price.amountMinor, currency: price.currency, lang: norm.payload.request.report_language }, { appOrigin, serviceOrigin }); }
+    catch (e) { console.log(JSON.stringify({ event: "checkout_error", provider: providerName, status: e.status || null })); return json({ error: "checkout_unavailable", order_id: oid }, 502, cors); }
+    await call(orderStub(env, oid), "checkout", { externalCheckoutId: ck.externalCheckoutId });
+    if (env.ASTRO_KV) await env.ASTRO_KV.put("idem:" + idem, JSON.stringify({ id: oid, token: tok, url: ck.url }), { expirationTtl: 7 * 86400 });
+    return json({ order_id: oid, token: tok, checkout_url: ck.url, ...(okStatus === 200 ? { existed: true } : {}) }, okStatus, cors);
+  }
 }
 
 // ---------------------------------------------------------------- GET /orders/<id>
@@ -127,13 +139,12 @@ export async function handleWebhook(request, env, name, rawOverride) {
   try { tx = await provider.getTransaction(env, v.externalId, v.hint); }
   catch (e) { return json({ error: "provider_unavailable" }, 502); } // el proveedor reintenta
   if (!tx.orderId || !ORDER_ID_RE.test(tx.orderId)) return json({ ok: true, ignored: "no_order" }, 200);
-  const r = await call(orderStub(env, tx.orderId), "payment", { eventId: v.eventId, tx });
+  const r = await call(orderStub(env, tx.orderId), "payment", { eventId: v.eventId, tx, provider: name });
   if (r.status === 404) return json({ ok: true, ignored: "unknown_order" }, 200);
   if (r.exception) await flagException(env, tx.orderId, r.exception);
   if (r.action === "start") {
     try {
       const s = await startOrderJob(env, tx.orderId, r.jobId, r.payload, r.internal && r.internal.externalId);
-      if (!s.started && s.reason !== "in_progress") await flagException(env, tx.orderId, "start_" + s.reason);
     } catch (e) { await call(orderStub(env, tx.orderId), "generation", { jobId: r.jobId, outcome: "start_error" }); await flagException(env, tx.orderId, "generation_failed"); }
   }
   return json({ ok: true, duplicate: !!r.duplicate }, 200);
