@@ -15,7 +15,7 @@ export const CONFIG = {
   interpreterUrl: "https://astroinforme.gutierrez-barbarita.workers.dev/",
   requireCode: true,
   turnstileSiteKey: "",
-  languages: ["es"],
+  languages: ["es", "de", "en"],
   // pilot: franja de «versión piloto» con el conejo y el recuadro de comentario al final del informe.
   pilot: true,
   // paid: el informe se cobra (muestra la frase sobre el pago en «Quién hace AsterOrbis»).

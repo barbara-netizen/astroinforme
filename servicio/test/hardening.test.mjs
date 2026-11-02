@@ -281,6 +281,23 @@ group("el consumo es idempotente por reserva: repetir el cierre no descuenta dos
   assert.equal((await book.get()).used, 1);
 }
 
+group("códigos adicionales en el KV (clave «codes»): valen igual que los del secreto, que tiene prioridad");
+{
+  const e = env();
+  await e.ASTRO_KV.put("codes", "PAULA-DE01:1, ANA-7K2:9");
+  mockClaude([ANALISIS, ok]);
+  const r = await run(req(withId(R1), "PAULA-DE01"), e);
+  assert.ok(r.body.report); assert.equal(r.body.remaining, 0);
+  mockClaude([]);
+  // otra carta con el cupo agotado (con la misma carta recuperaría el informe guardado)
+  const otra = clone(withId(R2)); otra.person.first_name = "Otra";
+  assert.equal((await run(req(otra, "PAULA-DE01"), e)).body.error, "quota_exhausted");
+  // el secreto manda: ANA-7K2 sigue con cupo 2
+  await ledger(e, "ANA-7K2").consume((await ledger(e, "ANA-7K2").reserve(R1, 2)).token);
+  await ledger(e, "ANA-7K2").consume((await ledger(e, "ANA-7K2").reserve(R2, 2)).token);
+  assert.equal((await run(req(withId(R3), "ANA-7K2"), e)).body.error, "quota_exhausted");
+}
+
 group("sin el libro de cupo configurado, los pedidos con código responden not_configured");
 {
   const e = env(); delete e.CODE_LEDGER;
