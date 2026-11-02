@@ -986,22 +986,9 @@ function loadDemoCase(c) {
   state.demoReports = c.reports;
   ensureEngine().then(() => calculate()).catch(() => { });
 }
-// intro animada del logo: una vez por sesión (config.intro), o siempre con «?intro» para probarla.
-// No aparece con movimiento reducido ni en el informe de muestra; un toque la cierra.
-(function intro() {
-  const el = document.getElementById("intro"); if (!el) return;
-  const q = new URLSearchParams(location.search);
-  const forced = q.has("intro");
-  let seen = false; try { seen = sessionStorage.getItem("astroinforme.intro") === "1"; } catch (e) { }
-  const reduced = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (!forced && (!CONFIG.intro || seen || reduced || q.has("muestra"))) return;
-  try { sessionStorage.setItem("astroinforme.intro", "1"); } catch (e) { }
-  el.hidden = false;
-  const done = () => el.remove();
-  el.addEventListener("click", done);
-  el.addEventListener("animationend", (e) => { if (e.target === el) done(); });
-  setTimeout(done, 3200);
-})();
+// intro animada del logo: la muestra (o no) un script en línea de page.html antes de que se dibuje la página.
+// Con config.intro = false se quita aquí.
+if (!CONFIG.intro && !new URLSearchParams(location.search).has("intro")) { const el = document.getElementById("intro"); if (el) el.remove(); }
 
 // «Quién hace AsterOrbis»: la frase sobre el pago aparece solo cuando el informe se cobra
 for (const el of document.querySelectorAll(".author-paid")) el.hidden = !CONFIG.paid;
