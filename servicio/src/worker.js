@@ -35,7 +35,8 @@ import { ledger } from "./ledger.js";
 
 export const SERVICE_VERSION = "1.8";
 const DEFAULT_MODEL = "claude-opus-5-5";
-const DEFAULT_ORIGINS = "https://barbara-netizen.github.io";
+// la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
+const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
 // Precios por millón de tokens (USD), https://platform.claude.com/docs/en/about-claude/pricing (16-10-2026)
 const PRICES = {
   "claude-opus-5-5": { in: 4, out: 20, cache_write: 5, cache_read: 0.2 },
