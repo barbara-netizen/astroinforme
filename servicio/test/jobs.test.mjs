@@ -18,7 +18,7 @@ const call = async (r, e) => { const res = await worker.fetch(r, e, {}); return 
 group("health anuncia el modo desacoplado");
 {
   const h = await call(new Request("https://x/health"), env());
-  assert.equal(h.body.version, "1.8"); assert.equal(h.body.jobs, true);
+  assert.equal(h.body.version, "1.9"); assert.equal(h.body.jobs, true);
   const h2 = await call(new Request("https://x/health"), baseEnv());
   assert.equal(h2.body.jobs, false);
 }
@@ -237,6 +237,24 @@ group("origen obligatorio, código verificado antes de tocar el pedido y límite
   assert.equal((await call(post(ID2), e)).body.error, "rate_limited");
   // las consultas de estado no cuentan para el límite
   assert.equal((await call(get(ID), e)).body.status, "queued");
+}
+
+group("modos del servicio: disabled pausa los pedidos nuevos pero deja consultar los que están en curso");
+{
+  const e = env();
+  assert.equal((await call(new Request("https://x/health"), e)).body.mode, "pilot");
+  await call(post(ID), e);
+  e.SERVICE_MODE = "disabled";
+  const h = await call(new Request("https://x/health"), e);
+  assert.equal(h.body.mode, "disabled"); assert.equal(h.body.available, false);
+  const r = await call(post(ID2), e);
+  assert.equal(r.status, 503); assert.equal(r.body.error, "disabled");
+  assert.equal((await call(get(ID), e)).body.status, "queued", "el trabajo en curso se sigue consultando");
+  mockClaude([ANALISIS, ok]);
+  await e.REPORT_JOB.obj(ID).alarm();
+  assert.equal((await call(get(ID), e)).body.status, "done", "y termina");
+  e.SERVICE_MODE = "cualquiera";
+  assert.equal((await call(new Request("https://x/health"), e)).body.mode, "pilot", "un valor desconocido vuelve a pilot");
 }
 
 group("sin el binding del Durable Object, /jobs responde not_configured");
