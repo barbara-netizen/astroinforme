@@ -449,8 +449,12 @@ function renderInterpretationChrome() {
   $("#code-label").dataset.i18n = publicAccess() ? "f.code.opt" : "f.code"; $("#code-label").textContent = t($("#code-label").dataset.i18n);
   $("#code-hint").dataset.i18n = publicAccess() ? "f.code.hintOpt" : "f.code.hint"; $("#code-hint").textContent = t($("#code-hint").dataset.i18n);
   const unavailable = !!(state.health && state.health.available === false);
-  $("#interp-unavail").hidden = !unavailable;
-  $("#btn-interp").disabled = unavailable && !($("#access-code").value || "").trim();
+  const paused = appMode() === "disabled" && !CONFIG.demo;
+  $("#interp-paused").hidden = !paused;
+  $("#interp-unavail").hidden = !unavailable || paused;
+  if (paused) $("#code-row").hidden = true;
+  $("#btn-interp").hidden = paused;
+  $("#btn-interp").disabled = paused || (unavailable && !($("#access-code").value || "").trim());
   if (CONFIG.demo) {
     const reports = state.demoReports || CONFIG.demoReports || [];
     const sig = reports.map((r) => r.file).join("|");
@@ -578,6 +582,12 @@ function showResumeNote() {
   const n = document.getElementById("resume-note");
   if (n) n.hidden = !(p && p.id && Date.now() - p.at < RESUME_MS);
 }
+/** Modo efectivo: "pilot" | "paid" | "disabled". El servicio puede pausar la generación aunque la app diga otra cosa. */
+function appMode() {
+  const m = ["pilot", "paid", "disabled"].includes(CONFIG.mode) ? CONFIG.mode : (CONFIG.pilot === false ? "paid" : "pilot");
+  return state.health && state.health.mode === "disabled" ? "disabled" : m;
+}
+const isPilot = () => appMode() === "pilot";
 class ServiceError extends Error { constructor(key, params) { super(key); this.key = key; this.params = params; } }
 async function obtainReport() {
   if (CONFIG.demo) {
@@ -657,7 +667,7 @@ function initFeedback() {
   btn.addEventListener("click", sendFeedback);
 }
 function showFeedback() {
-  if (!CONFIG.pilot || !serviceUrl() || CONFIG.demo) return;
+  if (!isPilot() || !serviceUrl() || CONFIG.demo) return;
   // el servicio recibe comentarios desde la versión 1.3; con una versión anterior el recuadro no se muestra
   const v = String((state.health && state.health.version) || "0").split(".").map(Number);
   if (v[0] < 1 || (v[0] === 1 && (v[1] || 0) < 3)) return;
@@ -717,7 +727,7 @@ function openWait() {
   $("#about-report").open = false;
   $("#wait").hidden = false;
   document.documentElement.style.overflow = "hidden";
-  V.show($("#fig-reader"), CONFIG.pilot ? "pilot_rabbit" : "report_reader");
+  V.show($("#fig-reader"), isPilot() ? "pilot_rabbit" : "report_reader");
   keepAwake(true);
 }
 function closeWait() {
@@ -856,7 +866,7 @@ function applyLanguage(lang, { remember = true } = {}) {
 
 // ---------- eventos ----------
 function initVisuals() {
-  if (CONFIG.pilot) { $("#pilot").hidden = false; V.show($("#fig-pilot"), "pilot_rabbit"); }
+  if (isPilot()) { $("#pilot").hidden = false; V.show($("#fig-pilot"), "pilot_rabbit"); }
   // la portada animada se ve de entrada; con movimiento reducido, V.show muestra su fotograma fijo
   V.show($("#fig-hero"), "intro_embroidery");
   V.show($("#fig-offer"), "report_reader");
@@ -994,7 +1004,7 @@ if (!CONFIG.intro && !new URLSearchParams(location.search).has("intro")) { const
 document.querySelectorAll('.author-go a').forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); const h = document.getElementById("form-start"); if (h) h.scrollIntoView({ behavior: "smooth", block: "start" }); }));
 
 // «Quién hace AsterOrbis»: la frase sobre el pago aparece solo cuando el informe se cobra
-for (const el of document.querySelectorAll(".author-paid")) el.hidden = !CONFIG.paid;
+for (const el of document.querySelectorAll(".author-paid")) el.hidden = appMode() !== "paid";
 
 // informe de muestra («?muestra»): carta ficticia calculada aquí y un informe fijo generado por el servicio
 const SAMPLE = CONFIG.sample && CONFIG.sample.file ? CONFIG.sample : null;
