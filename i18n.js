@@ -337,9 +337,9 @@ const UI = {
   "footer.conv": ["Zodíaco tropical, carta geocéntrica, posiciones aparentes.", "Tropischer Tierkreis, geozentrisches Horoskop, scheinbare Positionen.", "Tropical zodiac, geocentric chart, apparent positions."],
   "footer.privacy": ["Privacidad", "Datenschutz", "Privacy"],
   disclaimer: [
-    "AsterOrbis ofrece una lectura simbólica de la carta natal desde la astrología psicológica. No es un diagnóstico ni un consejo profesional, y no reemplaza la atención psicológica o médica.",
-    "AsterOrbis bietet eine symbolische Lesart des Geburtshoroskops aus Sicht der psychologischen Astrologie. Sie ist keine Diagnose und keine fachliche Beratung und ersetzt keine psychologische oder ärztliche Behandlung.",
-    "AsterOrbis offers a symbolic reading of the birth chart from the perspective of psychological astrology. It is not a diagnosis or professional advice, and it does not replace psychological or medical care.",
+    "Informe digital personalizado de astrología psicológica, generado automáticamente a partir de la carta calculada. Es una obra interpretativa de carácter artístico y simbólico; no es una consulta personal, ni un diagnóstico o un consejo profesional, y no reemplaza la atención psicológica o médica.",
+    "Personalisierter digitaler Bericht der psychologischen Astrologie, automatisch aus dem berechneten Horoskop erstellt. Er ist ein interpretierendes Werk mit künstlerischem und symbolischem Charakter; er ist keine persönliche Beratung, keine Diagnose und keine fachliche Beratung und ersetzt keine psychologische oder ärztliche Behandlung.",
+    "Personalised digital report in psychological astrology, generated automatically from the calculated chart. It is an interpretive work of an artistic and symbolic nature; it is not a personal consultation, a diagnosis or professional advice, and it does not replace psychological or medical care.",
   ],
   "btn.print": ["Imprimir o guardar en PDF", "Drucken oder als PDF speichern", "Print or save as PDF"],
   "btn.download": ["Descargar (archivo HTML)", "Herunterladen (HTML-Datei)", "Download (HTML file)"],
