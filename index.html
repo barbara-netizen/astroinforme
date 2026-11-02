@@ -105,6 +105,8 @@ details[open] > summary::after { content: "−"; }
 #engine-state[data-ok="0"] { color: var(--hard); }
 .pilot { display: flex; align-items: center; gap: 14px; border: 1px dashed var(--line); border-radius: 6px; padding: 10px 14px; background: var(--panel); margin-top: 16px; }
 .pilot p { margin: 0; font-size: 0.92rem; }
+.pilot:not([hidden]) ~ .intro, .save-now:not([hidden]) ~ .intro { margin-top: 24px; }
+#form-start { scroll-margin-top: 16px; }
 .art-pilot { flex: 0 0 auto; width: 76px; }
 .art-pilot figcaption { display: none; }
 .art-pilot video, .art-pilot img { aspect-ratio: 360 / 326; border-radius: 3px; }
@@ -296,6 +298,11 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
   .bar, #screen-form, .offer, #wait, .rep-bar, .rep-index, .feedback, .donation, .pilot, .btn, .linkbtn, .no-print, #ts-box { display: none !important; }
   /* desde el informe se imprime el informe y, a continuación, la carta completa */
   body[data-screen="report"] #screen-chart { display: block !important; break-before: page; }
+  /* en el DOM la carta va antes que el informe: en papel se invierte el orden */
+  body[data-screen="report"] { display: flex; flex-direction: column; }
+  body[data-screen="report"] > * { order: 3; }
+  body[data-screen="report"] > #screen-report { order: 1; }
+  body[data-screen="report"] > #screen-chart { order: 2; }
   .chart-grid { display: block; }
   /* contenedores verticales en grilla: en papel van como bloques, para que ningún renglón quede partido entre páginas */
   .chart-right, .tech, .tech details > div, dl#t-struct, #report-out, .rep-end, .rep-head, .chart-head { display: block; }
@@ -312,6 +319,10 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
   .rep-sec p { orphans: 3; widows: 3; }
   /* una ilustración nunca se parte entre dos páginas, y no queda sola al pie separada de su sección */
   .rep-sec .art, #fig-closure { break-inside: avoid; page-break-inside: avoid; break-after: avoid; }
+  /* la imagen de cierre puede quedar sola en su página; el bloque de autoría empieza en página propia y no se parte */
+  #fig-closure { break-after: auto; }
+  .reading > .author { break-before: page; }
+  .author .author-art img { max-height: 7cm; }
   .rep-sec .art, #fig-closure, .rep-myth { margin: 6px 0; }
   .rep-sec .art img, #fig-closure img { max-height: 9cm; width: auto; max-width: 100%; }
   .rep-sec .art video, #fig-closure video { display: none !important; }
