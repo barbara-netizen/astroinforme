@@ -33,7 +33,7 @@ import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION
 import { normalizePayload, normalizeRequestId } from "./validate.js";
 import { ledger } from "./ledger.js";
 
-export const SERVICE_VERSION = "1.7.2";
+export const SERVICE_VERSION = "1.8";
 const DEFAULT_MODEL = "claude-opus-5-5";
 const DEFAULT_ORIGINS = "https://barbara-netizen.github.io";
 // Precios por millón de tokens (USD), https://platform.claude.com/docs/en/about-claude/pricing (16-10-2026)
@@ -63,6 +63,50 @@ export function corsHeaders(request, env) {
 export async function allCodes(env) {
   const extra = env.ASTRO_KV ? parseCodes(await env.ASTRO_KV.get("codes").catch(() => null)) : {};
   return { ...extra, ...parseCodes(env.ACCESS_CODES) };
+}
+
+// ---------------------------------------------------------------- licencias de Gumroad (servicio 1.8)
+// Con GUMROAD_PRODUCT_ID configurado, una clave de licencia de Gumroad funciona como código: se verifica contra Gumroad
+// (sin sumar usos), y el cupo es la cantidad comprada × REPORTS_PER_LICENSE (1 por defecto). Una compra reembolsada o
+// con contracargo deja de valer. El resultado se guarda 10 minutos en el KV («lic:<resumen>», sin correo ni nombre).
+export const LICENSE_RE = /^[0-9A-F]{8}-[0-9A-F]{8}-[0-9A-F]{8}-[0-9A-F]{8}$/;
+const LICENSE_CACHE_TTL = 600;
+async function sha256hex(s) {
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
+  return [...h].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+export async function verifyLicense(env, key) {
+  const kv = env.ASTRO_KV, ck = "lic:" + (await sha256hex(key)).slice(0, 32);
+  const cached = kv ? await kvGetJSON(kv, ck, null) : null;
+  let info = cached;
+  if (!info) {
+    let r, body = null;
+    try {
+      r = await fetch("https://api.gumroad.com/v2/licenses/verify", { method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ product_id: env.GUMROAD_PRODUCT_ID, license_key: key, increment_uses_count: "false" }).toString() });
+      body = await r.json().catch(() => null);
+    } catch (e) { return { error: "license_unavailable", status: 503 }; }
+    if (r.status === 404 || (body && body.success === false && r.status < 500)) info = { ok: false };
+    else if (!r.ok || !body || !body.purchase) return { error: "license_unavailable", status: 503 };
+    else {
+      const pu = body.purchase;
+      info = { ok: true, quantity: Math.max(1, +pu.quantity || 1), refunded: !!(pu.refunded || pu.chargebacked || pu.disputed), order: pu.order_number != null ? String(pu.order_number) : null };
+    }
+    if (kv) await kv.put(ck, JSON.stringify(info), { expirationTtl: LICENSE_CACHE_TTL }).catch(() => { });
+  }
+  if (!info.ok) return null;
+  if (info.refunded) return { error: "license_refunded", status: 403 };
+  return { limit: info.quantity * Math.max(1, +(env.REPORTS_PER_LICENSE || 1)), kind: "license", order: info.order };
+}
+
+/** Datos de un código: { limit, kind, order? }, { error, status } o null si no existe. */
+export async function resolveCode(env, code) {
+  if (!code) return null;
+  const codes = await allCodes(env);
+  if (code in codes) return { limit: codes[code], kind: "code" };
+  if (env.GUMROAD_PRODUCT_ID && LICENSE_RE.test(code)) return verifyLicense(env, code);
+  return null;
 }
 
 export function parseCodes(s) {
@@ -253,9 +297,8 @@ export async function handleFeedback(request, env, cors, requireCode) {
   const text = String((body && body.text) || "").replace(/\s+\n/g, "\n").trim();
   if (text.length < FEEDBACK_MIN) return json({ error: "feedback_short", min: FEEDBACK_MIN }, 400, cors);
   if (text.length > FEEDBACK_MAX) return json({ error: "feedback_long", max: FEEDBACK_MAX }, 400, cors);
-  const codes = await allCodes(env);
   let code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
-  if (code && !(code in codes)) return json({ error: "code_invalid" }, 403, cors);
+  if (code) { const info = await resolveCode(env, code); if (!info || info.error) return json({ error: (info && info.error) || "code_invalid" }, (info && info.status) || 403, cors); }
   if (!code && requireCode) return json({ error: "code_required" }, 401, cors);
   if (!code) code = "PUBLICO";
   const kv = env.ASTRO_KV, ck = "fbcount:" + code;
@@ -312,14 +355,15 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
   if (env.TURNSTILE_SECRET && !(await verifyTurnstile(env.TURNSTILE_SECRET, request.headers.get("x-turnstile-token"), ip))) return json400("bot_check", 403);
 
   // código de acceso y cupo; en acceso público, un código válido usa su propio cupo
-  const codes = await allCodes(env);
   const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
   const useCode = requireCode || !!code;
-  let limit = null, used = 0, token = null;
+  let limit = null, used = 0, token = null, codeKind = null, order = null;
   if (useCode) {
     if (!code) return json400("code_required", 401);
-    if (!(code in codes)) return json400("code_invalid", 403);
-    limit = codes[code];
+    const info = await resolveCode(env, code);
+    if (!info) return json400("code_invalid", 403);
+    if (info.error) return json400(info.error, info.status);
+    limit = info.limit; codeKind = info.kind; order = info.order || null;
     if (!env.CODE_LEDGER) return json400("not_configured", 503);
     const book = ledger(env, code);
     // recuperación explícita: la app reenvía el mismo request_id cuando no recibió la respuesta. Si ese pedido ya
@@ -360,7 +404,7 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
     await kv.put(vKey, String(vUsed + 1), { expirationTtl: 172800 });
     await kv.put(dKey, String(dUsed + 1), { expirationTtl: 172800 });
   }
-  return { job: { payload, fp, token, requestId, useCode, code: useCode ? code : null, limit, mk, vKey, vUsed, dKey, dUsed } };
+  return { job: { payload, fp, token, codeKind, order, requestId, useCode, code: useCode ? code : null, limit, mk, vKey, vUsed, dKey, dUsed } };
 }
 
 /**
@@ -403,7 +447,9 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
   const genId = requestId || crypto.randomUUID();
   await kv.put("gen:" + genId, JSON.stringify({
     at: new Date().toISOString(), model: env.MODEL || DEFAULT_MODEL, service: SERVICE_VERSION, mode: extra.mode || "stream",
-    access: useCode ? "code" : "public", usd: +spent.usd.toFixed(4), phases: spent.phases || {}, corrected: !!(result && result.corrected),
+    access: useCode ? (job.codeKind || "code") : "public",
+    // referencia para conciliar reclamos: número de orden de la compra (licencias) o el código (códigos de regalo)
+    ref: useCode ? (job.codeKind === "license" ? (job.order ? "order:" + job.order : null) : job.code) : null, usd: +spent.usd.toFixed(4), phases: spent.phases || {}, corrected: !!(result && result.corrected),
     outcome, attempts: extra.attempts || 1, lang: job.payload.request.report_language,
   }), { expirationTtl: GEN_TTL }).catch(() => { });
   return out;
@@ -481,7 +527,7 @@ export default {
       const id = normalizeRequestId(body.incoming && body.incoming.request_id);
       if (!id) return json({ error: "bad_request" }, 400, cors);
       // el código se verifica antes de tocar el Durable Object del pedido
-      if (code && !(code in (await allCodes(env)))) return json({ error: "code_invalid" }, 403, cors);
+      if (code) { const info = await resolveCode(env, code); if (!info || info.error) return json({ error: (info && info.error) || "code_invalid" }, (info && info.status) || 403, cors); }
       if (requireCode && !code) return json({ error: "code_required" }, 401, cors);
       const stub = env.REPORT_JOB.get(env.REPORT_JOB.idFromName(id));
       // si ese pedido ya existe (reintento, recarga de la página), se devuelve su estado: no se crea otro ni se cobra
