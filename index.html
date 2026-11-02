@@ -234,6 +234,7 @@ body[data-screen="report"] { background: var(--panel); }
 .author { border-top: 1px solid var(--line); margin: 28px 0 8px; padding-top: 20px; display: grid; gap: 16px; }
 .author-h { font-family: var(--f-display); font-size: 1.25rem; font-weight: 400; margin: 0 0 8px; }
 .author p { margin: 0 0 10px; line-height: 1.6; }
+.author-ded { font-family: var(--f-display); font-style: italic; font-size: 1.1rem; }
 @media (min-width: 760px) { .author:has(.author-art:not([hidden])) { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); align-items: start; } }
 @media print { .author { break-inside: avoid; } }
 .save-now { background: var(--warn-bg); border-radius: 8px; padding: 14px 16px; margin: 0 0 18px; display: grid; gap: 12px; justify-items: start; font-size: 0.95rem; line-height: 1.5; }
@@ -440,6 +441,8 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
       <div>
         <h2 class="author-h" id="h-author-1" data-i18n="author.h">Quién hace AsterOrbis</h2>
         <p data-i18n="author.body"></p>
+        <p data-i18n="author.mother"></p>
+        <p class="author-ded" data-i18n="author.dedication"></p>
         <p data-i18n="author.paid" class="author-paid" hidden></p>
       </div>
     </section>
@@ -482,6 +485,8 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
       <div>
         <h2 class="author-h" id="h-author-2" data-i18n="author.h">Quién hace AsterOrbis</h2>
         <p data-i18n="author.body"></p>
+        <p data-i18n="author.mother"></p>
+        <p class="author-ded" data-i18n="author.dedication"></p>
         <p data-i18n="author.paid" class="author-paid" hidden></p>
       </div>
     </section>
