@@ -33,7 +33,7 @@ import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION
 import { normalizePayload, normalizeRequestId } from "./validate.js";
 import { ledger } from "./ledger.js";
 
-export const SERVICE_VERSION = "1.8";
+export const SERVICE_VERSION = "1.9";
 const DEFAULT_MODEL = "claude-opus-5-5";
 // la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
 const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
@@ -465,6 +465,16 @@ async function readBody(request, cors) {
 
 export const JOB_PREFIX = "/jobs";
 
+/**
+ * Modo del servicio (variable SERVICE_MODE): "pilot" (por defecto; informes con códigos), "paid" (además, pedidos
+ * pagos; ver payments/) o "disabled" (no se crean pedidos ni trabajos nuevos; los que ya están en curso terminan y
+ * se pueden consultar).
+ */
+export function serviceMode(env) {
+  const m = String(env.SERVICE_MODE || "pilot").toLowerCase();
+  return ["pilot", "paid", "disabled"].includes(m) ? m : "pilot";
+}
+
 /** Límite de frecuencia (binding RATE_LIMITER de Cloudflare, aproximado y por ubicación). Sin el binding, no limita. */
 export async function rateLimited(env, key) {
   if (!env.RATE_LIMITER) return false;
@@ -488,10 +498,11 @@ export default {
         access: requireCode ? "code" : "public", turnstile: !!env.TURNSTILE_SECRET,
         // «jobs»: generación desacoplada de la conexión (servicio 1.6, Durable Object REPORT_JOB)
         jobs: !!env.REPORT_JOB,
+        mode: serviceMode(env),
         // «ledger»: cupo por código con reserva atómica (servicio 1.7, Durable Object CODE_LEDGER)
         ledger: !!env.CODE_LEDGER,
         // «available»: si hoy se puede pedir un informe (sin revelar el gasto)
-        available: configured && month.usd < cap && (requireCode || day < +(env.DAILY_LIMIT || 8)),
+        available: configured && serviceMode(env) !== "disabled" && month.usd < cap && (requireCode || day < +(env.DAILY_LIMIT || 8)),
         configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, style: !!(env.ASTRO_KV && (await env.ASTRO_KV.get("style"))), kv: !!env.ASTRO_KV, codes: Object.keys(await allCodes(env)).length > 0 } }, 200, cors);
     }
     // fuera de /health, solo se atiende a la app: el navegador siempre envía Origin en estos pedidos. Un pedido sin
@@ -514,6 +525,9 @@ export default {
 
     // comentario de quien probó la app (después de leer su informe)
     if (url.pathname === "/feedback") return handleFeedback(request, env, cors, requireCode);
+
+    // generación pausada: no se aceptan pedidos nuevos (los trabajos en curso siguen y se consultan por GET)
+    if (serviceMode(env) === "disabled") return json({ error: "disabled" }, 503, cors);
 
     // configuración mínima
     const protocol = await loadProtocol(env);

@@ -27,6 +27,8 @@ ul { padding-left: 20px; }
 a { color: var(--accent); }
 section[lang] { display: none; }
 section[lang].on { display: block; }
+[data-mode][hidden] { display: none !important; }
+.todo { background: #f3e7cf; color: #6b4b10; }
 </style>
 </head>
 <body>
@@ -38,7 +40,8 @@ section[lang].on { display: block; }
     <p class="date">Actualizado el 2 de noviembre de 2026</p>
 
     <h2>Quién es responsable</h2>
-    <p>AsterOrbis es un proyecto personal de Bárbara Gutiérrez, Buenos Aires, Argentina. Contacto: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="pilot">AsterOrbis es un proyecto personal de Bárbara Gutiérrez, Buenos Aires, Argentina. En esta etapa piloto, los informes se piden con códigos de acceso. Contacto: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="paid">AsterOrbis es un proyecto de Bárbara Gutiérrez, Buenos Aires, Argentina, que vende informes digitales personalizados. Datos de quien vende: <span class="todo">[pendiente: completar antes de activar las ventas]</span>. Contacto: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
 
     <h2>El cálculo de la carta</h2>
     <p>El nombre, la fecha, la hora y el lugar de nacimiento se procesan solamente en tu dispositivo. La página descarga una vez el programa de cálculo, las efemérides y la lista de ciudades; tus datos no viajan a ningún servidor para calcular la carta.</p>
@@ -67,11 +70,14 @@ section[lang].on { display: block; }
     <h2>Copia del informe durante 48 horas</h2>
     <p>Cuando generás un informe con un código, el servicio guarda una copia durante 48 horas, asociada solo a ese código, a un identificador aleatorio del pedido y a una huella criptográfica de los datos del pedido, para que puedas recuperarlo si se perdió antes de llegar a tu pantalla (por ejemplo, si bloqueaste el teléfono). La huella permite reconocer un nuevo pedido de la misma carta sin guardar la carta. Pasado ese plazo, la copia se borra sola. No incluye tu fecha, hora ni lugar de nacimiento, y nadie la lee.</p>
 
-    <h2>Comentarios sobre el informe (versión piloto)</h2>
-    <p>Si dejás un comentario al final del informe, se guarda en el servicio interpretativo (Cloudflare) junto con tu código de acceso, la fecha y el título del informe, para que quien administra AsterOrbis pueda leerlo. No se guardan tus datos de nacimiento, y el comentario no se publica. Podés pedir que se borre escribiendo a la dirección de contacto.</p>
+    <h2 data-mode="pilot">Comentarios sobre el informe (versión piloto)</h2>
+    <p data-mode="pilot">Si dejás un comentario al final del informe, se guarda en el servicio interpretativo (Cloudflare) junto con tu código de acceso, la fecha y el título del informe, para que quien administra AsterOrbis pueda leerlo. No se guardan tus datos de nacimiento, y el comentario no se publica. Podés pedir que se borre escribiendo a la dirección de contacto.</p>
 
-    <h2>Aportes voluntarios</h2>
-    <p>Si hacés un aporte, el pago se realiza en Mercado Pago, que trata tus datos según su propia política de privacidad. Esta página no recibe ni guarda datos de pago. Quien administra AsterOrbis ve en su cuenta de Mercado Pago los datos que esa plataforma informa a quien cobra.</p>
+    <h2 data-mode="pilot">Aportes voluntarios</h2>
+    <p data-mode="pilot">Si hacés un aporte, el pago se realiza en Mercado Pago, que trata tus datos según su propia política de privacidad. Esta página no recibe ni guarda datos de pago. Quien administra AsterOrbis ve en su cuenta de Mercado Pago los datos que esa plataforma informa a quien cobra.</p>
+
+    <h2 data-mode="paid">Pagos</h2>
+    <p data-mode="paid">Si comprás un informe, el pago se hace en la plataforma de pago (Mercado Pago o Dodo Payments, según el caso), que trata tus datos según su propia política de privacidad. AsterOrbis no recibe ni guarda datos de tarjeta ni de cuentas. Para confirmar el pago y entregar el informe, el servicio guarda un registro del pedido: un identificador aleatorio, el producto, el importe y la moneda, la plataforma, el identificador de la operación en esa plataforma, el estado del pago y de la entrega, y las fechas. Ese registro no contiene la carta ni tus datos de nacimiento, y a la plataforma de pago no se le envía ningún dato natal. Plazo de conservación del registro: <span class="todo">[pendiente: según las obligaciones contables y fiscales]</span>.</p>
 
     <h2>Tus derechos</h2>
     <p>AsterOrbis no guarda datos de nacimiento asociados a tu persona; los informes generados con código se conservan solo 48 horas. Si querés consultar algo sobre tus datos, escribí al contacto indicado arriba. Si vivís en la Unión Europea, también podés presentar una reclamación ante la autoridad de protección de datos de tu país.</p>
@@ -85,7 +91,8 @@ section[lang].on { display: block; }
     <p class="date">Stand: 2. November 2026</p>
 
     <h2>Verantwortlich</h2>
-    <p>AsterOrbis ist ein privates Projekt von Bárbara Gutiérrez, Buenos Aires, Argentinien. Kontakt: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="pilot">AsterOrbis ist ein privates Projekt von Bárbara Gutiérrez, Buenos Aires, Argentinien. In dieser Pilotphase werden die Berichte mit Zugangscodes angefordert. Kontakt: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="paid">AsterOrbis ist ein Projekt von Bárbara Gutiérrez, Buenos Aires, Argentinien, das personalisierte digitale Berichte verkauft. Angaben zur Verkäuferin: <span class="todo">[ausstehend: vor Aktivierung des Verkaufs ergänzen]</span>. Kontakt: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
 
     <h2>Berechnung des Horoskops</h2>
     <p>Name, Geburtsdatum, Uhrzeit und Geburtsort werden ausschließlich auf deinem Gerät verarbeitet. Die Seite lädt einmalig das Rechenprogramm, die Ephemeriden und die Ortsliste herunter; für die Berechnung werden deine Daten an keinen Server gesendet.</p>
@@ -114,11 +121,14 @@ section[lang].on { display: block; }
     <h2>Kopie des Berichts für 48 Stunden</h2>
     <p>Wenn du mit einem Code einen Bericht erstellst, speichert der Dienst 48 Stunden lang eine Kopie, nur mit diesem Code, einer zufälligen Kennung der Anfrage und einem kryptografischen Fingerabdruck der Anfragedaten verknüpft, damit du ihn wiederherstellen kannst, falls er nicht auf deinem Bildschirm angekommen ist. Der Fingerabdruck erlaubt es, eine neue Anfrage zum selben Horoskop zu erkennen, ohne das Horoskop zu speichern. Danach wird die Kopie automatisch gelöscht. Sie enthält keine Geburtsdaten und wird von niemandem gelesen.</p>
 
-    <h2>Kommentare zum Bericht (Pilotversion)</h2>
-    <p>Wenn du am Ende des Berichts einen Kommentar hinterlässt, wird er im Deutungsdienst (Cloudflare) mit deinem Zugangscode, dem Datum und dem Titel des Berichts gespeichert, damit die Betreiberin ihn lesen kann. Geburtsdaten werden nicht gespeichert, der Kommentar wird nicht veröffentlicht. Löschung auf Anfrage an die Kontaktadresse.</p>
+    <h2 data-mode="pilot">Kommentare zum Bericht (Pilotversion)</h2>
+    <p data-mode="pilot">Wenn du am Ende des Berichts einen Kommentar hinterlässt, wird er im Deutungsdienst (Cloudflare) mit deinem Zugangscode, dem Datum und dem Titel des Berichts gespeichert, damit die Betreiberin ihn lesen kann. Geburtsdaten werden nicht gespeichert, der Kommentar wird nicht veröffentlicht. Löschung auf Anfrage an die Kontaktadresse.</p>
 
-    <h2>Freiwillige Beiträge</h2>
-    <p>Wenn du etwas beisteuerst, erfolgt die Zahlung bei Mercado Pago, das deine Daten nach eigener Datenschutzerklärung verarbeitet. Diese Seite erhält und speichert keine Zahlungsdaten. Die Betreiberin sieht in ihrem Mercado-Pago-Konto die Angaben, die die Plattform an Zahlungsempfänger weitergibt.</p>
+    <h2 data-mode="pilot">Freiwillige Beiträge</h2>
+    <p data-mode="pilot">Wenn du etwas beisteuerst, erfolgt die Zahlung bei Mercado Pago, das deine Daten nach eigener Datenschutzerklärung verarbeitet. Diese Seite erhält und speichert keine Zahlungsdaten. Die Betreiberin sieht in ihrem Mercado-Pago-Konto die Angaben, die die Plattform an Zahlungsempfänger weitergibt.</p>
+
+    <h2 data-mode="paid">Zahlungen</h2>
+    <p data-mode="paid">Wenn du einen Bericht kaufst, erfolgt die Zahlung über die Zahlungsplattform (je nach Fall Mercado Pago oder Dodo Payments), die deine Daten nach eigener Datenschutzerklärung verarbeitet. AsterOrbis erhält und speichert keine Karten- oder Kontodaten. Um die Zahlung zu bestätigen und den Bericht zu liefern, speichert der Dienst einen Bestelleintrag: eine zufällige Kennung, das Produkt, Betrag und Währung, die Plattform, die Kennung des Vorgangs dort, den Zahlungs- und Lieferstatus und die Daten. Dieser Eintrag enthält weder das Horoskop noch deine Geburtsdaten, und an die Zahlungsplattform werden keine Geburtsdaten übermittelt. Aufbewahrungsdauer: <span class="todo">[ausstehend: nach den buchhalterischen und steuerlichen Pflichten]</span>.</p>
 
     <h2>Deine Rechte</h2>
     <p>AsterOrbis speichert keine Geburtsdaten, die dir zugeordnet werden können; mit Code erstellte Berichte werden nur 48 Stunden aufbewahrt. Für Fragen zu deinen Daten wende dich an den oben genannten Kontakt. Du hast außerdem das Recht, dich bei einer Datenschutz-Aufsichtsbehörde zu beschweren.</p>
@@ -132,7 +142,8 @@ section[lang].on { display: block; }
     <p class="date">Updated 2 November 2026</p>
 
     <h2>Who is responsible</h2>
-    <p>AsterOrbis is a personal project by Bárbara Gutiérrez, Buenos Aires, Argentina. Contact: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="pilot">AsterOrbis is a personal project by Bárbara Gutiérrez, Buenos Aires, Argentina. During this pilot phase, reports are requested with access codes. Contact: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="paid">AsterOrbis is a project by Bárbara Gutiérrez, Buenos Aires, Argentina, that sells personalised digital reports. Seller details: <span class="todo">[pending: complete before sales are enabled]</span>. Contact: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
 
     <h2>Calculating the chart</h2>
     <p>Your name, date, time and place of birth are processed only on your device. The page downloads the calculation program, the ephemeris and the list of places once; your data is not sent to any server to calculate the chart.</p>
@@ -161,11 +172,14 @@ section[lang].on { display: block; }
     <h2>Copy of the report for 48 hours</h2>
     <p>When you generate a report with a code, the service keeps a copy for 48 hours, linked only to that code, to a random request identifier and to a cryptographic fingerprint of the request data, so you can recover it if it never reached your screen. The fingerprint makes it possible to recognise a new request for the same chart without storing the chart. The copy is then deleted automatically. It contains no birth data and nobody reads it.</p>
 
-    <h2>Comments on the report (pilot version)</h2>
-    <p>If you leave a comment at the end of the report, it is stored in the interpretation service (Cloudflare) with your access code, the date and the report title, so the operator can read it. Your birth data is not stored, and the comment is not published. You can ask for deletion at the contact address.</p>
+    <h2 data-mode="pilot">Comments on the report (pilot version)</h2>
+    <p data-mode="pilot">If you leave a comment at the end of the report, it is stored in the interpretation service (Cloudflare) with your access code, the date and the report title, so the operator can read it. Your birth data is not stored, and the comment is not published. You can ask for deletion at the contact address.</p>
 
-    <h2>Voluntary contributions</h2>
-    <p>If you contribute, payment takes place on Mercado Pago, which processes your data under its own privacy policy. This page receives and stores no payment data. The operator sees in her Mercado Pago account the details that the platform shares with payees.</p>
+    <h2 data-mode="pilot">Voluntary contributions</h2>
+    <p data-mode="pilot">If you contribute, payment takes place on Mercado Pago, which processes your data under its own privacy policy. This page receives and stores no payment data. The operator sees in her Mercado Pago account the details that the platform shares with payees.</p>
+
+    <h2 data-mode="paid">Payments</h2>
+    <p data-mode="paid">If you buy a report, payment takes place on the payment platform (Mercado Pago or Dodo Payments, as the case may be), which processes your data under its own privacy policy. AsterOrbis receives and stores no card or account data. To confirm the payment and deliver the report, the service keeps an order record: a random identifier, the product, the amount and currency, the platform, the transaction identifier on that platform, the payment and delivery status, and the dates. That record contains neither the chart nor your birth data, and no birth data is sent to the payment platform. Retention period: <span class="todo">[pending: according to accounting and tax obligations]</span>.</p>
 
     <h2>Your rights</h2>
     <p>AsterOrbis does not store birth data linked to you; reports generated with a code are kept for 48 hours only. For any question about your data, write to the contact above. If you live in the European Union, you can also lodge a complaint with your data protection authority.</p>
@@ -174,6 +188,12 @@ section[lang].on { display: block; }
     <p>Personalised digital report in psychological astrology, generated automatically from the calculated chart. It is an interpretive work of an artistic and symbolic nature, intended for reflection and entertainment; it is not a personal consultation. The astrology it uses is non-predictive: the report makes no predictions. It is not a diagnosis or a psychological assessment, does not provide medical, financial, legal or other professional advice, and does not replace psychological or medical care.</p>
   </section>
 </div>
+<script type="module">
+// textos que dependen del modo de la app (config.js: "pilot", "paid" o "disabled"); "disabled" usa los del piloto
+import { CONFIG } from "./config.js";
+const mode = CONFIG.mode === "paid" ? "paid" : "pilot";
+document.querySelectorAll("[data-mode]").forEach((el) => { el.hidden = el.dataset.mode !== mode; });
+</script>
 <script>
 (function () {
   var langs = ["es", "de", "en"];
