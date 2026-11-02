@@ -367,7 +367,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
       </div>
       <div class="form-col">
         <form id="birth-form" novalidate>
-          <div class="fld"><label for="fname"><span data-i18n="f.fname">Nombre de pila</span> <span class="hint" data-i18n="f.optional">(opcional)</span></label><input id="fname" autocomplete="given-name" placeholder="Ana" data-i18n-ph="f.fname.ph"></div>
+          <div class="fld"><label for="fname"><span data-i18n="f.fname">Nombre de pila</span> <span class="hint" data-i18n="f.optional">(opcional)</span></label><input id="fname" autocomplete="given-name" placeholder="Tu nombre" data-i18n-ph="f.fname.ph"></div>
           <div class="pair">
             <div class="fld"><label for="bdate" data-i18n="f.date">Fecha</label><input id="bdate" type="date" min="1800-01-01" max="2399-12-31" required></div>
             <div class="fld"><label for="btime" data-i18n="f.timeShort">Hora</label><input id="btime" type="time" step="60"></div>
@@ -375,7 +375,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
           <label class="check"><input type="checkbox" id="no-time"> <span data-i18n="f.noTime">No sé la hora</span></label>
           <div class="fld place-box">
             <label for="place-q" data-i18n="f.place">Lugar de nacimiento</label>
-            <input id="place-q" autocomplete="off" spellcheck="false" placeholder="Buenos Aires" data-i18n-ph="f.place.ph" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="place-results">
+            <input id="place-q" autocomplete="off" spellcheck="false" placeholder="Ciudad, país" data-i18n-ph="f.place.ph" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="place-results">
             <ul id="place-results" role="listbox" hidden></ul>
             <p id="place-chosen" hidden><span id="pc-label"></span> · <span id="pc-coords"></span></p>
             <p class="hint" data-i18n="f.place.hint"></p>
