@@ -950,7 +950,7 @@ function init() {
   $("#tz").addEventListener("change", () => { if (state.place) state.place.zone = $("#tz").value; });
   $("#use-manual-offset").addEventListener("change", (e) => { $("#manual-offset-row").hidden = !e.target.checked; });
   const syncTime = () => { const unk = $("#no-time").checked; $("#btime").disabled = unk; };
-  $("#no-time").addEventListener("change", (e) => { if (e.target.checked) $("#prec").value = "UNKNOWN"; else if ($("#prec").value === "UNKNOWN") $("#prec").value = "PM15"; syncTime(); });
+  $("#no-time").addEventListener("change", (e) => { if (e.target.checked) $("#prec").value = "UNKNOWN"; else if ($("#prec").value === "UNKNOWN") $("#prec").value = "EXACT"; syncTime(); });
   $("#prec").addEventListener("change", (e) => { $("#no-time").checked = e.target.value === "UNKNOWN"; syncTime(); });
   $("#birth-form").addEventListener("submit", (e) => { e.preventDefault(); $("#ambig").hidden = true; calculate(); });
   $("#btn-copy-json").addEventListener("click", (e) => copyText(JSON.stringify(state.payload, null, 2), e.currentTarget));
