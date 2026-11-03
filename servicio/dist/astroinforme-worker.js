@@ -865,6 +865,16 @@ function withoutDedication(report) {
   if (report && Array.isArray(report.sections)) report.sections = report.sections.filter((s) => !s || s.id !== "dedication");
   return report;
 }
+function normalizeReferences(report) {
+  const fix = (r) => {
+    if (!r || typeof r !== "object") return;
+    if (r.type === "rulership" && typeof r.of === "string" && /^\d{1,2}$/.test(r.of)) r.of = +r.of;
+    if (r.type === "stellium" && r.by === "HOUSE" && typeof r.where === "string" && /^\d{1,2}$/.test(r.where)) r.where = +r.where;
+  };
+  if (report && Array.isArray(report.technical_references_used)) report.technical_references_used.forEach(fix);
+  if (report && Array.isArray(report.theses)) report.theses.forEach((t) => t && Array.isArray(t.indicators) && t.indicators.forEach(fix));
+  return report;
+}
 function chartForModel(p) {
   const n = normalizePayload(p);
   if (!n.ok) throw new Error("bad_request");
@@ -877,6 +887,7 @@ function describeArgument(argument) {
 }
 var MYTHS_KEY = "myths:recent";
 var MYTHS_KEEP = 12;
+var REFERENCE_MYTHS = ["Odiseo y las Sirenas", "Pers\xE9fone", "Prometeo", "Pen\xE9lope", "Proteo", "Psique y Eros", "D\xE9dalo e \xCDcaro", "Ant\xEDgona"];
 async function recentMyths(env) {
   if (!env.ASTRO_KV) return [];
   try {
@@ -1005,7 +1016,7 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   const tratamiento = TRATAMIENTO[payload.request.address_gender] || TRATAMIENTO.UNSPECIFIED;
   let analisis = await load("analisis");
   if (!analisis) {
-    const a = await callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, await recentMyths(env)), maxTokens: 16e3 });
+    const a = await callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [.../* @__PURE__ */ new Set([...await recentMyths(env), ...REFERENCE_MYTHS])]), maxTokens: 16e3 });
     charge("a", a.usage);
     analisis = extractJSON(a.text);
     await save("analisis", analisis);
@@ -1015,10 +1026,10 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   if (!report) {
     const b = await callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 32e3 });
     charge("b", b.usage);
-    report = withoutDedication(extractJSON(b.text));
+    report = normalizeReferences(withoutDedication(extractJSON(b.text)));
     await save("report_b", report);
   }
-  withoutDedication(report);
+  normalizeReferences(withoutDedication(report));
   let audit = auditReport(report, payload);
   let style = styleCheck(report);
   let argument = argumentAudit(report, payload);
@@ -1026,7 +1037,7 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   if (!audit.ok || !style.ok || argument.ok === false) {
     const c = await callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32e3 });
     charge("c", c.usage);
-    const fixed = withoutDedication(extractJSON(c.text));
+    const fixed = normalizeReferences(withoutDedication(extractJSON(c.text)));
     const fixedAudit = auditReport(fixed, payload);
     if (fixedAudit.ok || !audit.ok) {
       report = fixed;

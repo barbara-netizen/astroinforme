@@ -165,6 +165,18 @@ export function withoutDedication(report) {
   return report;
 }
 
+/** El modelo a veces escribe casas como texto: se normalizan para que la auditoría compare el mismo tipo de dato. */
+export function normalizeReferences(report) {
+  const fix = (r) => {
+    if (!r || typeof r !== "object") return;
+    if (r.type === "rulership" && typeof r.of === "string" && /^\d{1,2}$/.test(r.of)) r.of = +r.of;
+    if (r.type === "stellium" && r.by === "HOUSE" && typeof r.where === "string" && /^\d{1,2}$/.test(r.where)) r.where = +r.where;
+  };
+  if (report && Array.isArray(report.technical_references_used)) report.technical_references_used.forEach(fix);
+  if (report && Array.isArray(report.theses)) report.theses.forEach((t) => t && Array.isArray(t.indicators) && t.indicators.forEach(fix));
+  return report;
+}
+
 export function chartForModel(p) {
   const n = normalizePayload(p);
   if (!n.ok) throw new Error("bad_request");
@@ -178,6 +190,7 @@ function describeArgument(argument) {
 }
 
 const MYTHS_KEY = "myths:recent", MYTHS_KEEP = 12;
+const REFERENCE_MYTHS = ["Odiseo y las Sirenas", "Perséfone", "Prometeo", "Penélope", "Proteo", "Psique y Eros", "Dédalo e Ícaro", "Antígona"];
 /** Últimos mitos usados, sin datos de personas. Si el KV falla, la generación sigue sin esa lista. */
 async function recentMyths(env) {
   if (!env.ASTRO_KV) return [];
@@ -278,7 +291,7 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   const tratamiento = TRATAMIENTO[payload.request.address_gender] || TRATAMIENTO.UNSPECIFIED;
   let analisis = await load("analisis");
   if (!analisis) {
-    const a = await callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, await recentMyths(env)), maxTokens: 16000 });
+    const a = await callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [...new Set([...(await recentMyths(env)), ...REFERENCE_MYTHS])]), maxTokens: 16000 });
     charge("a", a.usage);
     analisis = extractJSON(a.text);
     await save("analisis", analisis);
@@ -288,10 +301,10 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   if (!report) {
     const b = await callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 32000 });
     charge("b", b.usage);
-    report = withoutDedication(extractJSON(b.text));
+    report = normalizeReferences(withoutDedication(extractJSON(b.text)));
     await save("report_b", report);
   }
-  withoutDedication(report); // también en un informe recuperado de una generación anterior
+  normalizeReferences(withoutDedication(report)); // también en un informe recuperado de una generación anterior
   let audit = auditReport(report, payload);
   let style = styleCheck(report);
   let argument = argumentAudit(report, payload);
@@ -300,7 +313,7 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   if (!audit.ok || !style.ok || argument.ok === false) {
     const c = await callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32000 });
     charge("c", c.usage);
-    const fixed = withoutDedication(extractJSON(c.text));
+    const fixed = normalizeReferences(withoutDedication(extractJSON(c.text)));
     const fixedAudit = auditReport(fixed, payload);
     // si la corrección solo era de estilo y rompió la parte técnica, se conserva la versión anterior
     if (fixedAudit.ok || !audit.ok) { report = fixed; audit = fixedAudit; style = styleCheck(fixed); argument = argumentAudit(fixed, payload); corrected = true; }
