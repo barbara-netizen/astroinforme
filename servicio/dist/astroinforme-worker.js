@@ -217,6 +217,30 @@ function auditReport(report, payload) {
   };
 }
 
+// ../argument_audit.js
+function argumentAudit(report, payload) {
+  const theses = Array.isArray(report && report.theses) ? report.theses : null;
+  if (!theses || !theses.length) return { declared: false, theses: [], ok: null };
+  const sectionIds = new Set((report.sections || []).map((s) => s && s.id));
+  const out = theses.map((t, i) => {
+    const indicators = Array.isArray(t && t.indicators) ? t.indicators : [];
+    const unique = [...new Map(indicators.map((r) => [refText(r), r])).values()];
+    const a = auditReport({ technical_references_used: unique, sections: [] }, payload);
+    const failed = a.issues.map((x) => refText(x.ref));
+    const verified = a.verified;
+    return {
+      id: t && t.id || `t${i + 1}`,
+      central: !!(t && t.central),
+      status: verified >= 2 ? "supported" : verified === 1 ? "single_indicator" : "unsupported",
+      verified,
+      failed,
+      unchecked: a.unchecked.length,
+      missing_sections: (t && t.sections || []).filter((s) => !sectionIds.has(s))
+    };
+  });
+  return { declared: true, theses: out, ok: out.every((t) => !t.central || t.status === "supported") };
+}
+
 // src/style.js
 var CONTRAST = {
   es: [/\bno\s(?!(?:s[oó]lo|solamente|[uú]nicamente)\b)(?![^.;:!?]{0,80}\bsino\s+tambi[eé]n\b)[^.;:!?]{1,80}?\bsino\b/gi, /\besto no significa\b/gi, /\bno significa\b[^.!?]{1,100}?[;:,]\s*significa\b/gi],
@@ -240,7 +264,16 @@ var CLICHES = {
     /\bestá escrito\b/gi,
     /\btu destino\b/gi,
     /\babraz(?:ar|á|a) (?:tu|tus) (?:sombra|heridas?)\b/gi,
-    /\btrastorno\b/gi
+    /\btrastorno\b/gi,
+    // fórmulas heredadas de instrucciones internas o repetidas entre informes
+    /\bquiz[aá] reconozcas\b/gi,
+    /\btal vez conozcas\b/gi,
+    /\bno dice nada comprobable\b/gi,
+    /\blo que la carta sugiere integrar\b/gi,
+    /\ben t[eé]rminos de experiencia\b/gi,
+    /\brepartir esta contradicci[oó]n\b/gi,
+    /\bla pregunta que condensa\b/gi,
+    /\blas necesidades en tensi[oó]n\b/gi
   ],
   de: [
     /\bin einer welt,? in der\b/gi,
@@ -306,7 +339,7 @@ var TRATAMIENTO = {
   NEUTRAL: "La persona prefiere un tratamiento neutro: no uses marcas de g\xE9nero gramatical para referirte a ella. Eleg\xED construcciones que no las requieran (por ejemplo, \xABten\xE9s tendencia a\u2026\xBB en lugar de \xABsos propenso/propensa a\u2026\xBB). No uses \xABe\xBB, \xABx\xBB ni \xAB@\xBB como desinencias.",
   UNSPECIFIED: "No sab\xE9s el g\xE9nero de la persona: no uses marcas de g\xE9nero gramatical para referirte a ella. Eleg\xED construcciones que no las requieran (por ejemplo, \xABten\xE9s tendencia a\u2026\xBB en lugar de \xABsos propenso/propensa a\u2026\xBB). No uses \xABe\xBB, \xABx\xBB ni \xAB@\xBB como desinencias."
 };
-var PROMPT_ANALISIS = (carta) => `FASE A \u2014 AN\xC1LISIS ESTRUCTURAL (no es el informe).
+var PROMPT_ANALISIS = (carta, mitosRecientes = []) => `FASE A \u2014 AN\xC1LISIS ESTRUCTURAL (no es el informe).
 Le\xE9 la carta calculada que sigue y devolv\xE9 SOLO un objeto JSON, sin texto antes ni despu\xE9s, con esta forma:
 {
  "tension_organizadora": "una o dos oraciones",
@@ -314,14 +347,23 @@ Le\xE9 la carta calculada que sigue y devolv\xE9 SOLO un objeto JSON, sin texto 
  "contradicciones": ["\u2026"],
  "datos_no_fiables": ["elementos marcados reliable:false o en sensitivity.unreliable que no deben sostener conclusiones"],
  "jerarquia_de_secciones": ["ids de secci\xF3n en el orden que conviene"],
- "mito": {"nombre": "\u2026", "por_que": "\u2026"}
+ "mito": {"nombre": "\u2026", "por_que": "\u2026"},
+ "pasadas": {"forma_general": "\u2026", "planeta_por_planeta": "\u2026", "diferencias": "\u2026"},
+ "forma_de_la_tension": "qu\xE9 forma tiene (oposici\xF3n, cadena, tri\xE1ngulo, desproporci\xF3n, ausencia, ciclo, desfase u otra) y por qu\xE9",
+ "tesis": [{"id": "t1", "afirmacion": "\u2026", "central": true, "indicators": ["referencias t\xE9cnicas declaradas como en technical_references_used"], "lectura_alternativa": "\u2026", "que_la_debilitaria": "\u2026"}],
+ "mitos_considerados": [{"nombre": "\u2026", "motivo": "\u2026"}]
 }
+Antes de responder, hac\xE9 dos pasadas: forma general de la carta y revisi\xF3n planeta por planeta. Escrib\xED entre tres y cinco tesis. Toda tesis
+central necesita al menos dos indicadores distintos. Prioriz\xE1 los aspectos m\xE1s cerrados y us\xE1 chart.derived.structure si existe. Consider\xE1 tres
+mitos y explic\xE1 por qu\xE9 eleg\xEDs uno.
 Us\xE1 exclusivamente los datos del JSON. Nada de memoria ni c\xE1lculos propios. Si la hora es desconocida, no uses casas ni \xE1ngulos.
 Antes de elegir los temas, revis\xE1 chart.derived.configurations (cuadraturas en T, grandes cruces, yods, grandes tr\xEDgonos) y
 chart.derived.angular: toda configuraci\xF3n calculada y todo planeta a menos de 3\xB0 de un \xE1ngulo debe figurar en "temas" o, si decid\xEDs
 no desarrollarlo, en una nota breve dentro de "contradicciones" que explique por qu\xE9 pesa menos en esta carta.
 
-CARTA CALCULADA (astroinforme.chart/v1):
+${mitosRecientes.length ? `Mitos usados recientemente (evitalos salvo justificaci\xF3n concreta): ${mitosRecientes.join("; ")}.
+
+` : ""}CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
 var PROMPT_INFORME = ({ idioma, lang, nombre, tratamiento, analisis, carta }) => `FASE B \u2014 REDACCI\xD3N DEL INFORME.
 Redact\xE1 el informe natal completo siguiendo el protocolo, en ${idioma}, en segunda persona, a partir del an\xE1lisis estructural
@@ -337,8 +379,10 @@ Devolv\xE9 SOLO un objeto JSON v\xE1lido, sin texto antes ni despu\xE9s, con est
    {"type": "position", "body": "SUN", "sign": "AQUARIUS", "deg": "9\xB029'", "house": 4},
    {"type": "angle", "angle": "ASC", "sign": "SCORPIO", "deg": "5\xB042'"},
    {"type": "aspect", "a": "SUN", "b": "SATURN", "aspect": "CONJUNCTION"}
- ]
+ ],
+ "theses": [{"id": "t1", "claim": "\u2026", "sections": ["ids de secci\xF3n"], "central": true, "indicators": [referencias con el mismo formato de technical_references_used]}]
 }
+Cada tesis central del an\xE1lisis debe figurar en "theses" y desarrollarse en al menos una secci\xF3n.
 No incluyas dedicatoria ni ninguna secci\xF3n dirigida a la persona despu\xE9s del corolario mitol\xF3gico.
 Reglas para technical_references_used: inclu\xED cada posici\xF3n, \xE1ngulo y aspecto que el texto menciona, con los valores exactos del
 JSON (deg = grados y minutos de "position"). Omit\xED "house" si no la mencion\xE1s o si la casa figura como no fiable. No incluyas
@@ -356,11 +400,11 @@ ${analisis}
 CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
 var PROMPT_CORRECCION = ({ problemas, estilo, informe, carta }) => `FASE C \u2014 CORRECCI\xD3N.
-${problemas ? `La auditor\xEDa t\xE9cnica compar\xF3 las referencias de tu informe con la carta calculada y encontr\xF3 estos problemas:
+${problemas ? `La auditor\xEDa compar\xF3 las referencias de tu informe con la carta calculada y encontr\xF3 estos problemas:
 ${problemas}
 
 Correg\xED esos pasajes para que digan lo que efectivamente figura en la carta calculada, o quit\xE1 la afirmaci\xF3n si el dato no
-existe o no es fiable. Actualiz\xE1 technical_references_used en consecuencia.
+existe o no es fiable. Actualiz\xE1 technical_references_used y theses en consecuencia.
 ` : ""}${estilo ? `
 El control de estilo encontr\xF3 esto:
 ${estilo}
@@ -527,6 +571,20 @@ function normDerived(d, timeKnown) {
     configurations: arr(d.configurations || [], LIMITS.configurations, "derived.configurations").map(normConfig),
     unaspected: ids(d.unaspected || [], CORE, 10, "derived.unaspected")
   };
+  if (d.structure != null) {
+    obj(d.structure, "structure");
+    const pair = (x, where) => {
+      obj(x, where);
+      return { a: oneOf(x.a, CORE, where), b: oneOf(x.b, CORE, where), aspect: oneOf(x.aspect, ASPECTS, where) };
+    };
+    const counts = obj(d.structure.aspect_counts || {}, "structure.counts");
+    out.structure = {
+      connected_groups: arr(d.structure.connected_groups || [], 10, "structure.groups").map((g) => ids(g, CORE, 10, "structure.group")),
+      bridges: arr(d.structure.bridges || [], 45, "structure.bridges").map((x) => pair(x, "structure.bridge")),
+      aspect_counts: Object.fromEntries(["TENSION", "FLOWING", "ADJUSTMENT", "CONJUNCTION"].map((k) => [k, num(counts[k] || 0, 0, 45, "structure.count")])),
+      closest_aspects: arr(d.structure.closest_aspects || [], 6, "structure.closest").map((x) => ({ ...pair(x, "structure.closest"), orb_class: oneOf(x.orb_class, ["TIGHT", "MEDIUM", "WIDE"], "structure.orb_class") }))
+    };
+  }
   if (d.sun_moon_phase != null) {
     obj(d.sun_moon_phase, "phase");
     out.sun_moon_phase = { angle: num(d.sun_moon_phase.angle, 0, 360, "phase.angle"), phase: oneOf(d.sun_moon_phase.phase, PHASES, "phase.phase") };
@@ -701,7 +759,7 @@ function ledger(env, code) {
 }
 
 // src/worker.js
-var SERVICE_VERSION = "1.8.1";
+var SERVICE_VERSION = "1.9";
 var DEFAULT_MODEL = "claude-opus-5-5";
 var DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
 var PRICES = {
@@ -813,6 +871,30 @@ function chartForModel(p) {
   const { person, ...rest } = n.payload;
   return rest;
 }
+function describeArgument(argument) {
+  if (argument.ok !== false) return "";
+  return argument.theses.filter((t) => t.central && t.status !== "supported").map((t) => `- La tesis central ${t.id} necesita al menos dos indicadores distintos verificados (tiene ${t.verified}).`).join("\n");
+}
+var MYTHS_KEY = "myths:recent";
+var MYTHS_KEEP = 12;
+async function recentMyths(env) {
+  if (!env.ASTRO_KV) return [];
+  try {
+    const l = JSON.parse(await env.ASTRO_KV.get(MYTHS_KEY) || "[]");
+    return Array.isArray(l) ? l.filter((x) => typeof x === "string").slice(0, MYTHS_KEEP) : [];
+  } catch (e) {
+    return [];
+  }
+}
+async function rememberMyth(env, analisis) {
+  const name = analisis && analisis.mito && typeof analisis.mito.nombre === "string" ? analisis.mito.nombre.trim().slice(0, 80) : "";
+  if (!name || !env.ASTRO_KV) return;
+  try {
+    const l = await recentMyths(env);
+    await env.ASTRO_KV.put(MYTHS_KEY, JSON.stringify([name, ...l.filter((x) => x !== name)].slice(0, MYTHS_KEEP)));
+  } catch (e) {
+  }
+}
 function describeIssues(audit) {
   return audit.issues.map((i) => {
     const probs = (i.problems || [i]).map((p) => ["sign", "deg", "house", "ruler", "count", "group"].includes(p.field) ? `${p.field}: informe ${p.report}, carta ${p.chart ?? (p.field === "house" ? "sin casas" : "sin dato")}` : p.field === "format" ? `formato de grado inv\xE1lido: ${p.report}` : p.note || p.kind);
@@ -923,10 +1005,11 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   const tratamiento = TRATAMIENTO[payload.request.address_gender] || TRATAMIENTO.UNSPECIFIED;
   let analisis = await load("analisis");
   if (!analisis) {
-    const a = await callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta), maxTokens: 16e3 });
+    const a = await callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, await recentMyths(env)), maxTokens: 16e3 });
     charge("a", a.usage);
     analisis = extractJSON(a.text);
     await save("analisis", analisis);
+    await rememberMyth(env, analisis);
   }
   let report = await load("report_b");
   if (!report) {
@@ -938,9 +1021,10 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   withoutDedication(report);
   let audit = auditReport(report, payload);
   let style = styleCheck(report);
+  let argument = argumentAudit(report, payload);
   let corrected = false;
-  if (!audit.ok || !style.ok) {
-    const c = await callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: audit.ok ? "" : describeIssues(audit), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32e3 });
+  if (!audit.ok || !style.ok || argument.ok === false) {
+    const c = await callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32e3 });
     charge("c", c.usage);
     const fixed = withoutDedication(extractJSON(c.text));
     const fixedAudit = auditReport(fixed, payload);
@@ -948,10 +1032,12 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
       report = fixed;
       audit = fixedAudit;
       style = styleCheck(fixed);
+      argument = argumentAudit(fixed, payload);
       corrected = true;
     }
   }
   report.engine = { model, protocol_version: "ASTROINFORME", service: SERVICE_VERSION };
+  report.argument_audit = { declared: argument.declared, ok: argument.ok, theses: argument.theses.map((t) => ({ id: t.id, central: t.central, status: t.status })) };
   report.audit = {
     all_references_present_in_chart: audit.ok,
     scope: audit.scope,

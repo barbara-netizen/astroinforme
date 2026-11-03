@@ -1,6 +1,6 @@
 # Auditoría argumental — diseño (versión 0)
 
-Estado: contrato y pruebas. **No está conectada** al servicio, al prompt ni a la interfaz. `argument_audit.js` es una función pura con pruebas (`servicio/test/argument.test.mjs`).
+Estado: conectada al servicio desde la 1.9. No se muestra en la interfaz. `argument_audit.js` es una función pura con pruebas (`servicio/test/argument.test.mjs`).
 
 ## Para qué
 

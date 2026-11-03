@@ -1,4 +1,4 @@
-// ASTROINFORME — auditoría argumental (DISEÑO, versión 0; todavía no conectada al servicio ni a la interfaz).
+// ASTROINFORME — auditoría argumental (versión 0; conectada al servicio desde la 1.9, sin mostrarse en la interfaz).
 //
 // Separada de la auditoría técnica: no pregunta si un dato coincide con la carta, sino si cada tesis central que el
 // propio informe declara enumera más de un indicador válido, como pide el protocolo. No evalúa la verdad psicológica de
