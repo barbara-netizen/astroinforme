@@ -714,7 +714,7 @@ function openWait() {
   const job = !!(state.health && state.health.jobs && !CONFIG.demo);
   $("#wait-stay").dataset.i18n = job ? "wait.stayJob" : "wait.stay"; $("#wait-stay").textContent = t($("#wait-stay").dataset.i18n);
   $("#wait-stay-text").dataset.i18n = job ? "wait.stayTextJob" : "wait.stayText"; $("#wait-stay-text").textContent = t($("#wait-stay-text").dataset.i18n);
-  $("#about-report").open = false;
+  $("#wait").scrollTop = 0;
   $("#wait").hidden = false;
   document.documentElement.style.overflow = "hidden";
   V.show($("#fig-reader"), CONFIG.pilot ? "pilot_rabbit" : "report_reader");
@@ -950,6 +950,7 @@ function init() {
   $("#tz").addEventListener("change", () => { if (state.place) state.place.zone = $("#tz").value; });
   $("#use-manual-offset").addEventListener("change", (e) => { $("#manual-offset-row").hidden = !e.target.checked; });
   const syncTime = () => { const unk = $("#no-time").checked; $("#btime").disabled = unk; };
+  $("#wait-read").addEventListener("click", () => $("#about-report").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }));
   $("#no-time").addEventListener("change", (e) => { if (e.target.checked) $("#prec").value = "UNKNOWN"; else if ($("#prec").value === "UNKNOWN") $("#prec").value = "EXACT"; syncTime(); });
   $("#prec").addEventListener("change", (e) => { $("#no-time").checked = e.target.value === "UNKNOWN"; syncTime(); });
   $("#birth-form").addEventListener("submit", (e) => { e.preventDefault(); $("#ambig").hidden = true; calculate(); });

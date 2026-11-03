@@ -216,8 +216,11 @@ textarea#payload-view { font-family: var(--f-data); font-size: 0.75rem; min-heig
 .wait-alert strong { color: #f0c77a; }
 .wait-alert p { font-size: 0.95rem; }
 .about-report { text-align: left; border-top: 1px solid #2c3340; }
-.about-report > summary { color: #e3e5e0; }
-.about-report .about-body { display: grid; gap: 10px; font-size: 0.95rem; color: #c9cdc6; padding-bottom: 8px; }
+.about-report { padding-top: 18px; scroll-margin-top: 12px; }
+.about-report h2 { color: #f0c77a; font-size: 1.15rem; margin: 0 0 12px; }
+.wait-read { justify-self: center; padding: 10px 16px; border: 1px solid #d6a752; border-radius: 999px; background: transparent; color: #f0c77a; font: inherit; cursor: pointer; }
+.wait-read:hover, .wait-read:focus-visible { background: #3a2f1a; }
+.about-report .about-body { display: grid; gap: 10px; font-size: 1rem; line-height: 1.55; color: #c9cdc6; padding-bottom: 8px; }
 .about-report a { color: #d6a752; }
 
 /* pantalla 3: informe */
@@ -570,9 +573,10 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
     <p id="wait-who"></p>
     <div id="wait-clock" aria-live="off">0:00</div>
     <p style="color:#98a0ad" data-i18n="wait.usual">suele tardar entre cinco y siete minutos</p>
+    <button type="button" class="wait-read" id="wait-read"><span data-i18n="wait.read">Leer mientras esperás</span> <span aria-hidden="true">↓</span></button>
     <p class="wait-steps" data-i18n="wait.steps"></p>
     <div class="wait-alert"><strong id="wait-stay" data-i18n="wait.stay">Quedate en esta pantalla</strong><p id="wait-stay-text" data-i18n="wait.stayText"></p><p id="wait-awake" hidden data-i18n="wait.awake"></p></div>
-    <details id="about-report" class="about-report"><summary data-i18n="about.sum">Sobre este informe</summary><div class="about-body" data-i18n-html="about.body"></div></details>
+    <section id="about-report" class="about-report" aria-labelledby="about-title"><h2 id="about-title" data-i18n="about.sum">Para leer mientras esperás</h2><div class="about-body" data-i18n-html="about.body"></div></section>
   </div>
 </div>
 
