@@ -33,7 +33,7 @@ import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION
 import { normalizePayload, normalizeRequestId } from "./validate.js";
 import { ledger } from "./ledger.js";
 
-export const SERVICE_VERSION = "1.8";
+export const SERVICE_VERSION = "1.8.1";
 const DEFAULT_MODEL = "claude-opus-5-5";
 // la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
 const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
@@ -158,6 +158,12 @@ export function validChart(p) { return normalizePayload(p).ok; }
 // Solo se envían a Claude los datos astrológicos: nunca fecha, hora, lugar ni día juliano. La carta se reconstruye
 // con la lista blanca de validate.js, de modo que ningún campo agregado por el cliente llega al modelo.
 // El nombre de pila va aparte, en el pedido de la fase B.
+/** Los informes no llevan dedicatoria, aunque la guía cargada en el KV todavía la mencione. */
+export function withoutDedication(report) {
+  if (report && Array.isArray(report.sections)) report.sections = report.sections.filter((s) => !s || s.id !== "dedication");
+  return report;
+}
+
 export function chartForModel(p) {
   const n = normalizePayload(p);
   if (!n.ok) throw new Error("bad_request");
@@ -263,9 +269,10 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   if (!report) {
     const b = await callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 32000 });
     charge("b", b.usage);
-    report = extractJSON(b.text);
+    report = withoutDedication(extractJSON(b.text));
     await save("report_b", report);
   }
+  withoutDedication(report); // también en un informe recuperado de una generación anterior
   let audit = auditReport(report, payload);
   let style = styleCheck(report);
   let corrected = false;
@@ -273,7 +280,7 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   if (!audit.ok || !style.ok) {
     const c = await callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: audit.ok ? "" : describeIssues(audit), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32000 });
     charge("c", c.usage);
-    const fixed = extractJSON(c.text);
+    const fixed = withoutDedication(extractJSON(c.text));
     const fixedAudit = auditReport(fixed, payload);
     // si la corrección solo era de estilo y rompió la parte técnica, se conserva la versión anterior
     if (fixedAudit.ok || !audit.ok) { report = fixed; audit = fixedAudit; style = styleCheck(fixed); corrected = true; }

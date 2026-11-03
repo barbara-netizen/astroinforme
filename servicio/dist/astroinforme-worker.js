@@ -332,13 +332,14 @@ Devolv\xE9 SOLO un objeto JSON v\xE1lido, sin texto antes ni despu\xE9s, con est
  "schema": "astroinforme.report/v1",
  "language": "${lang}",
  "title": "\u2026",
- "sections": [{"id": "opening|identity|emotional|central_conflict|saturn|desire|relationships|roots|vocation|neptune|shadow|transformation|resources|synthesis|myth|dedication", "heading": "\u2026", "body_markdown": "p\xE1rrafos separados por una l\xEDnea en blanco"}],
+ "sections": [{"id": "opening|identity|emotional|central_conflict|saturn|desire|relationships|roots|vocation|neptune|shadow|transformation|resources|synthesis|myth", "heading": "\u2026", "body_markdown": "p\xE1rrafos separados por una l\xEDnea en blanco"}],
  "technical_references_used": [
    {"type": "position", "body": "SUN", "sign": "AQUARIUS", "deg": "9\xB029'", "house": 4},
    {"type": "angle", "angle": "ASC", "sign": "SCORPIO", "deg": "5\xB042'"},
    {"type": "aspect", "a": "SUN", "b": "SATURN", "aspect": "CONJUNCTION"}
  ]
 }
+No incluyas dedicatoria ni ninguna secci\xF3n dirigida a la persona despu\xE9s del corolario mitol\xF3gico.
 Reglas para technical_references_used: inclu\xED cada posici\xF3n, \xE1ngulo y aspecto que el texto menciona, con los valores exactos del
 JSON (deg = grados y minutos de "position"). Omit\xED "house" si no la mencion\xE1s o si la casa figura como no fiable. No incluyas
 aspectos que no est\xE9n en chart.aspects. Con hora desconocida no hay casas ni \xE1ngulos.
@@ -622,10 +623,87 @@ function normalizeRequestId(x) {
   return typeof x === "string" && /^[A-Za-z0-9-]{16,64}$/.test(x) ? x : null;
 }
 
+// src/ledger.js
+var RESERVE_TTL_MS = 60 * 60 * 1e3;
+var CONSUMED_KEEP = 20;
+var ok = (obj2, status = 200) => new Response(JSON.stringify(obj2), { status, headers: { "content-type": "application/json; charset=utf-8" } });
+var CodeLedger = class {
+  constructor(state, env) {
+    this.state = state;
+    this.storage = state.storage;
+    this.env = env;
+    this.queue = Promise.resolve();
+  }
+  /** Ejecuta las operaciones de a una, en orden de llegada. */
+  serial(fn) {
+    const run = this.queue.then(fn, fn);
+    this.queue = run.catch(() => {
+    });
+    return run;
+  }
+  async load(code) {
+    let s = await this.storage.get("s");
+    if (!s) {
+      const kvUsed = this.env && this.env.ASTRO_KV ? +await this.env.ASTRO_KV.get("used:" + code) || 0 : 0;
+      s = { code, used: kvUsed, inflight: null, consumed: [] };
+    }
+    if (s.inflight && s.inflight.exp <= Date.now()) s.inflight = null;
+    return s;
+  }
+  async fetch(request) {
+    const path = new URL(request.url).pathname;
+    const b = await request.json().catch(() => ({}));
+    return this.serial(async () => {
+      const code = String(b.code || "");
+      const s = await this.load(code);
+      if (path === "/get") return ok({ used: s.used, inflight: s.inflight });
+      if (path === "/reserve") {
+        if (s.inflight) return ok({ error: "in_progress", same_request: !!b.request_id && s.inflight.request_id === b.request_id, used: s.used }, 409);
+        if (s.used >= +b.limit) return ok({ error: "quota_exhausted", used: s.used }, 403);
+        const token = crypto.randomUUID();
+        s.inflight = { request_id: b.request_id || null, token, at: Date.now(), exp: Date.now() + RESERVE_TTL_MS };
+        await this.storage.put("s", s);
+        return ok({ reserved: true, token, used: s.used });
+      }
+      if (path === "/consume") {
+        if (b.token && s.consumed.includes(b.token)) return ok({ used: s.used, duplicate: true });
+        s.used += 1;
+        if (s.inflight && s.inflight.token === b.token) s.inflight = null;
+        if (b.token) s.consumed = [...s.consumed, b.token].slice(-CONSUMED_KEEP);
+        await this.storage.put("s", s);
+        if (this.env && this.env.ASTRO_KV) await this.env.ASTRO_KV.put("used:" + code, String(s.used)).catch(() => {
+        });
+        return ok({ used: s.used });
+      }
+      if (path === "/release") {
+        if (s.inflight && s.inflight.token === b.token) {
+          s.inflight = null;
+          await this.storage.put("s", s);
+        }
+        return ok({ released: true, used: s.used });
+      }
+      return ok({ error: "bad_request" }, 400);
+    });
+  }
+};
+function ledger(env, code) {
+  const stub = env.CODE_LEDGER.get(env.CODE_LEDGER.idFromName("code:" + code));
+  const call = async (op, body = {}) => {
+    const r = await stub.fetch("https://ledger/" + op, { method: "POST", body: JSON.stringify({ code, ...body }) });
+    return { status: r.status, ...await r.json() };
+  };
+  return {
+    get: () => call("get"),
+    reserve: (request_id, limit) => call("reserve", { request_id, limit }),
+    consume: (token) => call("consume", { token }),
+    release: (token) => call("release", { token })
+  };
+}
+
 // src/worker.js
-var SERVICE_VERSION = "1.6";
+var SERVICE_VERSION = "1.8.1";
 var DEFAULT_MODEL = "claude-opus-5-5";
-var DEFAULT_ORIGINS = "https://barbara-netizen.github.io";
+var DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
 var PRICES = {
   "claude-opus-5-5": { in: 4, out: 20, cache_write: 5, cache_read: 0.2 },
   "claude-sonnet-5-5": { in: 2, out: 10, cache_write: 2.5, cache_read: 0.1 },
@@ -637,8 +715,54 @@ var json = (obj2, status = 200, headers = {}) => new Response(JSON.stringify(obj
 function corsHeaders(request, env) {
   const origin = request.headers.get("origin") || "";
   const allowed = (env.ALLOWED_ORIGINS || DEFAULT_ORIGINS).split(",").map((s) => s.trim()).filter(Boolean);
-  const ok2 = allowed.includes("*") || allowed.includes(origin);
-  return ok2 ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code, x-turnstile-token", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
+  const ok3 = allowed.includes("*") || allowed.includes(origin);
+  return ok3 ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code, x-turnstile-token", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
+}
+async function allCodes(env) {
+  const extra = env.ASTRO_KV ? parseCodes(await env.ASTRO_KV.get("codes").catch(() => null)) : {};
+  return { ...extra, ...parseCodes(env.ACCESS_CODES) };
+}
+var LICENSE_RE = /^[0-9A-F]{8}-[0-9A-F]{8}-[0-9A-F]{8}-[0-9A-F]{8}$/;
+var LICENSE_CACHE_TTL = 600;
+async function sha256hex(s) {
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
+  return [...h].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function verifyLicense(env, key) {
+  const kv = env.ASTRO_KV, ck = "lic:" + (await sha256hex(key)).slice(0, 32);
+  const cached = kv ? await kvGetJSON(kv, ck, null) : null;
+  let info = cached;
+  if (!info) {
+    let r, body = null;
+    try {
+      r = await fetch("https://api.gumroad.com/v2/licenses/verify", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ product_id: env.GUMROAD_PRODUCT_ID, license_key: key, increment_uses_count: "false" }).toString()
+      });
+      body = await r.json().catch(() => null);
+    } catch (e) {
+      return { error: "license_unavailable", status: 503 };
+    }
+    if (r.status === 404 || body && body.success === false && r.status < 500) info = { ok: false };
+    else if (!r.ok || !body || !body.purchase) return { error: "license_unavailable", status: 503 };
+    else {
+      const pu = body.purchase;
+      info = { ok: true, quantity: Math.max(1, +pu.quantity || 1), refunded: !!(pu.refunded || pu.chargebacked || pu.disputed), order: pu.order_number != null ? String(pu.order_number) : null };
+    }
+    if (kv) await kv.put(ck, JSON.stringify(info), { expirationTtl: LICENSE_CACHE_TTL }).catch(() => {
+    });
+  }
+  if (!info.ok) return null;
+  if (info.refunded) return { error: "license_refunded", status: 403 };
+  return { limit: info.quantity * Math.max(1, +(env.REPORTS_PER_LICENSE || 1)), kind: "license", order: info.order };
+}
+async function resolveCode(env, code) {
+  if (!code) return null;
+  const codes = await allCodes(env);
+  if (code in codes) return { limit: codes[code], kind: "code" };
+  if (env.GUMROAD_PRODUCT_ID && LICENSE_RE.test(code)) return verifyLicense(env, code);
+  return null;
 }
 function parseCodes(s) {
   const out = {};
@@ -679,6 +803,10 @@ function extractJSON(text) {
   if (i < 0 || j < i) throw new Error("no_json");
   return JSON.parse(t.slice(i, j + 1));
 }
+function withoutDedication(report) {
+  if (report && Array.isArray(report.sections)) report.sections = report.sections.filter((s) => !s || s.id !== "dedication");
+  return report;
+}
 function chartForModel(p) {
   const n = normalizePayload(p);
   if (!n.ok) throw new Error("bad_request");
@@ -693,18 +821,26 @@ function describeIssues(audit) {
 }
 async function callClaude(env, { system, user, maxTokens }) {
   const model = env.MODEL || DEFAULT_MODEL;
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-    // en flujo: la API exige streaming para respuestas largas (el informe pide hasta 32.000 tokens)
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      stream: true,
-      system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: user }]
-    })
-  });
+  let r;
+  try {
+    r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+      // en flujo: la API exige streaming para respuestas largas (el informe pide hasta 32.000 tokens)
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        stream: true,
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: user }]
+      })
+    });
+  } catch (err) {
+    const e = new Error("upstream");
+    e.status = null;
+    e.detail = "fetch: " + String(err && err.message || err);
+    throw e;
+  }
   if (!r.ok) {
     const body = await r.json().catch(() => null);
     const e = new Error("upstream");
@@ -725,6 +861,10 @@ async function callClaude(env, { system, user, maxTokens }) {
   }
   return readStream(r, model);
 }
+function streamErrorStatus(err) {
+  const t = err && err.type;
+  return t === "overloaded_error" ? 529 : t === "rate_limit_error" ? 429 : t === "api_error" ? 500 : t === "timeout_error" ? 504 : 400;
+}
 async function readStream(r, model) {
   const reader = r.body.getReader(), dec = new TextDecoder();
   let buf = "", text = "", usage = {}, stop = null;
@@ -742,7 +882,7 @@ async function readStream(r, model) {
       if (ev.delta && ev.delta.stop_reason) stop = ev.delta.stop_reason;
     } else if (ev.type === "error") {
       const e = new Error("upstream");
-      e.status = 200;
+      e.status = streamErrorStatus(ev.error);
       e.detail = ev.error ? `${ev.error.type}: ${ev.error.message}` : "stream error";
       throw e;
     }
@@ -761,7 +901,7 @@ async function readStream(r, model) {
   }
   if (!stop) {
     const e = new Error("upstream");
-    e.status = 200;
+    e.status = null;
     e.detail = "stream ended without stop_reason";
     throw e;
   }
@@ -792,16 +932,17 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   if (!report) {
     const b = await callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 32e3 });
     charge("b", b.usage);
-    report = extractJSON(b.text);
+    report = withoutDedication(extractJSON(b.text));
     await save("report_b", report);
   }
+  withoutDedication(report);
   let audit = auditReport(report, payload);
   let style = styleCheck(report);
   let corrected = false;
   if (!audit.ok || !style.ok) {
     const c = await callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: audit.ok ? "" : describeIssues(audit), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32e3 });
     charge("c", c.usage);
-    const fixed = extractJSON(c.text);
+    const fixed = withoutDedication(extractJSON(c.text));
     const fixedAudit = auditReport(fixed, payload);
     if (fixedAudit.ok || !audit.ok) {
       report = fixed;
@@ -825,7 +966,6 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   return { report, audit, usd: spent.usd, corrected };
 }
 var REPORT_TTL = 172800;
-var INFLIGHT_TTL = 1200;
 var FEEDBACK_MIN = 200;
 var FEEDBACK_MAX = 5e3;
 var FEEDBACK_PER_CODE = 3;
@@ -842,9 +982,11 @@ async function handleFeedback(request, env, cors, requireCode) {
   const text = String(body && body.text || "").replace(/\s+\n/g, "\n").trim();
   if (text.length < FEEDBACK_MIN) return json({ error: "feedback_short", min: FEEDBACK_MIN }, 400, cors);
   if (text.length > FEEDBACK_MAX) return json({ error: "feedback_long", max: FEEDBACK_MAX }, 400, cors);
-  const codes = parseCodes(env.ACCESS_CODES);
   let code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
-  if (code && !(code in codes)) return json({ error: "code_invalid" }, 403, cors);
+  if (code) {
+    const info = await resolveCode(env, code);
+    if (!info || info.error) return json({ error: info && info.error || "code_invalid" }, info && info.status || 403, cors);
+  }
   if (!code && requireCode) return json({ error: "code_required" }, 401, cors);
   if (!code) code = "PUBLICO";
   const kv = env.ASTRO_KV, ck = "fbcount:" + code;
@@ -871,6 +1013,10 @@ async function addToMonth(kv, mk, { usd = 0, reports = 0, failed = 0 }) {
   m.failed = (m.failed || 0) + failed;
   await kv.put(mk, JSON.stringify(m));
 }
+async function payloadFingerprint(payload) {
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(payload))));
+  return [...h.slice(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 var savedReport = (s) => s && s.report ? s.report : s && s.schema ? s : null;
 var GEN_TTL = 90 * 86400;
 async function loadProtocol(env) {
@@ -889,29 +1035,42 @@ async function admit(request, env, cors, { requireCode, cap, incoming }) {
   const requestId = normalizeRequestId(incoming && incoming.request_id);
   const kv = env.ASTRO_KV;
   const ip = request.headers.get("cf-connecting-ip") || "";
+  const fp = await payloadFingerprint(payload);
   if (env.TURNSTILE_SECRET && !await verifyTurnstile(env.TURNSTILE_SECRET, request.headers.get("x-turnstile-token"), ip)) return json400("bot_check", 403);
-  const codes = parseCodes(env.ACCESS_CODES);
   const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
   const useCode = requireCode || !!code;
-  let limit = null, used = 0;
+  let limit = null, used = 0, token = null, codeKind = null, order = null;
   if (useCode) {
     if (!code) return json400("code_required", 401);
-    if (!(code in codes)) return json400("code_invalid", 403);
-    limit = codes[code];
-    used = +await kv.get("used:" + code) || 0;
+    const info = await resolveCode(env, code);
+    if (!info) return json400("code_invalid", 403);
+    if (info.error) return json400(info.error, info.status);
+    limit = info.limit;
+    codeKind = info.kind;
+    order = info.order || null;
+    if (!env.CODE_LEDGER) return json400("not_configured", 503);
+    const book = ledger(env, code);
     const saved = await kvGetJSON(kv, "rep:" + code, null);
-    if (requestId && saved && saved.request_id === requestId && savedReport(saved))
+    if (requestId && saved && saved.request_id === requestId && savedReport(saved)) {
+      used = (await book.get()).used;
       return { response: json({ report: savedReport(saved), remaining: Math.max(0, limit - used), recovered: true }, 200, cors) };
-    const inflight = await kvGetJSON(kv, "inflight:" + code, null);
-    if (inflight) return { response: json({ error: "in_progress", same_request: !!requestId && inflight.request_id === requestId }, 409, cors) };
-    if (used >= limit) {
-      if (savedReport(saved)) return { response: json({ report: savedReport(saved), remaining: 0, recovered: true }, 200, cors) };
+    }
+    const res = await book.reserve(requestId, limit);
+    if (res.error === "in_progress") return { response: json({ error: "in_progress", same_request: !!res.same_request }, 409, cors) };
+    used = res.used;
+    token = res.token || null;
+    if (res.error === "quota_exhausted") {
+      if (savedReport(saved) && (saved.fp == null || saved.fp === fp)) return { response: json({ report: savedReport(saved), remaining: 0, recovered: true }, 200, cors) };
       return { response: json({ error: "quota_exhausted", remaining: 0 }, 403, cors) };
     }
   }
   const mk = monthKey();
   const month = await kvGetJSON(kv, mk, { reports: 0, usd: 0, failed: 0 });
-  if (month.usd >= cap) return json400("budget_exhausted", 429);
+  if (month.usd >= cap) {
+    if (useCode) await ledger(env, code).release(token).catch(() => {
+    });
+    return json400("budget_exhausted", 429);
+  }
   let vKey = null, vUsed = 0, dKey = null, dUsed = 0;
   if (!useCode) {
     dKey = dayKey();
@@ -923,13 +1082,12 @@ async function admit(request, env, cors, { requireCode, cap, incoming }) {
     await kv.put(vKey, String(vUsed + 1), { expirationTtl: 172800 });
     await kv.put(dKey, String(dUsed + 1), { expirationTtl: 172800 });
   }
-  if (useCode) await kv.put("inflight:" + code, JSON.stringify({ request_id: requestId, at: (/* @__PURE__ */ new Date()).toISOString() }), { expirationTtl: INFLIGHT_TTL });
-  return { job: { payload, requestId, useCode, code: useCode ? code : null, limit, mk, vKey, vUsed, dKey, dUsed } };
+  return { job: { payload, fp, token, codeKind, order, requestId, useCode, code: useCode ? code : null, limit, mk, vKey, vUsed, dKey, dUsed } };
 }
 async function finalizeJob(env, job, spent, result, error, extra = {}) {
   const kv = env.ASTRO_KV;
-  const { useCode, code, requestId, limit, mk, vKey, vUsed, dKey, dUsed } = job;
-  let out, outcome;
+  const { useCode, code, requestId, limit, mk, vKey, vUsed, dKey, dUsed, fp, token } = job;
+  let out, outcome, consumed = false;
   if (result) {
     const strict = env.AUDIT_STRICT !== "false";
     if (!result.audit.ok && strict) {
@@ -939,9 +1097,9 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
     } else {
       let used = null;
       if (useCode) {
-        used = (+await kv.get("used:" + code) || 0) + 1;
-        await kv.put("used:" + code, String(used));
-        await kv.put("rep:" + code, JSON.stringify({ request_id: requestId, report: result.report, at: (/* @__PURE__ */ new Date()).toISOString() }), { expirationTtl: REPORT_TTL });
+        used = (await ledger(env, code).consume(token)).used;
+        consumed = true;
+        await kv.put("rep:" + code, JSON.stringify({ request_id: requestId, fp: fp || null, report: result.report, at: (/* @__PURE__ */ new Date()).toISOString() }), { expirationTtl: REPORT_TTL });
       }
       await addToMonth(kv, mk, { usd: spent.usd, reports: 1 });
       out = { report: result.report, remaining: useCode ? Math.max(0, limit - used) : null };
@@ -960,7 +1118,7 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
       });
     }
   }
-  if (useCode) await kv.delete("inflight:" + code).catch(() => {
+  if (useCode && !consumed) await ledger(env, code).release(token).catch(() => {
   });
   const genId = requestId || crypto.randomUUID();
   await kv.put("gen:" + genId, JSON.stringify({
@@ -968,7 +1126,9 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
     model: env.MODEL || DEFAULT_MODEL,
     service: SERVICE_VERSION,
     mode: extra.mode || "stream",
-    access: useCode ? "code" : "public",
+    access: useCode ? job.codeKind || "code" : "public",
+    // referencia para conciliar reclamos: número de orden de la compra (licencias) o el código (códigos de regalo)
+    ref: useCode ? job.codeKind === "license" ? job.order ? "order:" + job.order : null : job.code : null,
     usd: +spent.usd.toFixed(4),
     phases: spent.phases || {},
     corrected: !!(result && result.corrected),
@@ -989,6 +1149,15 @@ async function readBody(request, cors) {
   }
 }
 var JOB_PREFIX = "/jobs";
+async function rateLimited(env, key) {
+  if (!env.RATE_LIMITER) return false;
+  try {
+    const { success } = await env.RATE_LIMITER.limit({ key });
+    return !success;
+  } catch (e) {
+    return false;
+  }
+}
 var worker_default = {
   async fetch(request, env, ctx) {
     const cors = corsHeaders(request, env);
@@ -1009,17 +1178,21 @@ var worker_default = {
         turnstile: !!env.TURNSTILE_SECRET,
         // «jobs»: generación desacoplada de la conexión (servicio 1.6, Durable Object REPORT_JOB)
         jobs: !!env.REPORT_JOB,
+        // «ledger»: cupo por código con reserva atómica (servicio 1.7, Durable Object CODE_LEDGER)
+        ledger: !!env.CODE_LEDGER,
         // «available»: si hoy se puede pedir un informe (sin revelar el gasto)
         available: configured && month.usd < cap && (requireCode || day < +(env.DAILY_LIMIT || 8)),
-        configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, style: !!(env.ASTRO_KV && await env.ASTRO_KV.get("style")), kv: !!env.ASTRO_KV, codes: Object.keys(parseCodes(env.ACCESS_CODES)).length }
+        configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, style: !!(env.ASTRO_KV && await env.ASTRO_KV.get("style")), kv: !!env.ASTRO_KV, codes: Object.keys(await allCodes(env)).length > 0 }
       }, 200, cors);
     }
-    if (!cors["access-control-allow-origin"] && request.headers.get("origin")) return json({ error: "forbidden_origin" }, 403, cors);
+    if (!cors["access-control-allow-origin"] || !request.headers.get("origin")) return json({ error: "forbidden_origin" }, 403, cors);
+    const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
+    if (request.method === "POST" && await rateLimited(env, code ? "c:" + code : "ip:" + await visitorId(request.headers.get("cf-connecting-ip") || "", env.VISITOR_SALT || env.ANTHROPIC_API_KEY)))
+      return json({ error: "rate_limited" }, 429, cors);
     if (request.method === "GET" && url.pathname.startsWith(JOB_PREFIX + "/")) {
       if (!env.REPORT_JOB) return json({ error: "not_configured" }, 503, cors);
       const id = normalizeRequestId(decodeURIComponent(url.pathname.slice(JOB_PREFIX.length + 1)));
       if (!id) return json({ error: "bad_request" }, 400, cors);
-      const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
       const r = await env.REPORT_JOB.get(env.REPORT_JOB.idFromName(id)).fetch("https://job/status", { method: "POST", body: JSON.stringify({ code }) });
       return json(await r.json(), r.status, { ...cors, "cache-control": "no-store" });
     }
@@ -1033,15 +1206,24 @@ var worker_default = {
       if (!env.REPORT_JOB) return json({ error: "not_configured" }, 503, cors);
       const id = normalizeRequestId(body.incoming && body.incoming.request_id);
       if (!id) return json({ error: "bad_request" }, 400, cors);
+      if (code) {
+        const info = await resolveCode(env, code);
+        if (!info || info.error) return json({ error: info && info.error || "code_invalid" }, info && info.status || 403, cors);
+      }
+      if (requireCode && !code) return json({ error: "code_required" }, 401, cors);
       const stub = env.REPORT_JOB.get(env.REPORT_JOB.idFromName(id));
-      const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
       const prev = await stub.fetch("https://job/status", { method: "POST", body: JSON.stringify({ code }) });
-      if (prev.status !== 404) return json(await prev.json(), prev.status, { ...cors, "cache-control": "no-store" });
+      if (prev.status !== 404) {
+        const pb = await prev.json();
+        if (pb.status === "failed") pb.retry = true;
+        return json(pb, prev.status, { ...cors, "cache-control": "no-store" });
+      }
       const adm2 = await admit(request, env, cors, { requireCode, cap, incoming: body.incoming });
       if (adm2.response) return adm2.response;
       const r = await stub.fetch("https://job/start", { method: "POST", body: JSON.stringify(adm2.job) });
       return json(await r.json(), 202, { ...cors, "cache-control": "no-store" });
     }
+    if (env.LEGACY_STREAM !== "true") return json({ error: "app_outdated" }, 410, cors);
     const adm = await admit(request, env, cors, { requireCode, cap, incoming: body.incoming });
     if (adm.response) return adm.response;
     const job = adm.job;
@@ -1073,7 +1255,7 @@ var worker_default = {
 var MAX_ATTEMPTS = 3;
 var RETRY_DELAY_MS = 2e4;
 var TRANSIENT = (e) => e && e.message === "upstream" && (e.status == null || e.status === 429 || e.status >= 500);
-var ok = (obj2, status = 200) => new Response(JSON.stringify(obj2), { status, headers: { "content-type": "application/json; charset=utf-8" } });
+var ok2 = (obj2, status = 200) => new Response(JSON.stringify(obj2), { status, headers: { "content-type": "application/json; charset=utf-8" } });
 var ReportJob = class {
   constructor(state, env) {
     this.state = state;
@@ -1083,11 +1265,11 @@ var ReportJob = class {
   /** Vista pública del estado. Si el pedido se hizo con código, solo lo ve quien presenta el mismo código. */
   async view(code) {
     const meta = await this.storage.get("meta");
-    if (!meta) return ok({ error: "not_found" }, 404);
-    if (meta.job.useCode && (code || "") !== meta.job.code) return ok({ error: "forbidden" }, 403);
+    if (!meta) return ok2({ error: "not_found" }, 404);
+    if (meta.job.useCode && (code || "") !== meta.job.code) return ok2({ error: "forbidden" }, 403);
     const base = { job_id: meta.job.requestId, status: meta.status };
-    if (meta.status === "done" || meta.status === "failed") return ok({ ...base, ...await this.storage.get("out") });
-    return ok(base);
+    if (meta.status === "done" || meta.status === "failed") return ok2({ ...base, ...await this.storage.get("out") });
+    return ok2(base);
   }
   async fetch(request) {
     const path = new URL(request.url).pathname;
@@ -1097,9 +1279,9 @@ var ReportJob = class {
       if (await this.storage.get("meta")) return this.view(body.code);
       await this.storage.put("meta", { job: body, status: "queued", attempts: 0, created: Date.now() });
       await this.storage.setAlarm(Date.now());
-      return ok({ job_id: body.requestId, status: "queued" });
+      return ok2({ job_id: body.requestId, status: "queued" });
     }
-    return ok({ error: "bad_request" }, 400);
+    return ok2({ error: "bad_request" }, 400);
   }
   async alarm() {
     const meta = await this.storage.get("meta");
@@ -1161,6 +1343,7 @@ var ReportJob = class {
 // src/entry.js
 var entry_default = worker_default;
 export {
+  CodeLedger,
   ReportJob,
   entry_default as default
 };
