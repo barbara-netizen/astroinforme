@@ -11,7 +11,7 @@ export const TRATAMIENTO = {
   UNSPECIFIED: "No sabés el género de la persona: no uses marcas de género gramatical para referirte a ella. Elegí construcciones que no las requieran (por ejemplo, «tenés tendencia a…» en lugar de «sos propenso/propensa a…»). No uses «e», «x» ni «@» como desinencias.",
 };
 
-export const PROMPT_ANALISIS = (carta) => `FASE A — ANÁLISIS ESTRUCTURAL (no es el informe).
+export const PROMPT_ANALISIS = (carta, mitosRecientes = []) => `FASE A — ANÁLISIS ESTRUCTURAL (no es el informe).
 Leé la carta calculada que sigue y devolvé SOLO un objeto JSON, sin texto antes ni después, con esta forma:
 {
  "tension_organizadora": "una o dos oraciones",
@@ -19,14 +19,21 @@ Leé la carta calculada que sigue y devolvé SOLO un objeto JSON, sin texto ante
  "contradicciones": ["…"],
  "datos_no_fiables": ["elementos marcados reliable:false o en sensitivity.unreliable que no deben sostener conclusiones"],
  "jerarquia_de_secciones": ["ids de sección en el orden que conviene"],
- "mito": {"nombre": "…", "por_que": "…"}
+ "mito": {"nombre": "…", "por_que": "…"},
+ "pasadas": {"forma_general": "…", "planeta_por_planeta": "…", "diferencias": "…"},
+ "forma_de_la_tension": "qué forma tiene (oposición, cadena, triángulo, desproporción, ausencia, ciclo, desfase u otra) y por qué",
+ "tesis": [{"id": "t1", "afirmacion": "…", "central": true, "indicators": ["referencias técnicas declaradas como en technical_references_used"], "lectura_alternativa": "…", "que_la_debilitaria": "…"}],
+ "mitos_considerados": [{"nombre": "…", "motivo": "…"}]
 }
+Antes de responder, hacé dos pasadas: forma general de la carta y revisión planeta por planeta. Escribí entre tres y cinco tesis. Toda tesis
+central necesita al menos dos indicadores distintos. Priorizá los aspectos más cerrados y usá chart.derived.structure si existe. Considerá tres
+mitos y explicá por qué elegís uno.
 Usá exclusivamente los datos del JSON. Nada de memoria ni cálculos propios. Si la hora es desconocida, no uses casas ni ángulos.
 Antes de elegir los temas, revisá chart.derived.configurations (cuadraturas en T, grandes cruces, yods, grandes trígonos) y
 chart.derived.angular: toda configuración calculada y todo planeta a menos de 3° de un ángulo debe figurar en "temas" o, si decidís
 no desarrollarlo, en una nota breve dentro de "contradicciones" que explique por qué pesa menos en esta carta.
 
-CARTA CALCULADA (astroinforme.chart/v1):
+${mitosRecientes.length ? `Mitos usados recientemente (evitalos salvo justificación concreta): ${mitosRecientes.join("; ")}.\n\n` : ""}CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
 
 export const PROMPT_INFORME = ({ idioma, lang, nombre, tratamiento, analisis, carta }) => `FASE B — REDACCIÓN DEL INFORME.
@@ -43,8 +50,10 @@ Devolvé SOLO un objeto JSON válido, sin texto antes ni después, con esta form
    {"type": "position", "body": "SUN", "sign": "AQUARIUS", "deg": "9°29'", "house": 4},
    {"type": "angle", "angle": "ASC", "sign": "SCORPIO", "deg": "5°42'"},
    {"type": "aspect", "a": "SUN", "b": "SATURN", "aspect": "CONJUNCTION"}
- ]
+ ],
+ "theses": [{"id": "t1", "claim": "…", "sections": ["ids de sección"], "central": true, "indicators": [referencias con el mismo formato de technical_references_used]}]
 }
+Cada tesis central del análisis debe figurar en "theses" y desarrollarse en al menos una sección.
 No incluyas dedicatoria ni ninguna sección dirigida a la persona después del corolario mitológico.
 Reglas para technical_references_used: incluí cada posición, ángulo y aspecto que el texto menciona, con los valores exactos del
 JSON (deg = grados y minutos de "position"). Omití "house" si no la mencionás o si la casa figura como no fiable. No incluyas
@@ -63,11 +72,11 @@ CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
 
 export const PROMPT_CORRECCION = ({ problemas, estilo, informe, carta }) => `FASE C — CORRECCIÓN.
-${problemas ? `La auditoría técnica comparó las referencias de tu informe con la carta calculada y encontró estos problemas:
+${problemas ? `La auditoría comparó las referencias de tu informe con la carta calculada y encontró estos problemas:
 ${problemas}
 
 Corregí esos pasajes para que digan lo que efectivamente figura en la carta calculada, o quitá la afirmación si el dato no
-existe o no es fiable. Actualizá technical_references_used en consecuencia.
+existe o no es fiable. Actualizá technical_references_used y theses en consecuencia.
 ` : ""}${estilo ? `
 El control de estilo encontró esto:
 ${estilo}

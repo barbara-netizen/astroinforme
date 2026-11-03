@@ -136,6 +136,17 @@ function normDerived(d, timeKnown) {
     configurations: arr(d.configurations || [], LIMITS.configurations, "derived.configurations").map(normConfig),
     unaspected: ids(d.unaspected || [], CORE, 10, "derived.unaspected"),
   };
+  if (d.structure != null) {
+    obj(d.structure, "structure");
+    const pair = (x, where) => { obj(x, where); return { a: oneOf(x.a, CORE, where), b: oneOf(x.b, CORE, where), aspect: oneOf(x.aspect, ASPECTS, where) }; };
+    const counts = obj(d.structure.aspect_counts || {}, "structure.counts");
+    out.structure = {
+      connected_groups: arr(d.structure.connected_groups || [], 10, "structure.groups").map((g) => ids(g, CORE, 10, "structure.group")),
+      bridges: arr(d.structure.bridges || [], 45, "structure.bridges").map((x) => pair(x, "structure.bridge")),
+      aspect_counts: Object.fromEntries(["TENSION", "FLOWING", "ADJUSTMENT", "CONJUNCTION"].map((k) => [k, num(counts[k] || 0, 0, 45, "structure.count")])),
+      closest_aspects: arr(d.structure.closest_aspects || [], 6, "structure.closest").map((x) => ({ ...pair(x, "structure.closest"), orb_class: oneOf(x.orb_class, ["TIGHT", "MEDIUM", "WIDE"], "structure.orb_class") })),
+    };
+  }
   if (d.sun_moon_phase != null) { obj(d.sun_moon_phase, "phase"); out.sun_moon_phase = { angle: num(d.sun_moon_phase.angle, 0, 360, "phase.angle"), phase: oneOf(d.sun_moon_phase.phase, PHASES, "phase.phase") }; }
   if (timeKnown) {
     out.angular = arr(d.angular || [], 30, "derived.angular").map((x) => { obj(x, "angular"); return { body: oneOf(x.body, BODY_IDS, "angular.body"), angle: oneOf(x.angle, ANGLES, "angular.angle"), distance: num(x.distance, 0, 10, "angular.distance") }; });

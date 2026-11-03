@@ -19,6 +19,9 @@ const CLICHES = {
     /\bdespertar espiritual\b/gi, /\bvibraci[oó]n(?:es)?\b/gi, /\benerg[ií]as? (?:c[oó]smicas?|positivas?|negativas?)\b/gi,
     /\bbrillar con luz propia\b/gi, /\bsin lugar a dudas\b/gi, /\blos astros (?:te |nos )?(?:dicen|indican|anuncian|predicen)\b/gi,
     /\bestá escrito\b/gi, /\btu destino\b/gi, /\babraz(?:ar|á|a) (?:tu|tus) (?:sombra|heridas?)\b/gi, /\btrastorno\b/gi,
+    // fórmulas heredadas de instrucciones internas o repetidas entre informes
+    /\bquiz[aá] reconozcas\b/gi, /\btal vez conozcas\b/gi, /\bno dice nada comprobable\b/gi, /\blo que la carta sugiere integrar\b/gi,
+    /\ben t[eé]rminos de experiencia\b/gi, /\brepartir esta contradicci[oó]n\b/gi, /\bla pregunta que condensa\b/gi, /\blas necesidades en tensi[oó]n\b/gi,
   ],
   de: [
     /\bin einer welt,? in der\b/gi, /\binnere reise\b/gi, /\bdein wahres selbst\b/gi, /\binneres kind\b/gi,

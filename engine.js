@@ -176,6 +176,39 @@ function findAspects(points) {
   return out.sort((x, y) => x.orb - y.orb);
 }
 
+// Estructura de la red de aspectos entre Sol y Plutón: descripción calculada, no un método de escuela.
+function structureOf(aspects) {
+  const edges = aspects.filter((x) => PERSONAL_TO_PLUTO.includes(x.a) && PERSONAL_TO_PLUTO.includes(x.b));
+  const adj = Object.fromEntries(PERSONAL_TO_PLUTO.map((p) => [p, new Set()]));
+  for (const e of edges) { adj[e.a].add(e.b); adj[e.b].add(e.a); }
+  const groups = (skip) => {
+    const seen = new Set(), out = [];
+    for (const p of PERSONAL_TO_PLUTO) {
+      if (seen.has(p)) continue;
+      const c = [], st = [p]; seen.add(p);
+      while (st.length) {
+        const x = st.pop(); c.push(x);
+        for (const y of adj[x]) {
+          if (skip && ((x === skip.a && y === skip.b) || (x === skip.b && y === skip.a))) continue;
+          if (!seen.has(y)) { seen.add(y); st.push(y); }
+        }
+      }
+      out.push(c);
+    }
+    return out;
+  };
+  const connected_groups = groups(null);
+  const kind = { SQUARE: "TENSION", OPPOSITION: "TENSION", TRINE: "FLOWING", SEXTILE: "FLOWING", QUINCUNX: "ADJUSTMENT", CONJUNCTION: "CONJUNCTION" };
+  const aspect_counts = { TENSION: 0, FLOWING: 0, ADJUSTMENT: 0, CONJUNCTION: 0 };
+  for (const e of edges) aspect_counts[kind[e.aspect]]++;
+  return {
+    connected_groups,
+    bridges: edges.filter((e) => groups(e).length > connected_groups.length).map((e) => ({ a: e.a, b: e.b, aspect: e.aspect })),
+    aspect_counts,
+    closest_aspects: [...edges].sort((x, y) => x.orb - y.orb).slice(0, 6).map((e) => ({ a: e.a, b: e.b, aspect: e.aspect, orb_class: e.orb_class })),
+  };
+}
+
 function derive(bodies, houses, aspects, hasHouses) {
   const byId = Object.fromEntries(bodies.map((b) => [b.id, b]));
   const core = PERSONAL_TO_PLUTO.map((id) => byId[id]);
@@ -234,6 +267,7 @@ function derive(bodies, houses, aspects, hasHouses) {
   }
   d.configurations = cfg;
   d.unaspected = PERSONAL_TO_PLUTO.filter((id) => !asp.some((x) => x.a === id || x.b === id));
+  d.structure = structureOf(aspects);
 
   // fase Sol–Luna
   const phase = norm(byId.MOON.lon - byId.SUN.lon);
