@@ -37,3 +37,12 @@ namespace_id = "1001"
   [ratelimits.simple]
   limit = 6
   period = 60
+
+# Pedidos pagos (servicio 2.0): un Durable Object por pedido. Solo se usan con SERVICE_MODE = "paid".
+[[durable_objects.bindings]]
+name = "ORDERS"
+class_name = "OrderDO"
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["OrderDO"]

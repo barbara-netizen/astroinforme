@@ -27,6 +27,8 @@ ul { padding-left: 20px; }
 a { color: var(--accent); }
 section[lang] { display: none; }
 section[lang].on { display: block; }
+[data-mode][hidden] { display: none !important; }
+.todo { background: #f3e7cf; color: #6b4b10; }
 </style>
 </head>
 <body>
@@ -38,7 +40,8 @@ section[lang].on { display: block; }
     <p class="date">Actualizado el 4 de noviembre de 2026</p>
 
     <h2>Quién es responsable</h2>
-    <p>AsterOrbis es un proyecto personal de Bárbara Gutiérrez, Buenos Aires, Argentina. Contacto: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="pilot">AsterOrbis es un proyecto personal de Bárbara Gutiérrez, Buenos Aires, Argentina. En esta etapa piloto, los informes se piden con códigos de acceso. Contacto: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="paid">AsterOrbis es un proyecto de Bárbara Gutiérrez, Buenos Aires, Argentina, que vende informes digitales personalizados. Datos de quien vende: <span class="todo">[pendiente: completar antes de activar las ventas]</span>. Contacto: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
 
     <h2>El cálculo de la carta</h2>
     <p>La carta se calcula en tu dispositivo. La página descarga una vez el programa de cálculo, las efemérides y la lista de ciudades. El nombre, la fecha, la hora y el lugar no viajan a ningún servidor para calcular la carta. Solo si pedís el informe se envían los datos que se detallan más abajo.</p>
@@ -82,7 +85,8 @@ section[lang].on { display: block; }
     <p class="date">Aktualisiert am 4. November 2026</p>
 
     <h2>Verantwortlich</h2>
-    <p>AsterOrbis ist ein privates Projekt von Bárbara Gutiérrez, Buenos Aires, Argentinien. Kontakt: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="pilot">AsterOrbis ist ein privates Projekt von Bárbara Gutiérrez, Buenos Aires, Argentinien. In dieser Pilotphase werden die Berichte mit Zugangscodes angefordert. Kontakt: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="paid">AsterOrbis ist ein Projekt von Bárbara Gutiérrez, Buenos Aires, Argentinien, das personalisierte digitale Berichte verkauft. Angaben zur Verkäuferin: <span class="todo">[ausstehend: vor Aktivierung des Verkaufs ergänzen]</span>. Kontakt: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
 
     <h2>Berechnung des Horoskops</h2>
     <p>Das Horoskop wird auf deinem Gerät berechnet. Die Seite lädt einmalig das Berechnungsprogramm, die Ephemeriden und die Ortsliste. Name, Datum, Uhrzeit und Ort werden für die Berechnung an keinen Server übertragen. Nur wenn du den Bericht anforderst, werden die unten genannten Daten gesendet.</p>
@@ -126,7 +130,8 @@ section[lang].on { display: block; }
     <p class="date">Updated 4 November 2026</p>
 
     <h2>Who is responsible</h2>
-    <p>AsterOrbis is a personal project by Bárbara Gutiérrez, Buenos Aires, Argentina. Contact: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="pilot">AsterOrbis is a personal project by Bárbara Gutiérrez, Buenos Aires, Argentina. During this pilot phase, reports are requested with access codes. Contact: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="paid">AsterOrbis is a project by Bárbara Gutiérrez, Buenos Aires, Argentina, that sells personalised digital reports. Seller details: <span class="todo">[pending: complete before sales are enabled]</span>. Contact: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
 
     <h2>Calculating the chart</h2>
     <p>The chart is calculated on your device. The page downloads the calculation program, the ephemerides and the list of places once. Your name, date, time and place do not travel to any server to calculate the chart. The data detailed below are sent only if you request the report.</p>
@@ -165,6 +170,12 @@ section[lang].on { display: block; }
     <p>Personalised digital report in psychological astrology, generated automatically from the calculated chart. It is an interpretive work of an artistic and symbolic nature, intended for reflection and entertainment; it is not a personal consultation. The astrology it uses is non-predictive: the report makes no predictions. It is not a diagnosis or a psychological assessment, does not provide medical, financial, legal or other professional advice, and does not replace psychological or medical care.</p>
   </section>
 </div>
+<script type="module">
+// textos que dependen del modo de la app (config.js: "pilot", "paid" o "disabled"); "disabled" usa los del piloto
+import { CONFIG } from "./config.js";
+const mode = CONFIG.mode === "paid" ? "paid" : "pilot";
+document.querySelectorAll("[data-mode]").forEach((el) => { el.hidden = el.dataset.mode !== mode; });
+</script>
 <script>
 (function () {
   var langs = ["es", "de", "en"];

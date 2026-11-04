@@ -3,4 +3,5 @@
 import worker from "./worker.js";
 export { ReportJob } from "./job.js";
 export { CodeLedger } from "./ledger.js";
+export { OrderDO } from "./order.js";
 export default worker;

@@ -260,6 +260,8 @@ body[data-screen="report"] { background: var(--panel); }
 @media print { .intro-splash { display: none !important; } }
 .sample-note { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 0 0 18px; display: grid; gap: 6px; font-size: 0.95rem; line-height: 1.5; }
 .sample-link { margin: 0; }
+.buy { display: grid; gap: 12px; }
+.buy-buttons { display: grid; gap: 10px; }
 .author { border-top: 1px solid var(--line); margin: 28px 0 8px; padding-top: 20px; display: grid; gap: 16px; }
 .author-h { font-family: var(--f-display); font-size: 1.25rem; font-weight: 400; margin: 0 0 8px; }
 .author p { margin: 0 0 10px; line-height: 1.6; }
@@ -509,6 +511,11 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
         <div id="interp-connected" style="display:grid;gap:14px" hidden>
           <div id="interp-no-time" class="note warn" hidden><p data-i18n="i.noTime" style="margin:0 0 8px;color:inherit">Sin la hora de nacimiento, el informe será más general y menos personal: no incluirá Ascendente, casas ni ejes de la carta, y por ese motivo será más breve. Personas nacidas el mismo día recibirían lecturas parecidas. ¿Querés pedirlo igual?</p><label class="check" style="color:inherit"><input type="checkbox" id="no-time-ok"> <span data-i18n="i.noTime.ok">Entiendo y quiero pedirlo igual.</span></label></div>
                     <p id="interp-unavail" class="note warn" hidden data-i18n="i.unavailable"></p>
+          <p id="interp-paused" class="note warn" hidden data-i18n="i.paused"></p>
+          <div id="buy-box" class="buy" hidden>
+            <div id="buy-buttons" class="buy-buttons"></div>
+            <p class="small muted" data-i18n="buy.note"></p>
+          </div>
           <div class="fld" id="code-row" hidden><label for="access-code"><span id="code-label" data-i18n="f.code">Código de acceso</span> <span class="hint" id="code-hint" data-i18n="f.code.hint"></span></label><input id="access-code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX"></div>
           <div class="fld"><label for="gender"><span data-i18n="f.gender">Tratamiento en el informe</span> <span class="hint" data-i18n="f.gender.hint"></span></label>
             <select id="gender"><option value="UNSPECIFIED" data-i18n="gender.UNSPECIFIED">Sin indicar (formas sin género)</option><option value="FEMININE" data-i18n="gender.FEMININE">Femenino</option><option value="MASCULINE" data-i18n="gender.MASCULINE">Masculino</option><option value="NEUTRAL" data-i18n="gender.NEUTRAL">Neutro</option></select></div>

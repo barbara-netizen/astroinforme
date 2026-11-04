@@ -16,12 +16,16 @@ export const CONFIG = {
   requireCode: true,
   turnstileSiteKey: "",
   languages: ["es", "de", "en"],
-  // pilot: franja de «versión piloto» con el conejo y el recuadro de comentario al final del informe.
-  pilot: true,
+  // mode: cómo se accede al informe.
+  //   "pilot"    → piloto gratuito: informes con códigos de acceso; franja de «versión piloto» y recuadro de comentario.
+  //   "paid"     → venta: el informe se compra (checkout y confirmación automática del pago); los códigos siguen
+  //                valiendo como cortesía. Antes de activarlo: términos, política de reembolsos e identificación
+  //                de quien vende (ver servicio/PAGOS.md).
+  //   "disabled" → generación pausada: la carta se calcula igual, el pedido de informes queda deshabilitado.
+  //   El servicio tiene su propio modo (variable SERVICE_MODE); si el servicio dice "disabled", manda ese.
+  mode: "pilot",
   // intro: animación del logo al abrir la app, una vez por sesión («?intro» la muestra siempre, para probarla).
   intro: true,
-  // paid: el informe se cobra (muestra la frase sobre el pago en «Quién hace AsterOrbis»).
-  paid: false,
   // sample: informe de muestra para una persona ficticia, visible antes de pedir uno propio (enlace «?muestra»).
   //   La carta se calcula en el navegador con estos datos; el informe es un archivo fijo generado por el servicio.
   //   file vacío = no se muestra el enlace.
