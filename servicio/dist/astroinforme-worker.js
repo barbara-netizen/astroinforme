@@ -762,7 +762,7 @@ function ledger(env, code) {
 }
 
 // src/worker.js
-var SERVICE_VERSION = "1.9.1";
+var SERVICE_VERSION = "1.9.2";
 var DEFAULT_MODEL = "claude-opus-5-5";
 var DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
 var PRICES = {
@@ -1003,15 +1003,48 @@ async function readStream(r, model) {
   }
   return { text, usage, stop, model };
 }
+var REPORT_MIN_SECTIONS = 6;
+var REPORT_MIN_WORDS = 800;
+var PHASE_TRIES = 2;
+function malformed(detail) {
+  const e = new Error("malformed");
+  e.detail = detail;
+  return e;
+}
+function parseJSON(reply) {
+  if (reply.stop === "max_tokens") throw malformed("max_tokens");
+  try {
+    return extractJSON(reply.text);
+  } catch (e) {
+    throw malformed("json");
+  }
+}
+function assertComplete(report) {
+  const sections = report && Array.isArray(report.sections) ? report.sections.filter((s) => s && s.heading && String(s.body_markdown || "").trim()) : [];
+  if (sections.length < REPORT_MIN_SECTIONS) throw malformed("sections");
+  if (sections.map((s) => s.body_markdown).join(" ").trim().split(/\s+/).length < REPORT_MIN_WORDS) throw malformed("short");
+  if (!sections.some((s) => s.id === "myth")) throw malformed("no_myth");
+}
+async function phase(name, call, charge, parse) {
+  for (let i = 1; ; i++) {
+    const reply = await call();
+    charge(name, reply.usage);
+    try {
+      return parse(reply);
+    } catch (e) {
+      if (e.message !== "malformed" || i >= PHASE_TRIES) throw e;
+    }
+  }
+}
 async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {}) {
   const model = env.MODEL || DEFAULT_MODEL;
   spent.phases = spent.phases || {};
   const load = hooks.load || (async () => null), save = hooks.save || (async () => {
   });
-  const charge = (phase, usage) => {
+  const charge = (phase2, usage) => {
     const c = costUSD(usage, model);
     spent.usd += c;
-    spent.phases[phase] = +((spent.phases[phase] || 0) + c).toFixed(4);
+    spent.phases[phase2] = +((spent.phases[phase2] || 0) + c).toFixed(4);
   };
   const carta = JSON.stringify(chartForModel(payload));
   const lang = payload.request.report_language;
@@ -1019,17 +1052,17 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   const tratamiento = TRATAMIENTO[payload.request.address_gender] || TRATAMIENTO.UNSPECIFIED;
   let analisis = await load("analisis");
   if (!analisis) {
-    const a = await callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [.../* @__PURE__ */ new Set([...await recentMyths(env), ...REFERENCE_MYTHS])]), maxTokens: 16e3 });
-    charge("a", a.usage);
-    analisis = extractJSON(a.text);
+    analisis = await phase("a", async () => callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [.../* @__PURE__ */ new Set([...await recentMyths(env), ...REFERENCE_MYTHS])]), maxTokens: 16e3 }), charge, parseJSON);
     await save("analisis", analisis);
     await rememberMyth(env, analisis);
   }
   let report = await load("report_b");
   if (!report) {
-    const b = await callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 32e3 });
-    charge("b", b.usage);
-    report = normalizeReferences(withoutDedication(extractJSON(b.text)));
+    report = await phase("b", () => callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 32e3 }), charge, (reply) => {
+      const r = normalizeReferences(withoutDedication(parseJSON(reply)));
+      assertComplete(r);
+      return r;
+    });
     await save("report_b", report);
   }
   normalizeReferences(withoutDedication(report));
@@ -1038,16 +1071,22 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   let argument = argumentAudit(report, payload);
   let corrected = false;
   if (!audit.ok || !style.ok || argument.ok === false) {
-    const c = await callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32e3 });
-    charge("c", c.usage);
-    const fixed = normalizeReferences(withoutDedication(extractJSON(c.text)));
-    const fixedAudit = auditReport(fixed, payload);
-    if (fixedAudit.ok || !audit.ok) {
-      report = fixed;
-      audit = fixedAudit;
-      style = styleCheck(fixed);
-      argument = argumentAudit(fixed, payload);
-      corrected = true;
+    try {
+      const fixed = await phase("c", () => callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32e3 }), charge, (reply) => {
+        const r = normalizeReferences(withoutDedication(parseJSON(reply)));
+        assertComplete(r);
+        return r;
+      });
+      const fixedAudit = auditReport(fixed, payload);
+      if (fixedAudit.ok || !audit.ok) {
+        report = fixed;
+        audit = fixedAudit;
+        style = styleCheck(fixed);
+        argument = argumentAudit(fixed, payload);
+        corrected = true;
+      }
+    } catch (e) {
+      if (!audit.ok) throw e;
     }
   }
   report.engine = { model, protocol_version: "ASTROINFORME", service: SERVICE_VERSION };
@@ -1197,11 +1236,11 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
     } else {
       let used = null;
       if (useCode) {
+        await kv.put("rep:" + code, JSON.stringify({ request_id: requestId, fp: fp || null, report: result.report, at: (/* @__PURE__ */ new Date()).toISOString() }), { expirationTtl: REPORT_TTL }).catch((e) => console.log(JSON.stringify({ event: "report_copy_failed", detail: String(e && e.message || e) })));
         used = (await ledger(env, code).consume(token)).used;
         consumed = true;
-        await kv.put("rep:" + code, JSON.stringify({ request_id: requestId, fp: fp || null, report: result.report, at: (/* @__PURE__ */ new Date()).toISOString() }), { expirationTtl: REPORT_TTL });
       }
-      await addToMonth(kv, mk, { usd: spent.usd, reports: 1 });
+      await addToMonth(kv, mk, { usd: spent.usd, reports: 1 }).catch((e) => console.log(JSON.stringify({ event: "month_failed", detail: String(e && e.message || e) })));
       out = { report: result.report, remaining: useCode ? Math.max(0, limit - used) : null };
       outcome = "delivered";
     }
@@ -1233,6 +1272,7 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
     phases: spent.phases || {},
     corrected: !!(result && result.corrected),
     outcome,
+    reason: error ? String(error.status || error.detail || error.message || "").slice(0, 60) : void 0,
     attempts: extra.attempts || 1,
     lang: job.payload.request.report_language
   }), { expirationTtl: GEN_TTL }).catch(() => {
