@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AsterOrbis · Términos</title>
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="stylesheet" href="fonts.css">
+<style>
+:root { --bg: #eceeea; --panel: #f7f8f5; --ink: #1c2230; --muted: #5d6573; --line: #c9cdc6; --accent: #8a5a12;
+  --f-display: "Bodoni Moda", Georgia, serif; --f-body: "Source Sans 3", system-ui, sans-serif; --f-data: "IBM Plex Mono", ui-monospace, monospace; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #11151c; --panel: #181d26; --ink: #e3e5e0; --muted: #98a0ad; --line: #2c3340; --accent: #d6a752; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #11151c; --panel: #181d26; --ink: #e3e5e0; --muted: #98a0ad; --line: #2c3340; --accent: #d6a752; color-scheme: dark }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 var(--f-body); }
+.wrap { max-width: 44rem; margin: 0 auto; padding: 28px max(16px, env(safe-area-inset-right, 0px)) 64px max(16px, env(safe-area-inset-left, 0px)); }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--ink); padding-bottom: 12px; }
+.top a { font-family: var(--f-data); font-size: 0.78rem; letter-spacing: 0.08em; color: var(--ink); }
+nav.langs { display: flex; gap: 10px; }
+nav.langs a[aria-current="true"] { color: var(--accent); text-decoration: none; }
+h1, h2 { font-family: var(--f-display); font-weight: 500; line-height: 1.2; }
+h1 { font-size: clamp(1.9rem, 6vw, 2.6rem); margin: 24px 0 4px; }
+h2 { font-size: 1.25rem; margin: 28px 0 6px; }
+p, li { max-width: 68ch; }
+ul { padding-left: 20px; }
+.date { font-family: var(--f-data); font-size: 0.78rem; color: var(--muted); }
+a { color: var(--accent); }
+section[lang] { display: none; }
+section[lang].on { display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="./" id="back">← AsterOrbis</a><nav class="langs" aria-label="Idioma / Sprache / Language"><a href="#es" data-l="es">ES</a><a href="#de" data-l="de">DE</a><a href="#en" data-l="en">EN</a></nav></div>
+
+  <section lang="es">
+    <h1>Términos de compra</h1>
+    <p class="date">Actualizado el 4 de noviembre de 2026</p>
+
+    <h2>Quién hace AsterOrbis</h2>
+    <p>AsterOrbis es una app homenaje y experimental, hecha por una sola humana: yo, Bárbara Gutiérrez, Buenos Aires, Argentina. No hay una empresa detrás.</p>
+
+    <h2>El informe</h2>
+    <p>El informe se genera a medida a partir de tus datos y se entrega de inmediato. Por eso, una vez entregado, no admite devolución por arrepentimiento ni por no coincidir con tus expectativas: es una obra interpretativa, de carácter artístico y simbólico.</p>
+
+    <h2>Si algo falla</h2>
+    <p>Si pagaste y el informe no llega, llega incompleto o se generó con un error de la app, te lo vuelvo a generar o te devuelvo el dinero. Escribime a <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+  </section>
+
+  <section lang="de">
+    <h1>Kaufbedingungen</h1>
+    <p class="date">Aktualisiert am 4. November 2026</p>
+
+    <h2>Wer AsterOrbis macht</h2>
+    <p>AsterOrbis ist eine experimentelle Hommage-App, gemacht von einem einzigen Menschen: mir, Bárbara Gutiérrez, Buenos Aires, Argentinien. Dahinter steht kein Unternehmen.</p>
+
+    <h2>Der Bericht</h2>
+    <p>Der Bericht wird nach deinen Angaben individuell erstellt und sofort geliefert. Deshalb ist er nach der Lieferung weder wegen Widerrufs noch deshalb erstattungsfähig, weil er nicht deinen Erwartungen entspricht: Er ist ein interpretierendes Werk mit künstlerischem und symbolischem Charakter.</p>
+
+    <h2>Wenn etwas schiefgeht</h2>
+    <p>Wenn du bezahlt hast und der Bericht nicht ankommt, unvollständig ist oder durch einen Fehler der App entstanden ist, erstelle ich ihn neu oder erstatte dir das Geld. Schreib mir an <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+  </section>
+
+  <section lang="en">
+    <h1>Purchase terms</h1>
+    <p class="date">Updated 4 November 2026</p>
+
+    <h2>Who makes AsterOrbis</h2>
+    <p>AsterOrbis is an experimental homage app, made by a single human: me, Bárbara Gutiérrez, Buenos Aires, Argentina. There is no company behind it.</p>
+
+    <h2>The report</h2>
+    <p>The report is generated to order from your details and delivered immediately. For that reason, once delivered, it cannot be refunded because you changed your mind or because it does not match your expectations: it is an interpretive work of an artistic and symbolic nature.</p>
+
+    <h2>If something goes wrong</h2>
+    <p>If you paid and the report does not arrive, arrives incomplete or was generated with an app error, I will generate it again or refund your money. Write to me at <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+  </section>
+</div>
+<script>
+(function () {
+  var langs = ["es", "de", "en"];
+  function pick() {
+    var h = (location.hash || "").slice(1).toLowerCase(), l = langs.indexOf(h) >= 0 ? h : null;
+    if (!l) { try { l = localStorage.getItem("astroinforme.lang"); } catch (e) { } }
+    if (langs.indexOf(l) < 0) { l = (navigator.language || "es").slice(0, 2).toLowerCase(); if (langs.indexOf(l) < 0) l = "es"; }
+    document.documentElement.lang = l;
+    document.querySelectorAll("section[lang]").forEach(function (s) { s.classList.toggle("on", s.lang === l); });
+    document.querySelectorAll("nav.langs a").forEach(function (a) { a.setAttribute("aria-current", a.dataset.l === l ? "true" : "false"); });
+    document.getElementById("back").href = "./#" + l;
+    document.title = "AsterOrbis · " + { es: "Términos", de: "Bedingungen", en: "Terms" }[l];
+  }
+  window.addEventListener("hashchange", pick); pick();
+})();
+</script>
+</body>
+</html>
