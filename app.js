@@ -162,14 +162,22 @@ function showPlace() {
 }
 
 // ---------- cálculo ----------
+function setBirthTime(v) { const [hh, mm] = (v || "").split(":"); $("#bhour").value = hh || ""; $("#bmin").value = mm || ""; }
+function setTimeDisabled(off) { $("#bhour").disabled = off; $("#bmin").disabled = off; }
 class FormError extends Error { constructor(key, params) { super(key); this.key = key; this.params = params; } }
 function readForm() {
-  const d = $("#bdate").value, tm = $("#btime").value, prec = $("#no-time").checked ? "UNKNOWN" : $("#prec").value;
+  const d = $("#bdate").value, prec = $("#no-time").checked ? "UNKNOWN" : $("#prec").value;
   if (!d) throw new FormError("err.date");
   const [y, mo, dd] = d.split("-").map(Number);
   if (y < 1800 || y > 2399) throw new FormError("err.range");
   let h = 12, mi = 0;
-  if (prec !== "UNKNOWN") { if (!tm) throw new FormError("err.time"); [h, mi] = tm.split(":").map(Number); }
+  if (prec !== "UNKNOWN") {
+    const hh = $("#bhour").value.trim(), mm = $("#bmin").value.trim();
+    if (!hh) throw new FormError("err.time");
+    if (!mm) throw new FormError("err.minutes");
+    h = Number(hh); mi = Number(mm);
+    if (!/^\d{1,2}$/.test(hh) || !/^\d{1,2}$/.test(mm) || h > 23 || mi > 59) throw new FormError("err.timeRange");
+  }
   if (!state.place) throw new FormError("err.place");
   const zone = $("#tz").value.trim();
   try { new Intl.DateTimeFormat("en", { timeZone: zone }); } catch (e) { throw new FormError("err.tz", { zone }); }
@@ -282,6 +290,9 @@ function render(scroll = false) {
   $("#r-title").textContent = f.first || t("r.title");
   $("#r-title").previousElementSibling.hidden = !f.first;
   $("#r-meta").textContent = humanBirth(f);
+  $("#review-data").textContent = humanBirth(f);
+  // sin hora el informe se puede pedir solo después de aceptar que será más general
+  $("#interp-no-time").hidden = f.prec !== "UNKNOWN"; $("#no-time-ok").checked = false;
   const ascSign = chart.houses ? term(E.SIGNS[Math.floor(chart.houses.asc / 30)]) : t("r.noTime");
   $("#r-big3").innerHTML = [
     [term("SUN"), term(by.SUN.sign), chart.houses ? `${H} ${by.SUN.house}` : by.SUN.deg.replace(/\d\d"$/, ""), by.SUN.reliable],
@@ -752,6 +763,9 @@ function finishProgress(ok) {
 
 async function callInterpreter() {
   const btn = $("#btn-interp"), status = $("#interp-status");
+  if (state.last && state.last.f && state.last.f.prec === "UNKNOWN" && !$("#no-time-ok").checked) {
+    status.hidden = false; status.textContent = t("i.noTime.required"); $("#no-time-ok").focus(); return;
+  }
   // los errores que se detectan antes de enviar se muestran sin abrir la espera
   if (!CONFIG.demo && !publicAccess() && !($("#access-code").value || "").trim()) {
     status.hidden = false; status.textContent = t("i.fail", { msg: t("i.err.code_required") }); $("#access-code").focus(); return;
@@ -949,7 +963,7 @@ function init() {
   });
   $("#tz").addEventListener("change", () => { if (state.place) state.place.zone = $("#tz").value; });
   $("#use-manual-offset").addEventListener("change", (e) => { $("#manual-offset-row").hidden = !e.target.checked; });
-  const syncTime = () => { const unk = $("#no-time").checked; $("#btime").disabled = unk; };
+  const syncTime = () => { const unk = $("#no-time").checked; setTimeDisabled(unk); };
   $("#wait-read").addEventListener("click", () => $("#about-report").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }));
   $("#no-time").addEventListener("change", (e) => { if (e.target.checked) $("#prec").value = "UNKNOWN"; else if ($("#prec").value === "UNKNOWN") $("#prec").value = "EXACT"; syncTime(); });
   $("#prec").addEventListener("change", (e) => { $("#no-time").checked = e.target.value === "UNKNOWN"; syncTime(); });
@@ -961,6 +975,10 @@ function init() {
   $("#btn-print-3").addEventListener("click", printSheet);
   $("#btn-print-chart").addEventListener("click", printSheet);
   $("#btn-edit").addEventListener("click", () => setScreen("form"));
+  $("#btn-review-edit").addEventListener("click", () => setScreen("form"));
+  // hora y minutos: solo dígitos; al completar la hora, el cursor pasa a los minutos
+  for (const id of ["#bhour", "#bmin"]) $(id).addEventListener("input", (e) => { e.target.value = e.target.value.replace(/\D/g, ""); });
+  $("#bhour").addEventListener("input", (e) => { if (e.target.value.length === 2) $("#bmin").focus(); });
   $("#btn-to-chart").addEventListener("click", () => setScreen("chart"));
   $("#btn-back-report").addEventListener("click", () => setScreen("report"));
   $("#brand").addEventListener("click", (e) => { e.preventDefault(); setScreen("form"); });
@@ -970,7 +988,7 @@ function init() {
 }
 
 function loadExample() {
-  $("#fname").value = t("f.fname.ph"); $("#bdate").value = "1990-07-14"; $("#btime").value = "15:20"; $("#prec").value = "PM15"; $("#no-time").checked = false; $("#btime").disabled = false;
+  $("#fname").value = t("f.fname.ph"); $("#bdate").value = "1990-07-14"; setBirthTime("15:20"); $("#prec").value = "PM15"; $("#no-time").checked = false; setTimeDisabled(false);
   loadCities().then(() => { const c = searchCities("Hamburg")[0]; if (c) { choosePlace(c); calculate(); } });
 }
 
@@ -979,8 +997,8 @@ ensureEngine().catch(() => { });
 checkService();
 // demostración con varias cartas de prueba: un selector arriba del formulario
 function loadDemoCase(c) {
-  $("#fname").value = c.first; $("#bdate").value = c.date; $("#btime").value = c.time || ""; $("#prec").value = c.precision;
-  $("#btime").disabled = c.precision === "UNKNOWN"; $("#no-time").checked = c.precision === "UNKNOWN";
+  $("#fname").value = c.first; $("#bdate").value = c.date; setBirthTime(c.time || ""); $("#prec").value = c.precision;
+  setTimeDisabled(c.precision === "UNKNOWN"); $("#no-time").checked = c.precision === "UNKNOWN";
   $("#manual-coords-toggle").checked = true; $("#manual-coords").hidden = false;
   $("#mc-lat").value = c.lat; $("#mc-lon").value = c.lon; $("#mc-label").value = c.placeLabel;
   $("#mc-apply").click();
@@ -1002,8 +1020,8 @@ const SAMPLE = CONFIG.sample && CONFIG.sample.file ? CONFIG.sample : null;
 if (SAMPLE) $("#sample-link-row").hidden = false;
 async function loadSample() {
   const s = SAMPLE;
-  $("#fname").value = s.first; $("#bdate").value = s.date; $("#btime").value = s.time; $("#prec").value = s.precision;
-  $("#btime").disabled = false; $("#no-time").checked = false;
+  $("#fname").value = s.first; $("#bdate").value = s.date; setBirthTime(s.time); $("#prec").value = s.precision;
+  setTimeDisabled(false); $("#no-time").checked = false;
   $("#manual-coords-toggle").checked = true; $("#manual-coords").hidden = false;
   $("#mc-lat").value = s.lat; $("#mc-lon").value = s.lon; $("#mc-label").value = s.placeLabel;
   $("#mc-apply").click();
@@ -1029,7 +1047,7 @@ if (CONFIG.demo && CONFIG.demoCases) {
   loadDemoCase(CONFIG.demoCases[0]);
 } else if (CONFIG.demo && CONFIG.demoBirth) {
   const d = CONFIG.demoBirth;
-  $("#fname").value = d.first; $("#bdate").value = d.date; $("#btime").value = d.time; $("#prec").value = d.precision;
+  $("#fname").value = d.first; $("#bdate").value = d.date; setBirthTime(d.time); $("#prec").value = d.precision;
   $("#manual-coords-toggle").checked = true; $("#manual-coords").hidden = false;
   $("#mc-lat").value = d.lat; $("#mc-lon").value = d.lon; $("#mc-label").value = d.placeLabel;
   $("#mc-apply").click();

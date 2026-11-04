@@ -56,6 +56,13 @@ textarea { padding: 10px 12px; }
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 input:disabled { opacity: 0.45; }
 .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.time-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.time-pair input { width: 100%; box-sizing: border-box; min-width: 0; font-variant-numeric: tabular-nums; }
+.field-hint { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.review-birth { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid currentColor; border-left-width: 4px; border-radius: 6px; }
+.review-birth p { margin: 0; }
+.review-birth .review-data { font-weight: 600; font-size: 1.05rem; }
+.review-birth .linkbtn { justify-self: start; }
 .check { display: flex; gap: 10px; align-items: center; font-size: 0.95rem; color: var(--muted); min-height: 32px; }
 .check input { width: 20px; height: 20px; margin: 0; flex: 0 0 auto; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
@@ -398,9 +405,14 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
           <div class="fld"><label for="fname"><span data-i18n="f.fname">Nombre de pila</span> <span class="hint" data-i18n="f.optional">(opcional)</span></label><input id="fname" autocomplete="given-name" placeholder="Tu nombre" data-i18n-ph="f.fname.ph"></div>
           <div class="pair">
             <div class="fld"><label for="bdate" data-i18n="f.date">Fecha</label><input id="bdate" type="date" min="1800-01-01" max="2399-12-31" required></div>
-            <div class="fld"><label for="btime" data-i18n="f.timeShort">Hora</label><input id="btime" type="time" step="60"></div>
+            <div class="time-pair">
+              <div class="fld"><label for="bhour" data-i18n="f.timeShort">Hora</label><input id="bhour" type="text" inputmode="numeric" maxlength="2" autocomplete="off" placeholder="0–23" aria-describedby="time-hint"></div>
+              <div class="fld"><label for="bmin" data-i18n="f.minutes">Minutos</label><input id="bmin" type="text" inputmode="numeric" maxlength="2" autocomplete="off" placeholder="0–59" aria-describedby="time-hint"></div>
+            </div>
           </div>
+          <p class="field-hint" id="time-hint" data-i18n="f.time.hint">Formato de 24 horas: las 11 de la noche son 23.</p>
           <label class="check"><input type="checkbox" id="no-time"> <span data-i18n="f.noTime">No sé la hora</span></label>
+          <p class="field-hint" data-i18n="f.noTime.hint">Sin la hora, el informe será más general y menos personal.</p>
           <div class="fld place-box">
             <label for="place-q" data-i18n="f.place">Lugar de nacimiento</label>
             <input id="place-q" autocomplete="off" spellcheck="false" placeholder="Ciudad, país" data-i18n-ph="f.place.ph" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="place-results">
@@ -489,13 +501,15 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
           <p data-i18n-html="i.missing"></p>
         </div>
         <div id="interp-connected" style="display:grid;gap:14px" hidden>
-          <p id="interp-unavail" class="note warn" hidden data-i18n="i.unavailable"></p>
+          <div id="interp-no-time" class="note warn" hidden><p data-i18n="i.noTime" style="margin:0 0 8px;color:inherit">Sin la hora de nacimiento, el informe será más general y menos personal: no incluirá Ascendente, casas ni ejes de la carta, y personas nacidas el mismo día recibirían lecturas parecidas. ¿Querés pedirlo igual?</p><label class="check" style="color:inherit"><input type="checkbox" id="no-time-ok"> <span data-i18n="i.noTime.ok">Entiendo y quiero pedirlo igual.</span></label></div>
+                    <p id="interp-unavail" class="note warn" hidden data-i18n="i.unavailable"></p>
           <div class="fld" id="code-row" hidden><label for="access-code"><span id="code-label" data-i18n="f.code">Código de acceso</span> <span class="hint" id="code-hint" data-i18n="f.code.hint"></span></label><input id="access-code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX"></div>
           <div class="fld"><label for="gender"><span data-i18n="f.gender">Tratamiento en el informe</span> <span class="hint" data-i18n="f.gender.hint"></span></label>
             <select id="gender"><option value="UNSPECIFIED" data-i18n="gender.UNSPECIFIED">Sin indicar (formas sin género)</option><option value="FEMININE" data-i18n="gender.FEMININE">Femenino</option><option value="MASCULINE" data-i18n="gender.MASCULINE">Masculino</option><option value="NEUTRAL" data-i18n="gender.NEUTRAL">Neutro</option></select></div>
           <div id="ts-box" hidden></div>
           <p id="demo-note" class="note warn" hidden data-i18n-html="demo.note"></p>
           <div class="fld" id="demo-which-row" hidden><label for="demo-which" data-i18n="demo.which">Informe a cargar</label><select id="demo-which"></select></div>
+          <div class="review-birth no-print" id="review-birth"><p data-i18n="review.h">Revisá tus datos antes de pedir el informe:</p><p class="review-data" id="review-data"></p><button type="button" class="linkbtn" id="btn-review-edit" data-i18n="review.edit">Corregir datos</button></div>
           <button type="button" class="btn big" id="btn-interp" data-i18n="btn.interp">Pedir mi informe</button>
           <p id="interp-status" class="note warn" hidden role="status"></p>
           <button type="button" class="linkbtn" id="btn-back-report" hidden data-i18n="btn.backReport">Volver al informe</button>
