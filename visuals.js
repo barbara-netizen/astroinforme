@@ -21,6 +21,7 @@ const A = {
   roots_rabbit_year: { type: "image", file: "assets/17-raices-el-ano-del-conejo.jpg", title: "El año del Conejo", size: [1195, 919], fit: "contain", focal: "50% 50%" },
   closure_serendipity: { type: "image", file: "assets/18-cierre-serendipia-florida.jpg", title: "Serendipia florida", size: [638, 374], fit: "cover", focal: "50% 50%" },
   desire_living: { type: "image", file: "assets/19-deseo-en-el-living.jpg", title: "En el Living", size: [700, 700], fit: "contain", focal: "50% 50%" },
+  shadow_party: { type: "image", file: "assets/20-sombra-fiesta.jpg", title: "Fiesta", size: [1210, 629], fit: "cover", focal: "50% 50%" },
   boundaries_wire: { type: "image", file: "assets/07-limites-glamur-alambre.jpg", title: "Glamur Atado con Alambre", size: [720, 556], fit: "cover", focal: "50% 50%" },
   brand_guardian: { type: "image", file: "assets/02-marca-guardian-del-universo.jpg", title: "Guardián del Universo", size: [604, 460], fit: "contain", focal: "50% 35%" },
   author_work: { type: "image", file: "assets/11-autoria-mary-playa-union.jpg", title: "Mary en Playa Unión", size: [1600, 798], fit: "contain", focal: "50% 50%" },
@@ -32,7 +33,7 @@ const A = {
 // Dentro del informe las animaciones se reproducen una vez y quedan en su fotograma fijo.
 export const SECTION_ART = {
   opening: "opening_derivas", identity: "identity_future", emotional: "emotional_desmadre", saturn: "boundaries_wire",
-  desire: "desire_living", relationships: "relationships_years", roots: "roots_rabbit_year", neptune: "emotional_swimmers",
+  desire: "desire_living", shadow: "shadow_party", relationships: "relationships_years", roots: "roots_rabbit_year", neptune: "emotional_swimmers",
   transformation: "hero_levitar", myth: "brand_guardian",
 };
 
