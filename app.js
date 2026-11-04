@@ -830,7 +830,7 @@ function pdfData(lang) {
   const { f, opt } = state.last, chart = state.chart, rep = state.lastReport;
   const houses = !!chart.houses;
   return {
-    lang, title: rep.title || (f.first ? t("r.titleNamed", { name: f.first }) : t("r.title")), meta: humanBirth(f),
+    lang, kind: t("pdf.kind"), title: rep.title || (f.first ? t("r.titleNamed", { name: f.first }) : t("r.title")), meta: humanBirth(f),
     sections: rep.sections.filter((s) => s.id !== "dedication").map((s) => ({
       heading: s.heading, paragraphs: String(s.body_markdown).split(/\n{2,}/).filter(Boolean), art: V.SECTION_ART[s.id] ? V.pdfArt(V.SECTION_ART[s.id]) : null,
     })),
@@ -841,7 +841,7 @@ function pdfData(lang) {
       h: t("dl.tech"), aspectsH: t("h.aspects"), prov: provText(f, opt, chart), wheel: $("#rep-wheel-in svg") || $("#wheel svg"), legend: t("wheel.legend"),
       angles: houses ? `${term("ASC")} ${E.fmtDeg(chart.houses.asc)} ${term(E.SIGNS[Math.floor(chart.houses.asc / 30)])} · ${term("MC")} ${E.fmtDeg(chart.houses.mc)} ${term(E.SIGNS[Math.floor(chart.houses.mc / 30)])}` : "",
       posHead: houses ? [t("th.point"), t("th.position"), t("th.house")] : [t("th.point"), t("th.position")],
-      posWidths: houses ? ["*", 170, 50] : ["*", 200],
+      posWidths: houses ? ["*", 104, 30] : ["*", 120],
       pos: chart.bodies.map((b) => { const r = [nm(b.id), `${b.deg} ${term(b.sign)}${b.retrograde ? " R" : ""}`]; if (houses) r.push(ROMAN[b.house]); return r; }),
       aspHead: [t("th.aspect"), t("th.orb")], asp: chart.aspects.map((a) => [`${nm(a.a)} ${term(a.aspect)} ${nm(a.b)}`, `${a.orb.toFixed(2)}°`]),
     },

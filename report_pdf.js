@@ -40,20 +40,21 @@ async function imageData(file) {
   return `data:${type.split(";")[0]};base64,${toBase64(new Uint8Array(await r.arrayBuffer()))}`;
 }
 
-const W = 595.28 - 2 * 62; // ancho útil de A4 con márgenes de 62 pt
+const PW = 595.28, PH = 841.89, MX = 54, MT = 50, MB = 50, W = PW - 2 * MX, ART = 165;
 
-function figure(art, images, maxH) {
-  const [w, h] = art.size, scale = Math.min(W / w, maxH / h, 1.6);
-  return [
-    { image: images[art.file], width: w * scale, height: h * scale, alignment: "center", margin: [0, 14, 0, 4] },
-    { text: art.caption, style: "caption", alignment: "center" },
-  ];
+// obra sin recortar en una columna fija, con su crédito debajo; al lado, el título y el primer párrafo
+function band(art, images, right) {
+  const [w, h] = art.size, scale = Math.min(ART / w, 190 / h);
+  return { columns: [
+    { width: ART, stack: [{ image: images[art.file], width: w * scale, height: h * scale, margin: [0, 3, 0, 4] }, { text: art.caption, style: "caption" }] },
+    { width: "*", stack: right },
+  ], columnGap: 18, margin: [0, 16, 0, 10], unbreakable: true };
 }
 
 const table = (head, rows, widths) => ({
-  table: { headerRows: 1, widths, body: [head.map((text) => ({ text, bold: true, color: MUTED })), ...rows] },
-  layout: { hLineWidth: (i) => (i === 1 ? 0.8 : 0.25), vLineWidth: () => 0, hLineColor: () => LINE, paddingLeft: () => 0, paddingRight: () => 8, paddingTop: () => 2, paddingBottom: () => 2 },
-  fontSize: 9.5, margin: [0, 4, 0, 14],
+  table: { headerRows: 1, widths, body: [head.map((text) => ({ text, color: MUTED, fontSize: 8 })), ...rows] },
+  layout: { hLineWidth: (i, node) => (i === 1 ? 0.6 : i === node.table.body.length ? 0.6 : 0), vLineWidth: () => 0, hLineColor: () => LINE, paddingLeft: () => 0, paddingRight: () => 6, paddingTop: () => 1.6, paddingBottom: () => 1.6 },
+  fontSize: 9, lineHeight: 1.1,
 });
 
 // La rueda se redibuja en un lienzo con los colores del tema claro y las fuentes de glifos ya cargadas en la página.
@@ -98,50 +99,56 @@ export async function makePdf(data) {
   const content = [
     { text: "AsterOrbis", style: "brand" },
     { text: data.title, style: "title" },
-    { text: data.meta, style: "meta" },
+    { text: data.meta, style: "meta", margin: [0, 0, 0, 4] },
+    { text: data.kind, style: "meta", margin: [0, 0, 0, 6] },
+    { canvas: [{ type: "line", x1: 0, y1: 0, x2: W, y2: 0, lineWidth: 0.6, lineColor: LINE }], margin: [0, 2, 0, 2] },
   ];
   data.sections.forEach((s) => {
-    // imagen, título y primer párrafo van juntos: un título nunca queda solo al pie de una página
-    const [first, ...rest] = s.paragraphs;
-    const block = s.art ? figure(s.art, images, 300) : [];
-    block.push({ text: s.heading, style: "h2" });
-    if (first) block.push({ text: first, style: "p" });
-    content.push({ stack: block, unbreakable: true }, ...rest.map((text) => ({ text, style: "p" })));
+    if (s.art) {
+      const [first, ...rest] = s.paragraphs;
+      const right = [{ text: s.heading, style: "h2", margin: [0, 0, 0, 7] }];
+      if (first) right.push({ text: first, style: "p" });
+      content.push(band(s.art, images, right), ...rest.map((text) => ({ text, style: "p" })));
+    } else {
+      content.push({ text: s.heading, style: "h2", headlineLevel: 80 }, ...s.paragraphs.map((text) => ({ text, style: "p" })));
+    }
   });
-  if (data.closure) content.push(...figure(data.closure, images, 260));
-
-  content.push({ text: data.author.h, style: "h2", pageBreak: "before" });
-  content.push({ text: data.author.body, style: "p" });
-  if (data.author.art) content.push(...figure(data.author.art, images, 200));
-  content.push({ text: data.author.mother, style: "p", margin: [0, 10, 0, 7] }, { text: data.author.dedication, italics: true, font: "Display", fontSize: 13, margin: [0, 2, 0, 12] });
-  content.push({ text: data.disclaimer, fontSize: 9.5, color: MUTED, margin: [0, 8, 0, 8] });
-  if (data.credit) content.push({ text: data.credit, fontSize: 9.5, color: MUTED });
-
-  content.push({ text: data.tech.h, style: "h2", pageBreak: "before" });
-  if (data.tech.wheel) {
-    content.push({ image: await wheelImage(data.tech.wheel), width: 380, alignment: "center", margin: [0, 6, 0, 4] });
-    if (data.tech.legend) content.push({ text: data.tech.legend, style: "caption", alignment: "center", margin: [0, 0, 0, 14] });
+  if (data.closure) {
+    const [w, h] = data.closure.size, scale = Math.min(300 / w, 180 / h);
+    content.push({ stack: [{ image: images[data.closure.file], width: w * scale, height: h * scale, alignment: "center", margin: [0, 0, 0, 4] }, { text: data.closure.caption, style: "caption", alignment: "center" }], margin: [0, 16, 0, 0], unbreakable: true });
   }
-  if (data.tech.angles) content.push({ text: data.tech.angles, style: "meta" });
-  content.push(table(data.tech.posHead, data.tech.pos, data.tech.posWidths));
+  const who = [{ text: data.author.h, style: "h2", margin: [0, 0, 0, 7] }, { text: data.author.body, style: "p" }, { text: data.author.mother, style: "p" }, { text: data.author.dedication, font: "Display", italics: true, fontSize: 12 }];
+  content.push(data.author.art ? band(data.author.art, images, who) : { stack: who });
+
+  // datos técnicos, en una sola página
+  const half = Math.ceil(data.tech.asp.length / 2), col = (rows) => table(data.tech.aspHead, rows, ["*", 30]);
+  content.push({ text: data.tech.h, style: "h2", margin: [0, 0, 0, 10], pageBreak: "before" });
+  content.push({ columns: [
+    { width: 215, stack: [data.tech.wheel ? { image: await wheelImage(data.tech.wheel), width: 215 } : { text: "" }, { text: data.tech.legend || "", style: "caption", alignment: "center", margin: [0, 0, 0, 6] }, { text: data.tech.angles || "", style: "meta", alignment: "center" }] },
+    { width: "*", stack: [table(data.tech.posHead, data.tech.pos, data.tech.posWidths)] },
+  ], columnGap: 18, margin: [0, 0, 0, 14] });
   content.push({ text: data.tech.aspectsH, style: "h3" });
-  content.push(table(data.tech.aspHead, data.tech.asp, ["*", 60]));
-  if (data.tech.prov) content.push({ text: data.tech.prov, fontSize: 9, color: MUTED });
+  content.push({ columns: [col(data.tech.asp.slice(0, half)), data.tech.asp.length > half ? col(data.tech.asp.slice(half)) : { text: "" }], columnGap: 18, margin: [0, 0, 0, 12] });
+  if (data.tech.prov) content.push({ text: data.tech.prov, fontSize: 7.5, lineHeight: 1.25, color: MUTED, margin: [0, 0, 0, 5] });
+  content.push({ text: data.disclaimer, fontSize: 7.5, lineHeight: 1.25, color: MUTED, margin: [0, 0, 0, 4] });
+  if (data.credit) content.push({ text: data.credit, fontSize: 7.5, color: MUTED });
 
   const doc = {
-    pageSize: "A4", pageMargins: [62, 60, 62, 58], content,
+    pageSize: "A4", pageMargins: [MX, MT, MX, MB], content,
     info: { title: data.title, author: "Bárbara Gutiérrez", creator: "AsterOrbis", producer: "AsterOrbis" },
-    defaultStyle: { font: "Body", fontSize: 11.5, lineHeight: 1.32, color: INK },
+    defaultStyle: { font: "Body", fontSize: 10.5, lineHeight: 1.36, color: INK },
     styles: {
-      brand: { font: "Display", fontSize: 11, characterSpacing: 2, color: MUTED, margin: [0, 0, 0, 34] },
-      title: { font: "Display", fontSize: 28, lineHeight: 1.12, margin: [0, 0, 0, 10] },
-      meta: { fontSize: 10.5, color: MUTED, margin: [0, 0, 0, 14] },
-      h2: { font: "Display", fontSize: 17, lineHeight: 1.15, margin: [0, 18, 0, 8] },
-      h3: { font: "Display", fontSize: 13, margin: [0, 6, 0, 2] },
-      p: { margin: [0, 0, 0, 7] },
-      caption: { fontSize: 8.5, italics: true, color: MUTED, margin: [0, 0, 0, 4] },
+      brand: { font: "Display", fontSize: 11, characterSpacing: 2.2, color: MUTED, margin: [0, 0, 0, 14] },
+      title: { font: "Display", fontSize: 26, lineHeight: 1.12, margin: [0, 0, 0, 8] },
+      meta: { fontSize: 9, lineHeight: 1.2, color: MUTED },
+      h2: { font: "Display", fontSize: 16, lineHeight: 1.15, margin: [0, 14, 0, 6] },
+      h3: { font: "Display", fontSize: 13, margin: [0, 0, 0, 6] },
+      p: { margin: [0, 0, 0, 6] },
+      caption: { font: "Display", italics: true, fontSize: 8.5, lineHeight: 1.2, color: MUTED },
     },
-    footer: (page, pages) => ({ text: `AsterOrbis · ${page} / ${pages}`, alignment: "center", fontSize: 8.5, color: MUTED, margin: [0, 22, 0, 0] }),
+    // un título nunca queda solo al pie de una página
+    pageBreakBefore: (node) => !!node.headlineLevel && node.startPosition.top + node.headlineLevel > PH - MB,
+    footer: (page) => (page === 1 ? null : { text: String(page), alignment: "center", fontSize: 8.5, color: MUTED, margin: [0, 20, 0, 0] }),
   };
   return new Promise((ok, fail) => {
     try { window.pdfMake.createPdf(doc).getBlob(ok); } catch (e) { fail(e); }
