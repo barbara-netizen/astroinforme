@@ -34,7 +34,7 @@ import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION
 import { normalizePayload, normalizeRequestId } from "./validate.js";
 import { ledger } from "./ledger.js";
 
-export const SERVICE_VERSION = "1.9.1";
+export const SERVICE_VERSION = "1.9.2";
 const DEFAULT_MODEL = "claude-opus-5-5";
 // la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
 const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
@@ -280,6 +280,29 @@ export async function readStream(r, model) {
  * (servicio 1.6, generación desacoplada), no se vuelven a pagar las fases ya terminadas.
  * spent.phases registra el costo de cada fase (para el registro de costos «gen:»).
  */
+export const REPORT_MIN_SECTIONS = 6, REPORT_MIN_WORDS = 800, PHASE_TRIES = 2;
+/** Respuesta de una fase que no sirve (cortada, JSON roto, informe incompleto): se reintenta esa fase, no todo el pedido. */
+function malformed(detail) { const e = new Error("malformed"); e.detail = detail; return e; }
+function parseJSON(reply) {
+  if (reply.stop === "max_tokens") throw malformed("max_tokens");
+  try { return extractJSON(reply.text); } catch (e) { throw malformed("json"); }
+}
+/** Un informe entregable: secciones suficientes, con texto, extensión mínima y mito. */
+export function assertComplete(report) {
+  const sections = report && Array.isArray(report.sections) ? report.sections.filter((s) => s && s.heading && String(s.body_markdown || "").trim()) : [];
+  if (sections.length < REPORT_MIN_SECTIONS) throw malformed("sections");
+  if (sections.map((s) => s.body_markdown).join(" ").trim().split(/\s+/).length < REPORT_MIN_WORDS) throw malformed("short");
+  if (!sections.some((s) => s.id === "myth")) throw malformed("no_myth");
+}
+/** Llama a una fase y reintenta una vez si la respuesta no sirve. Los errores de la API siguen su camino. */
+async function phase(name, call, charge, parse) {
+  for (let i = 1; ; i++) {
+    const reply = await call();
+    charge(name, reply.usage);
+    try { return parse(reply); } catch (e) { if (e.message !== "malformed" || i >= PHASE_TRIES) throw e; }
+  }
+}
+
 export async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {}) {
   const model = env.MODEL || DEFAULT_MODEL;
   spent.phases = spent.phases || {};
@@ -291,17 +314,15 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   const tratamiento = TRATAMIENTO[payload.request.address_gender] || TRATAMIENTO.UNSPECIFIED;
   let analisis = await load("analisis");
   if (!analisis) {
-    const a = await callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [...new Set([...(await recentMyths(env)), ...REFERENCE_MYTHS])]), maxTokens: 16000 });
-    charge("a", a.usage);
-    analisis = extractJSON(a.text);
+    analisis = await phase("a", async () => callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [...new Set([...(await recentMyths(env)), ...REFERENCE_MYTHS])]), maxTokens: 16000 }), charge, parseJSON);
     await save("analisis", analisis);
     await rememberMyth(env, analisis);
   }
   let report = await load("report_b");
   if (!report) {
-    const b = await callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 32000 });
-    charge("b", b.usage);
-    report = normalizeReferences(withoutDedication(extractJSON(b.text)));
+    report = await phase("b", () => callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 32000 }), charge, (reply) => {
+      const r = normalizeReferences(withoutDedication(parseJSON(reply))); assertComplete(r); return r;
+    });
     await save("report_b", report);
   }
   normalizeReferences(withoutDedication(report)); // también en un informe recuperado de una generación anterior
@@ -311,12 +332,17 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   let corrected = false;
   // una sola corrección, que atiende a la vez los problemas técnicos y los de estilo
   if (!audit.ok || !style.ok || argument.ok === false) {
-    const c = await callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32000 });
-    charge("c", c.usage);
-    const fixed = normalizeReferences(withoutDedication(extractJSON(c.text)));
-    const fixedAudit = auditReport(fixed, payload);
-    // si la corrección solo era de estilo y rompió la parte técnica, se conserva la versión anterior
-    if (fixedAudit.ok || !audit.ok) { report = fixed; audit = fixedAudit; style = styleCheck(fixed); argument = argumentAudit(fixed, payload); corrected = true; }
+    try {
+      const fixed = await phase("c", () => callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32000 }), charge, (reply) => {
+        const r = normalizeReferences(withoutDedication(parseJSON(reply))); assertComplete(r); return r;
+      });
+      const fixedAudit = auditReport(fixed, payload);
+      // si la corrección solo era de estilo y rompió la parte técnica, se conserva la versión anterior
+      if (fixedAudit.ok || !audit.ok) { report = fixed; audit = fixedAudit; style = styleCheck(fixed); argument = argumentAudit(fixed, payload); corrected = true; }
+    } catch (e) {
+      // un informe técnicamente correcto se entrega aunque falle su corrección de estilo
+      if (!audit.ok) throw e;
+    }
   }
   report.engine = { model, protocol_version: "ASTROINFORME", service: SERVICE_VERSION };
   // «all_references_present_in_chart» se conserva por compatibilidad: se refiere solo a las referencias declaradas
@@ -467,11 +493,12 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
       let used = null;
       if (useCode) {
         // consumo idempotente: si el cierre del mismo pedido se repite (misma ficha de reserva), no descuenta dos veces
+        // primero la copia del último informe (48 h), para recuperarlo si no llegó a la pantalla; un fallo acá no frena la entrega
+        await kv.put("rep:" + code, JSON.stringify({ request_id: requestId, fp: fp || null, report: result.report, at: new Date().toISOString() }), { expirationTtl: REPORT_TTL })
+          .catch((e) => console.log(JSON.stringify({ event: "report_copy_failed", detail: String((e && e.message) || e) })));
         used = (await ledger(env, code).consume(token)).used; consumed = true;
-        // copia del último informe del código durante 48 h, para recuperarlo con su request_id si no llegó a la pantalla
-        await kv.put("rep:" + code, JSON.stringify({ request_id: requestId, fp: fp || null, report: result.report, at: new Date().toISOString() }), { expirationTtl: REPORT_TTL });
       }
-      await addToMonth(kv, mk, { usd: spent.usd, reports: 1 });
+      await addToMonth(kv, mk, { usd: spent.usd, reports: 1 }).catch((e) => console.log(JSON.stringify({ event: "month_failed", detail: String((e && e.message) || e) })));
       out = { report: result.report, remaining: useCode ? Math.max(0, limit - used) : null }; outcome = "delivered";
     }
   } else {
@@ -492,7 +519,7 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
     access: useCode ? (job.codeKind || "code") : "public",
     // referencia para conciliar reclamos: número de orden de la compra (licencias) o el código (códigos de regalo)
     ref: useCode ? (job.codeKind === "license" ? (job.order ? "order:" + job.order : null) : job.code) : null, usd: +spent.usd.toFixed(4), phases: spent.phases || {}, corrected: !!(result && result.corrected),
-    outcome, attempts: extra.attempts || 1, lang: job.payload.request.report_language,
+    outcome, reason: error ? String(error.status || error.detail || error.message || "").slice(0, 60) : undefined, attempts: extra.attempts || 1, lang: job.payload.request.report_language,
   }), { expirationTtl: GEN_TTL }).catch(() => { });
   return out;
 }

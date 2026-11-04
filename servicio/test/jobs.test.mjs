@@ -18,7 +18,7 @@ const call = async (r, e) => { const res = await worker.fetch(r, e, {}); return 
 group("health anuncia el modo desacoplado");
 {
   const h = await call(new Request("https://x/health"), env());
-  assert.equal(h.body.version, "1.9.1"); assert.equal(h.body.jobs, true);
+  assert.equal(h.body.version, "1.9.2"); assert.equal(h.body.jobs, true);
   const h2 = await call(new Request("https://x/health"), baseEnv());
   assert.equal(h2.body.jobs, false);
 }

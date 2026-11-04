@@ -57,11 +57,11 @@ export function mockClaude(sequence, onCall) {
     const next = sequence.shift();
     if (next === undefined) throw new Error("llamada a Claude no esperada");
     if (next === "500") return new Response(JSON.stringify({ error: { type: "overloaded_error" } }), { status: 529 });
-    const text = typeof next === "string" ? next : JSON.stringify(next);
+    const cut = next && next.__stop; const text = cut ? next.text : typeof next === "string" ? next : JSON.stringify(next);
     const ev = (o) => `event: ${o.type}\ndata: ${JSON.stringify(o)}\n\n`;
     const sse = ev({ type: "message_start", message: { usage: { input_tokens: 10000, output_tokens: 1 } } })
       + ev({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text } })
-      + ev({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 5000 } });
+      + ev({ type: "message_delta", delta: { stop_reason: cut || "end_turn" }, usage: { output_tokens: 5000 } });
     return new Response(sse, { headers: { "content-type": "text/event-stream" } });
   };
 }
