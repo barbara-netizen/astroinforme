@@ -73,7 +73,7 @@ Obra de Bárbara Gutiérrez (https://barbaragutierrez.art), integrada según las
 | `i18n.js` | textos de la interfaz en es/de/en, glosario astrológico del MVP y textos alternativos de las ilustraciones |
 | `servicio/` | servicio interpretativo (Cloudflare Worker), con pruebas e instrucciones |
 | `visuals.js`, `assets/` | capa visual e ilustraciones |
-| `cities.txt` | localidades de más de 1000 habitantes (GeoNames vía `all-the-cities` 3.1.0) |
+| `cities.txt` | localidades de más de 1000 habitantes (GeoNames vía `all-the-cities` 3.1.0), con zona horaria por polígonos exactos (`tools/agregar_zonas_ciudades.py`, timezonefinder 9.2.0) |
 
 ## Licencias
 

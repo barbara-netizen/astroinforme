@@ -2,6 +2,7 @@
 import * as E from "./engine.js";
 import { CONFIG } from "./config.js";
 import * as V from "./visuals.js";
+import { parseCoord } from "./coords.js";
 import { auditReport } from "./audit.js";
 import * as L from "./i18n.js";
 
@@ -88,7 +89,8 @@ const ALIASES = {
 async function loadCities() {
   if (cities) return cities;
   if (!citiesLoading) citiesLoading = fetch(new URL("./cities.txt", import.meta.url)).then((r) => { if (!r.ok) throw new Error("cities"); return r.text(); }).then((txt) => {
-    cities = txt.split("\n").map((l) => { const [n, cc, adm, pop, lat, lon] = l.split("\t"); return { n, f: fold(n), cc, adm, pop: +pop, lat: +lat, lon: +lon }; });
+    const lines = txt.split("\n"), zones = lines[0].split("\t").slice(1);
+    cities = lines.slice(1).map((l) => { const [n, cc, adm, pop, lat, lon, z] = l.split("\t"); return { n, f: fold(n), cc, adm, pop: +pop, lat: +lat, lon: +lon, zone: zones[+z] }; });
     return cities;
   });
   return citiesLoading;
@@ -143,8 +145,19 @@ function movePlace(d) {
   $("#place-q").setAttribute("aria-activedescendant", "po-" + placeUI.active);
 }
 
+// zona de una ciudad: la calculada con polígonos exactos; si el navegador no la conoce, la aproximada
+function cityZone(c) {
+  try { new Intl.DateTimeFormat("en", { timeZone: c.zone }); return c.zone; } catch (e) { return E.zoneFor(c.lat, c.lon); }
+}
+// coordenadas manuales: zona de la ciudad más cercana si hay una a menos de 40 km
+function nearestCity(lat, lon) {
+  let best = null, min = Infinity;
+  const k = Math.cos(lat * Math.PI / 180);
+  for (const c of cities) { const dy = c.lat - lat, dx = (((c.lon - lon + 540) % 360) - 180) * k, d = dx * dx + dy * dy; if (d < min) { min = d; best = c; } }
+  return best && Math.sqrt(min) * 111.2 <= 40 ? best : null;
+}
 function choosePlace(c) {
-  const zone = E.zoneFor(c.lat, c.lon), p = placeName(c);
+  const zone = cityZone(c), p = placeName(c);
   state.place = { label: `${p.name}, ${p.where}`, lat: c.lat, lon: c.lon, zone, source: "GeoNames (all-the-cities)" };
   hidePlaceResults();
   $("#place-q").value = state.place.label;
@@ -157,7 +170,7 @@ function showPlace() {
   box.hidden = false;
   $("#pc-label").textContent = p.label;
   const W = L.getLang() === "es" ? "O" : "W";
-  $("#pc-coords").textContent = `${Math.abs(p.lat).toFixed(4)}° ${p.lat >= 0 ? "N" : "S"} · ${Math.abs(p.lon).toFixed(4)}° ${p.lon >= 0 ? "E" : W}`;
+  $("#pc-coords").textContent = `${Math.abs(p.lat).toFixed(4)}° ${p.lat >= 0 ? "N" : "S"} · ${Math.abs(p.lon).toFixed(4)}° ${p.lon >= 0 ? "E" : W} · ${p.zone.replace(/_/g, " ")}`;
   $("#tz").value = p.zone;
 }
 
@@ -943,7 +956,7 @@ function init() {
     renderPlaceResults(searchCities(q).slice(0, 8));
   }
   pq.addEventListener("input", () => {
-    if (state.place && state.place.source !== "MANUAL") { state.place = null; showPlace(); }
+    if (state.place) { state.place = null; showPlace(); }
     clearTimeout(searchTimer); searchTimer = setTimeout(doSearch, 120);
   });
   pq.addEventListener("keydown", (e) => {
@@ -955,10 +968,14 @@ function init() {
   });
   pq.addEventListener("blur", () => setTimeout(hidePlaceResults, 150));
   $("#manual-coords-toggle").addEventListener("change", (e) => { $("#manual-coords").hidden = !e.target.checked; });
-  $("#mc-apply").addEventListener("click", () => {
-    const lat = parseFloat($("#mc-lat").value.replace(",", ".")), lon = parseFloat($("#mc-lon").value.replace(",", "."));
-    if (!(lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180)) { setStatus($("#form-error"), "bad", esc(t("err.coords"))); return; }
-    state.place = { label: $("#mc-label").value.trim() || `${lat.toFixed(4)}, ${lon.toFixed(4)}`, lat, lon, zone: E.zoneFor(lat, lon), source: "MANUAL" };
+  $("#mc-apply").addEventListener("click", async () => {
+    const lang = L.getLang(), lat = parseCoord($("#mc-lat").value, "lat", lang), lon = parseCoord($("#mc-lon").value, "lon", lang);
+    if (lat === null || lon === null) { setStatus($("#form-error"), "bad", esc(t("err.coords"))); return; }
+    let near = null;
+    try { await loadCities(); near = nearestCity(lat, lon); } catch (e) { }
+    state.place = { label: $("#mc-label").value.trim() || `${lat.toFixed(4)}, ${lon.toFixed(4)}`, lat, lon, zone: near ? cityZone(near) : E.zoneFor(lat, lon), source: "MANUAL" };
+    $("#place-q").value = "";
+    setStatus($("#form-error"), "", "");
     showPlace();
   });
   $("#tz").addEventListener("change", () => { if (state.place) state.place.zone = $("#tz").value; });
