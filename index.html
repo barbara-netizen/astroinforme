@@ -510,6 +510,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
           <div id="ts-box" hidden></div>
           <p id="demo-note" class="note warn" hidden data-i18n-html="demo.note"></p>
           <div class="fld" id="demo-which-row" hidden><label for="demo-which" data-i18n="demo.which">Informe a cargar</label><select id="demo-which"></select></div>
+          <div class="note warn no-print" id="terms-box"><p style="margin:0 0 8px;color:inherit"><span data-i18n="terms.text">AsterOrbis es una app homenaje y experimental, hecha por una sola humana: yo, Bárbara Gutiérrez. El informe se genera a medida y se entrega de inmediato: una vez entregado, no admite devolución por arrepentimiento ni por no coincidir con tus expectativas. Si no llega, llega incompleto o se generó con un error de la app, te lo vuelvo a generar o te devuelvo el dinero.</span> <a href="terminos.html" id="terms-link-2" target="_blank" rel="noopener" style="color:inherit" data-i18n="terms.link">Términos de compra</a></p><label class="check" style="color:inherit;align-items:flex-start"><input type="checkbox" id="terms-ok"> <span data-i18n="terms.ok">Quiero recibir el informe de inmediato y acepto que, una vez entregado, no podré pedir la devolución por arrepentimiento.</span></label></div>
           <div class="review-birth no-print" id="review-birth"><p data-i18n="review.h">Revisá tus datos antes de pedir el informe:</p><p class="review-data" id="review-data"></p><button type="button" class="linkbtn" id="btn-review-edit" data-i18n="review.edit">Corregir datos</button></div>
           <button type="button" class="btn big" id="btn-interp" data-i18n="btn.interp">Pedir mi informe</button>
           <p id="interp-status" class="note warn" hidden role="status"></p>
@@ -610,7 +611,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
     <p class="credit"><span data-i18n="footer.credit">Ilustraciones:</span> <a href="https://barbaragutierrez.art" target="_blank" rel="noopener">Bárbara Gutiérrez</a></p>
     <p data-i18n="footer.calc"></p>
     <p data-i18n="footer.conv"></p>
-    <p><a href="privacidad.html" id="privacy-link" data-i18n="footer.privacy">Privacidad</a> · <a href="https://github.com/barbara-netizen/astroinforme" target="_blank" rel="noopener" data-i18n="footer.code">Código fuente</a> · AGPL-3.0</p>
+    <p><a href="privacidad.html" id="privacy-link" data-i18n="footer.privacy">Privacidad</a> · <a href="terminos.html" id="terms-link" data-i18n="terms.link">Términos de compra</a> · <a href="https://github.com/barbara-netizen/astroinforme" target="_blank" rel="noopener" data-i18n="footer.code">Código fuente</a> · AGPL-3.0</p>
   </div>
 </footer>
 <script type="module" src="app.js"></script>

@@ -292,7 +292,7 @@ function render(scroll = false) {
   $("#r-meta").textContent = humanBirth(f);
   $("#review-data").textContent = humanBirth(f);
   // sin hora el informe se puede pedir solo después de aceptar que será más general
-  $("#interp-no-time").hidden = f.prec !== "UNKNOWN"; $("#no-time-ok").checked = false;
+  $("#interp-no-time").hidden = f.prec !== "UNKNOWN"; $("#no-time-ok").checked = false; $("#terms-ok").checked = false;
   const ascSign = chart.houses ? term(E.SIGNS[Math.floor(chart.houses.asc / 30)]) : t("r.noTime");
   $("#r-big3").innerHTML = [
     [term("SUN"), term(by.SUN.sign), chart.houses ? `${H} ${by.SUN.house}` : by.SUN.deg.replace(/\d\d"$/, ""), by.SUN.reliable],
@@ -766,6 +766,9 @@ async function callInterpreter() {
   if (state.last && state.last.f && state.last.f.prec === "UNKNOWN" && !$("#no-time-ok").checked) {
     status.hidden = false; status.textContent = t("i.noTime.required"); $("#no-time-ok").focus(); return;
   }
+  if (!$("#terms-ok").checked) {
+    status.hidden = false; status.textContent = t("terms.required"); $("#terms-ok").focus(); return;
+  }
   // los errores que se detectan antes de enviar se muestran sin abrir la espera
   if (!CONFIG.demo && !publicAccess() && !($("#access-code").value || "").trim()) {
     status.hidden = false; status.textContent = t("i.fail", { msg: t("i.err.code_required") }); $("#access-code").focus(); return;
@@ -863,6 +866,7 @@ function applyLanguage(lang, { remember = true } = {}) {
   if (state.lastReport) renderReport(state.lastReport);
   if (state.lastAudit) renderAudit(state.lastAudit);
   $("#privacy-link").href = "privacidad.html#" + lang;
+  for (const id of ["#terms-link", "#terms-link-2"]) $(id).href = "terminos.html#" + lang;
   document.title = t("app.title");
   try { notify.title = document.title; } catch (e) { } // el aviso de fin restaura este título
   renderDonation();
