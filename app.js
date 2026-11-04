@@ -544,6 +544,7 @@ function renderReport(rep) {
   $("#rep-for").textContent = f && f.first ? t("rep.for", { name: f.first }) : t("rep.forAnon");
   $("#rep-title").textContent = rep.title || t("i.h");
   $("#rep-meta").textContent = f ? humanBirth(f) : "";
+  V.show($("#fig-entry"), "entry_crowd");
   rep.sections.forEach((s, n) => {
     const sec = document.createElement("section");
     sec.className = "rep-sec" + (s.id === "dedication" ? " rep-dedication" : s.id === "myth" ? " rep-myth" : "");
@@ -836,6 +837,7 @@ function pdfData(lang) {
     })),
     closure: state.lastAudit && state.lastAudit.ok ? V.pdfArt("closure_serendipity") : null,
     author: { h: t("author.h"), body: t("author.body"), mother: t("author.mother"), dedication: t("author.dedication"), art: V.pdfArt("author_work") },
+    entry: V.pdfArt("entry_crowd"),
     disclaimer: t("disclaimer"), credit: `${t("footer.credit")} Bárbara Gutiérrez · barbaragutierrez.art`,
     tech: {
       h: t("dl.tech"), aspectsH: t("h.aspects"), prov: provText(f, opt, chart), wheel: $("#rep-wheel-in svg") || $("#wheel svg"), legend: t("wheel.legend"),
