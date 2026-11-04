@@ -304,6 +304,7 @@ function render(scroll = false) {
   $("#r-warn-box").hidden = !warnings.length;
 
   $("#wheel").innerHTML = wheelSVG(chart);
+  $("#rep-wheel-in").innerHTML = wheelSVG(chart);
 
   // posiciones: el movimiento va junto al grado (R, est.) para que la tabla entre en el celular
   const motion = (b) => `${b.retrograde ? `<span class="rx" title="${esc(t("r.rx"))}">R</span>` : ""}${b.stationary ? `<span class="rx" title="${esc(t("r.stTitle"))}">${t("r.st")}</span>` : ""}`;
@@ -824,7 +825,7 @@ function pdfData(lang) {
     author: { h: t("author.h"), body: t("author.body"), mother: t("author.mother"), dedication: t("author.dedication"), art: V.pdfArt("author_work") },
     disclaimer: t("disclaimer"), credit: `${t("footer.credit")} Bárbara Gutiérrez · barbaragutierrez.art`,
     tech: {
-      h: t("dl.tech"), aspectsH: t("h.aspects"), prov: provText(f, opt, chart),
+      h: t("dl.tech"), aspectsH: t("h.aspects"), prov: provText(f, opt, chart), wheel: $("#rep-wheel-in svg") || $("#wheel svg"), legend: t("wheel.legend"),
       angles: houses ? `${term("ASC")} ${E.fmtDeg(chart.houses.asc)} ${term(E.SIGNS[Math.floor(chart.houses.asc / 30)])} · ${term("MC")} ${E.fmtDeg(chart.houses.mc)} ${term(E.SIGNS[Math.floor(chart.houses.mc / 30)])}` : "",
       posHead: houses ? [t("th.point"), t("th.position"), t("th.house")] : [t("th.point"), t("th.position")],
       posWidths: houses ? ["*", 170, 50] : ["*", 200],

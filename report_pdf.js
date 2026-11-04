@@ -56,6 +56,37 @@ const table = (head, rows, widths) => ({
   fontSize: 9.5, margin: [0, 4, 0, 14],
 });
 
+// La rueda se redibuja en un lienzo con los colores del tema claro y las fuentes de glifos ya cargadas en la página.
+async function wheelImage(svg) {
+  const size = 1500, [vx, vy, vw] = svg.getAttribute("viewBox").split(/\s+/).map(Number), k = size / vw;
+  const texts = [...svg.querySelectorAll("text")];
+  const glyphs = (el) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.nodeValue).join("");
+  await Promise.all(texts.map((el) => { const cs = getComputedStyle(el); return document.fonts.load(`${cs.fontSize} ${cs.fontFamily}`, glyphs(el)).catch(() => []); }));
+  const c = document.createElement("canvas"); c.width = c.height = size;
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, size, size);
+  x.setTransform(k, 0, 0, k, -vx * k, -vy * k);
+  const root = document.documentElement, theme = root.getAttribute("data-theme");
+  root.setAttribute("data-theme", "light");
+  try {
+    for (const el of svg.querySelectorAll("circle, line, text")) {
+      const cs = getComputedStyle(el), num = (a) => +el.getAttribute(a);
+      x.globalAlpha = +cs.opacity;
+      if (el.tagName === "text") {
+        x.fillStyle = cs.fill; x.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`; x.textAlign = "center"; x.textBaseline = "middle";
+        x.fillText(glyphs(el), num("x"), num("y"));
+        continue;
+      }
+      x.strokeStyle = cs.stroke; x.lineWidth = parseFloat(cs.strokeWidth) || 1;
+      x.setLineDash(cs.strokeDasharray === "none" ? [] : cs.strokeDasharray.split(/[ ,]+/).map(parseFloat));
+      x.beginPath();
+      if (el.tagName === "circle") x.arc(num("cx"), num("cy"), num("r"), 0, 2 * Math.PI);
+      else { x.moveTo(num("x1"), num("y1")); x.lineTo(num("x2"), num("y2")); }
+      x.stroke();
+    }
+  } finally { if (theme === null) root.removeAttribute("data-theme"); else root.setAttribute("data-theme", theme); }
+  return c.toDataURL("image/jpeg", 0.92);
+}
+
 /** data: ver savePdf en app.js. Devuelve un Blob. */
 export async function makePdf(data) {
   await loadLib();
@@ -87,6 +118,10 @@ export async function makePdf(data) {
   if (data.credit) content.push({ text: data.credit, fontSize: 9.5, color: MUTED });
 
   content.push({ text: data.tech.h, style: "h2", pageBreak: "before" });
+  if (data.tech.wheel) {
+    content.push({ image: await wheelImage(data.tech.wheel), width: 380, alignment: "center", margin: [0, 6, 0, 4] });
+    if (data.tech.legend) content.push({ text: data.tech.legend, style: "caption", alignment: "center", margin: [0, 0, 0, 14] });
+  }
   if (data.tech.angles) content.push({ text: data.tech.angles, style: "meta" });
   content.push(table(data.tech.posHead, data.tech.pos, data.tech.posWidths));
   content.push({ text: data.tech.aspectsH, style: "h3" });

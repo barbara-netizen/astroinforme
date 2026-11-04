@@ -140,6 +140,8 @@ details[open] > summary::after { content: "−"; }
 #wheel { max-width: 460px; width: 100%; margin: 0 auto; }
 .legend { text-align: center; font-size: 0.85rem; color: var(--muted); margin-top: 6px; }
 .wheel-svg { width: 100%; height: auto; display: block; }
+.rep-wheel { margin: 28px auto 0; max-width: 460px; }
+@media print { .rep-wheel { max-width: 12cm; break-inside: avoid; } }
 .w-ring { fill: none; stroke: var(--ink); stroke-width: 0.8; }
 .w-tick { stroke: var(--muted); stroke-width: 0.6; }
 .w-cusp { stroke: var(--line); stroke-width: 0.8; }
@@ -550,6 +552,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
     <details class="rep-index" id="rep-index"><summary id="rep-index-sum" data-i18n="rep.index">Índice</summary><ol id="rep-index-list"></ol></details>
     <div id="report-out"></div>
     <figure id="fig-closure" class="art" hidden></figure>
+    <figure class="rep-wheel" id="rep-wheel"><div id="rep-wheel-in"></div><figcaption class="legend" data-i18n="wheel.legend">Líneas continuas: tensiones. Líneas punteadas: armonías.</figcaption></figure>
     <section class="author" aria-labelledby="h-author-2">
       <div>
         <h2 class="author-h" id="h-author-2" data-i18n="author.h">Quién hace AsterOrbis</h2>
