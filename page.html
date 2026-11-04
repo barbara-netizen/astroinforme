@@ -58,6 +58,7 @@ input:disabled { opacity: 0.45; }
 .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .time-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-width: 0; }
 .time-pair input { width: 100%; box-sizing: border-box; min-width: 0; font-variant-numeric: tabular-nums; }
+#interp-connected.no-time > :not(#interp-no-time) { display: none !important; }
 .field-hint { margin: 0; font-size: 0.85rem; color: var(--muted); }
 .review-birth { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid currentColor; border-left-width: 4px; border-radius: 6px; }
 .review-birth p { margin: 0; }
@@ -412,6 +413,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
           </div>
           <p class="field-hint" id="time-hint" data-i18n="f.time.hint">Formato de 24 horas: las 11 de la noche son 23.</p>
           <label class="check"><input type="checkbox" id="no-time"> <span data-i18n="f.noTime">No sé la hora</span></label>
+          <p class="field-hint" data-i18n="f.noTime.hint">Sin la hora podés ver tu carta, pero no pedir el informe.</p>
           <div class="fld place-box">
             <label for="place-q" data-i18n="f.place">Lugar de nacimiento</label>
             <input id="place-q" autocomplete="off" spellcheck="false" placeholder="Ciudad, país" data-i18n-ph="f.place.ph" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="place-results">
@@ -500,6 +502,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
           <p data-i18n-html="i.missing"></p>
         </div>
         <div id="interp-connected" style="display:grid;gap:14px" hidden>
+          <p id="interp-no-time" class="note warn" hidden data-i18n="i.noTime">El informe necesita la hora de nacimiento. Sin ella no se pueden calcular el Ascendente ni las casas, y por eso no se puede pedir.</p>
           <p id="interp-unavail" class="note warn" hidden data-i18n="i.unavailable"></p>
           <div class="fld" id="code-row" hidden><label for="access-code"><span id="code-label" data-i18n="f.code">Código de acceso</span> <span class="hint" id="code-hint" data-i18n="f.code.hint"></span></label><input id="access-code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX"></div>
           <div class="fld"><label for="gender"><span data-i18n="f.gender">Tratamiento en el informe</span> <span class="hint" data-i18n="f.gender.hint"></span></label>

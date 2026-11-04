@@ -212,6 +212,7 @@ const UI = {
     "Deutungsmodul verbunden. Für den Bericht werden das berechnete Horoskop, der Vorname (falls angegeben) und die gewählte Anrede gesendet, niemals Geburtsdatum, Uhrzeit oder Geburtsort.",
     "Interpretation engine connected. To write the report, the calculated chart, your first name if you entered one and the chosen grammatical gender are sent; never the date, time or place of birth.",
   ],
+  "i.noTime": ["El informe necesita la hora de nacimiento. Sin ella no se pueden calcular el Ascendente ni las casas, y por eso no se puede pedir.", "Der Bericht braucht die Geburtszeit. Ohne sie lassen sich Aszendent und Häuser nicht berechnen, deshalb kann er nicht angefordert werden.", "The report needs the time of birth. Without it the Ascendant and houses cannot be calculated, so it cannot be requested."],
   "i.unavailable": [
     "Por ahora no quedan informes disponibles: ya se usó el cupo de informes del día o del mes. La carta calculada sigue disponible.",
     "Derzeit sind keine Berichte verfügbar: Das Tages- oder Monatskontingent an Berichten ist aufgebraucht. Das berechnete Horoskop bleibt verfügbar.",
@@ -384,6 +385,7 @@ const UI = {
   "review.h": ["Revisá tus datos antes de pedir el informe:", "Prüfe deine Angaben, bevor du den Bericht anforderst:", "Check your details before requesting the report:"],
   "review.edit": ["Corregir datos", "Angaben korrigieren", "Correct details"],
   "f.noTime": ["No sé la hora de nacimiento", "Ich kenne die Geburtszeit nicht", "I don't know the time of birth"],
+  "f.noTime.hint": ["Sin la hora podés ver tu carta, pero no pedir el informe.", "Ohne Uhrzeit kannst du dein Horoskop sehen, aber keinen Bericht anfordern.", "Without the time you can see your chart, but you cannot request the report."],
   "f.more": ["Más opciones: precisión de la hora, zona horaria, coordenadas", "Weitere Optionen: Zeitgenauigkeit, Zeitzone, Koordinaten", "More options: time accuracy, time zone, coordinates"],
   "form.private": ["La fecha, la hora y el lugar no salen de tu dispositivo.", "Datum, Uhrzeit und Ort verlassen dein Gerät nicht.", "The date, time and place never leave your device."],
   "btn.edit": ["Editar datos", "Daten ändern", "Edit details"],

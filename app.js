@@ -291,6 +291,8 @@ function render(scroll = false) {
   $("#r-title").previousElementSibling.hidden = !f.first;
   $("#r-meta").textContent = humanBirth(f);
   $("#review-data").textContent = humanBirth(f);
+  const noTime = f.prec === "UNKNOWN"; // sin hora se muestra la carta, pero el informe no se puede pedir
+  $("#interp-connected").classList.toggle("no-time", noTime); $("#interp-no-time").hidden = !noTime;
   const ascSign = chart.houses ? term(E.SIGNS[Math.floor(chart.houses.asc / 30)]) : t("r.noTime");
   $("#r-big3").innerHTML = [
     [term("SUN"), term(by.SUN.sign), chart.houses ? `${H} ${by.SUN.house}` : by.SUN.deg.replace(/\d\d"$/, ""), by.SUN.reliable],
@@ -760,6 +762,7 @@ function finishProgress(ok) {
 }
 
 async function callInterpreter() {
+  if (state.last && state.last.f && state.last.f.prec === "UNKNOWN") return;
   const btn = $("#btn-interp"), status = $("#interp-status");
   // los errores que se detectan antes de enviar se muestran sin abrir la espera
   if (!CONFIG.demo && !publicAccess() && !($("#access-code").value || "").trim()) {
