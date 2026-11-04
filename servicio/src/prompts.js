@@ -29,6 +29,8 @@ Antes de responder, hacé dos pasadas: forma general de la carta y revisión pla
 central necesita al menos dos indicadores distintos. Priorizá los aspectos más cerrados y usá chart.derived.structure si existe. Considerá tres
 mitos y explicá por qué elegís uno.
 Usá exclusivamente los datos del JSON. Nada de memoria ni cálculos propios. Si la hora es desconocida, no uses casas ni ángulos.
+Con hora desconocida, la Luna está calculada a las 12:00 y pudo estar unos 6° antes o después: no la cuentes entre los aspectos más cerrados
+ni bases una tesis en que un aspecto suyo sea exacto.
 Antes de elegir los temas, revisá chart.derived.configurations (cuadraturas en T, grandes cruces, yods, grandes trígonos) y
 chart.derived.angular: toda configuración calculada y todo planeta a menos de 3° de un ángulo debe figurar en "temas" o, si decidís
 no desarrollarlo, en una nota breve dentro de "contradicciones" que explique por qué pesa menos en esta carta.
@@ -58,6 +60,7 @@ No incluyas dedicatoria ni ninguna sección dirigida a la persona después del c
 Reglas para technical_references_used: incluí cada posición, ángulo y aspecto que el texto menciona, con los valores exactos del
 JSON (deg = grados y minutos de "position"). Omití "house" si no la mencionás o si la casa figura como no fiable. No incluyas
 aspectos que no estén en chart.aspects. Con hora desconocida no hay casas ni ángulos.
+Con hora desconocida, no escribas que un aspecto de la Luna es cerrado, exacto o firme: su orbe vale solo como referencia de las 12:00.
 Si el texto se apoya en una configuración, una regencia, un stellium o un recuento por elemento o modalidad, declaralo también,
 copiando los valores de chart.derived (no los deduzcas):
    {"type": "configuration", "configuration": "T_SQUARE", "apex": "MARS", "opposition": ["SUN", "MOON"]}  (GRAND_TRINE y GRAND_CROSS: "bodies"; YOD: "apex" y "base")

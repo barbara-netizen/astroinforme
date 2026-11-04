@@ -34,7 +34,7 @@ import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION
 import { normalizePayload, normalizeRequestId } from "./validate.js";
 import { ledger } from "./ledger.js";
 
-export const SERVICE_VERSION = "1.9";
+export const SERVICE_VERSION = "1.9.1";
 const DEFAULT_MODEL = "claude-opus-5-5";
 // la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
 const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";

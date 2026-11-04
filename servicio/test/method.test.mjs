@@ -18,4 +18,7 @@ const s = styleCheck({ language: "es", sections: [{ heading: "x", body_markdown:
 assert.equal(s.issues[0].kind, "cliche");
 const refs = normalizeReferences({ technical_references_used: [{ type: "rulership", of: "2", ruler: "VENUS" }, { type: "stellium", by: "HOUSE", where: "4", bodies: [] }, { type: "rulership", of: "ASC", ruler: "MARS" }] }).technical_references_used;
 assert.deepEqual([refs[0].of, refs[1].where, refs[2].of], [2, 4, "ASC"]);
+// con hora desconocida no se afirma la exactitud de los aspectos de la Luna
+assert.ok(PROMPT_ANALISIS("{}").includes("no la cuentes entre los aspectos más cerrados"));
+assert.ok(PROMPT_INFORME({ idioma: IDIOMA.es, lang: "es", nombre: "", tratamiento: TRATAMIENTO.UNSPECIFIED, analisis: "{}", carta: "{}" }).includes("aspecto de la Luna es cerrado"));
 console.log("método 1.9: ok");

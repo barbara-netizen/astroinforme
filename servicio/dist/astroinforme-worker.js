@@ -357,6 +357,8 @@ Antes de responder, hac\xE9 dos pasadas: forma general de la carta y revisi\xF3n
 central necesita al menos dos indicadores distintos. Prioriz\xE1 los aspectos m\xE1s cerrados y us\xE1 chart.derived.structure si existe. Consider\xE1 tres
 mitos y explic\xE1 por qu\xE9 eleg\xEDs uno.
 Us\xE1 exclusivamente los datos del JSON. Nada de memoria ni c\xE1lculos propios. Si la hora es desconocida, no uses casas ni \xE1ngulos.
+Con hora desconocida, la Luna est\xE1 calculada a las 12:00 y pudo estar unos 6\xB0 antes o despu\xE9s: no la cuentes entre los aspectos m\xE1s cerrados
+ni bases una tesis en que un aspecto suyo sea exacto.
 Antes de elegir los temas, revis\xE1 chart.derived.configurations (cuadraturas en T, grandes cruces, yods, grandes tr\xEDgonos) y
 chart.derived.angular: toda configuraci\xF3n calculada y todo planeta a menos de 3\xB0 de un \xE1ngulo debe figurar en "temas" o, si decid\xEDs
 no desarrollarlo, en una nota breve dentro de "contradicciones" que explique por qu\xE9 pesa menos en esta carta.
@@ -387,6 +389,7 @@ No incluyas dedicatoria ni ninguna secci\xF3n dirigida a la persona despu\xE9s d
 Reglas para technical_references_used: inclu\xED cada posici\xF3n, \xE1ngulo y aspecto que el texto menciona, con los valores exactos del
 JSON (deg = grados y minutos de "position"). Omit\xED "house" si no la mencion\xE1s o si la casa figura como no fiable. No incluyas
 aspectos que no est\xE9n en chart.aspects. Con hora desconocida no hay casas ni \xE1ngulos.
+Con hora desconocida, no escribas que un aspecto de la Luna es cerrado, exacto o firme: su orbe vale solo como referencia de las 12:00.
 Si el texto se apoya en una configuraci\xF3n, una regencia, un stellium o un recuento por elemento o modalidad, declaralo tambi\xE9n,
 copiando los valores de chart.derived (no los deduzcas):
    {"type": "configuration", "configuration": "T_SQUARE", "apex": "MARS", "opposition": ["SUN", "MOON"]}  (GRAND_TRINE y GRAND_CROSS: "bodies"; YOD: "apex" y "base")
@@ -759,7 +762,7 @@ function ledger(env, code) {
 }
 
 // src/worker.js
-var SERVICE_VERSION = "1.9";
+var SERVICE_VERSION = "1.9.1";
 var DEFAULT_MODEL = "claude-opus-5-5";
 var DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
 var PRICES = {
