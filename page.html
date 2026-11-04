@@ -278,6 +278,9 @@ body[data-screen="report"] { background: var(--panel); }
 .rep-sec { scroll-margin-top: 64px; display: grid; gap: 14px; padding: 0 0 30px; font-size: 1.06rem; line-height: 1.65; }
 .rep-sec h2 { font-size: clamp(1.45rem, 5.5vw, 1.75rem); line-height: 1.22; }
 .rep-sec .art { margin: 0 calc(-1 * var(--gut)); }
+#fig-entry { margin: 0 calc(-1 * var(--gut)) 22px; }
+#fig-entry img { display: block; width: 100%; height: auto; }
+#fig-entry figcaption { font-size: 0.75rem; color: var(--muted); font-style: italic; padding: 4px var(--gut) 0; }
 .rep-sec .art img, .rep-sec .art video { display: block; width: 100%; height: auto; max-height: 520px; object-fit: cover; }
 .rep-sec .art figcaption { font-size: 0.75rem; color: var(--muted); font-style: italic; padding: 4px var(--gut) 0; }
 .rep-myth { background: var(--bg); margin: 0 calc(-1 * var(--gut)) 30px; padding: 0 var(--gut) 30px; }
@@ -550,6 +553,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
         <span data-i18n="btn.savePdf">Guardar PDF</span></button>
     </aside>
     <details class="rep-index" id="rep-index"><summary id="rep-index-sum" data-i18n="rep.index">Índice</summary><ol id="rep-index-list"></ol></details>
+    <figure id="fig-entry" class="art" hidden></figure>
     <div id="report-out"></div>
     <figure id="fig-closure" class="art" hidden></figure>
     <figure class="rep-wheel" id="rep-wheel"><div id="rep-wheel-in"></div><figcaption class="legend" data-i18n="wheel.legend">Líneas continuas: tensiones. Líneas punteadas: armonías.</figcaption></figure>

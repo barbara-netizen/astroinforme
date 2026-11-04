@@ -91,7 +91,7 @@ async function wheelImage(svg) {
 /** data: ver savePdf en app.js. Devuelve un Blob. */
 export async function makePdf(data) {
   await loadLib();
-  const arts = [...data.sections.map((s) => s.art), data.closure, data.author.art].filter(Boolean);
+  const arts = [data.entry, ...data.sections.map((s) => s.art), data.closure, data.author.art].filter(Boolean);
   const files = [...new Set(arts.map((a) => a.file))];
   const images = {};
   await Promise.all(files.map(async (f) => { images[f] = await imageData(f); }));
@@ -103,6 +103,10 @@ export async function makePdf(data) {
     { text: data.kind, style: "meta", margin: [0, 0, 0, 6] },
     { canvas: [{ type: "line", x1: 0, y1: 0, x2: W, y2: 0, lineWidth: 0.6, lineColor: LINE }], margin: [0, 2, 0, 2] },
   ];
+  if (data.entry) {
+    const [w, h] = data.entry.size, scale = W / w;
+    content.push({ image: images[data.entry.file], width: W, height: h * scale, margin: [0, 8, 0, 4] }, { text: data.entry.caption, style: "caption" });
+  }
   data.sections.forEach((s) => {
     if (s.art) {
       const [first, ...rest] = s.paragraphs;

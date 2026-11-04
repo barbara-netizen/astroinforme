@@ -52,7 +52,7 @@ Obra de Bárbara Gutiérrez (https://barbaragutierrez.art), integrada según las
 | Generación del informe | «Lectora», mientras espera (solo con motor interpretativo conectado) |
 | Informe terminado | «Serendipia florida», solo si la auditoría del informe da bien (ídem) |
 
-- Ilustraciones por sección del informe (`SECTION_ART` en `visuals.js`): apertura «Derivas», identidad «In Richtung Zukunft», mundo emocional «Desmadre», Saturno «Glamur Atado con Alambre», deseo «En el Living», vínculos «Aquellos años», raíces «El año del Conejo», Neptuno «Nadadoras», sombra «Fiesta», transformación «Levitar», mito «Guardián del Universo».
+- Ilustraciones por sección del informe (`SECTION_ART` en `visuals.js`): apertura «Derivas», identidad «In Richtung Zukunft», mundo emocional «Desmadre», Saturno «Glamur Atado con Alambre», deseo «En el Living», vínculos «Aquellos años», raíces «El año del Conejo», Neptuno «Nadadoras», conflicto central «El circo va por dentro», vocación «Neuronas trabajando», recursos «La divorciada», sombra «Fiesta», transformación «Levitar», mito «Guardián del Universo».
 - «Serendipia florida» aparece solo si la auditoría técnica no encuentra discrepancias.
 - «Familia Puzzle» excluida por decisión de la autora. «As de Espadas» y «Fondo florido» no se incluyen.
 - Animaciones: WebM (VP9) recodificado desde el MP4 original, con el MP4 como alternativa; si ninguna se reproduce queda el fotograma fijo. Silenciadas, se pausan con la pestaña oculta.

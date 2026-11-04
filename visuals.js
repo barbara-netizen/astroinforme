@@ -22,6 +22,10 @@ const A = {
   closure_serendipity: { type: "image", file: "assets/18-cierre-serendipia-florida.jpg", title: "Serendipia florida", size: [638, 374], fit: "cover", focal: "50% 50%" },
   desire_living: { type: "image", file: "assets/19-deseo-en-el-living.jpg", title: "En el Living", size: [700, 700], fit: "contain", focal: "50% 50%" },
   shadow_party: { type: "image", file: "assets/20-sombra-fiesta.jpg", title: "Fiesta", size: [1210, 629], fit: "cover", focal: "50% 50%" },
+  entry_crowd: { type: "image", file: "assets/21-entrada-nadie-sabe-lo-que-vendra.jpg", title: "Nadie sabe lo que vendrá", size: [720, 670], fit: "contain", focal: "50% 50%" },
+  conflict_circus: { type: "image", file: "assets/22-conflicto-el-circo-va-por-dentro.jpg", title: "El circo va por dentro (fragmento)", size: [516, 720], fit: "contain", focal: "50% 50%" },
+  vocation_neurons: { type: "image", file: "assets/23-vocacion-neuronas-trabajando.jpg", title: "Neuronas trabajando", size: [963, 923], fit: "contain", focal: "50% 50%" },
+  resources_divorced: { type: "image", file: "assets/24-recursos-la-divorciada.jpg", title: "La divorciada", size: [734, 919], fit: "contain", focal: "50% 50%" },
   boundaries_wire: { type: "image", file: "assets/07-limites-glamur-alambre.jpg", title: "Glamur Atado con Alambre", size: [720, 556], fit: "cover", focal: "50% 50%" },
   brand_guardian: { type: "image", file: "assets/02-marca-guardian-del-universo.jpg", title: "Guardián del Universo", size: [604, 460], fit: "contain", focal: "50% 35%" },
   author_work: { type: "image", file: "assets/11-autoria-mary-playa-union.jpg", title: "Mary en Playa Unión", size: [1600, 798], fit: "contain", focal: "50% 50%" },
@@ -33,7 +37,7 @@ const A = {
 // Dentro del informe las animaciones se reproducen una vez y quedan en su fotograma fijo.
 export const SECTION_ART = {
   opening: "opening_derivas", identity: "identity_future", emotional: "emotional_desmadre", saturn: "boundaries_wire",
-  desire: "desire_living", shadow: "shadow_party", relationships: "relationships_years", roots: "roots_rabbit_year", neptune: "emotional_swimmers",
+  desire: "desire_living", shadow: "shadow_party", central_conflict: "conflict_circus", vocation: "vocation_neurons", resources: "resources_divorced", relationships: "relationships_years", roots: "roots_rabbit_year", neptune: "emotional_swimmers",
   transformation: "hero_levitar", myth: "brand_guardian",
 };
 
