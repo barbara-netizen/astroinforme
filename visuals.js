@@ -35,6 +35,12 @@ export const SECTION_ART = {
   transformation: "hero_levitar", myth: "brand_guardian",
 };
 
+/** Datos de una pieza para el PDF (de las animaciones, su fotograma fijo). */
+export function pdfArt(id) {
+  const a = A[id]; if (!a) return null;
+  return { file: a.type === "video" ? a.poster : a.file, size: a.size, caption: `${AUTHOR}, «${a.title}»` };
+}
+
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
 const playing = new Set();
 const base = new URL(".", import.meta.url);

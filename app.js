@@ -788,7 +788,7 @@ async function callInterpreter() {
     clearInterval(notify.timer);
     renderReport(rep);
     renderAudit(audit);
-    $("#sample-note").hidden = true; $("#save-now").hidden = false; state.sample = false;
+    $("#sample-note").hidden = true; $("#save-now").hidden = false; state.sample = false; state.pdfSaved = false;
     V.clear($("#fig-closure"));
     if (audit.ok) V.show($("#fig-closure"), "closure_serendipity");
     const rs = $("#report-status");
@@ -810,6 +810,48 @@ async function callInterpreter() {
 
 // ---------- guardar: imprimir o descargar ----------
 function printSheet() { document.querySelectorAll(".more-tech").forEach((d) => { d.dataset.was = d.open ? "1" : ""; d.open = true; }); window.print(); }
+
+// PDF real del informe, descargado al equipo. La carta sola (sin informe) sigue yendo por impresión, que incluye la rueda.
+function pdfData(lang) {
+  const { f, opt } = state.last, chart = state.chart, rep = state.lastReport;
+  const houses = !!chart.houses;
+  return {
+    lang, title: rep.title || (f.first ? t("r.titleNamed", { name: f.first }) : t("r.title")), meta: humanBirth(f),
+    sections: rep.sections.filter((s) => s.id !== "dedication").map((s) => ({
+      heading: s.heading, paragraphs: String(s.body_markdown).split(/\n{2,}/).filter(Boolean), art: V.SECTION_ART[s.id] ? V.pdfArt(V.SECTION_ART[s.id]) : null,
+    })),
+    closure: state.lastAudit && state.lastAudit.ok ? V.pdfArt("closure_serendipity") : null,
+    author: { h: t("author.h"), body: t("author.body"), mother: t("author.mother"), dedication: t("author.dedication"), art: V.pdfArt("author_work") },
+    disclaimer: t("disclaimer"), credit: `${t("footer.credit")} Bárbara Gutiérrez · barbaragutierrez.art`,
+    tech: {
+      h: t("dl.tech"), aspectsH: t("h.aspects"), prov: provText(f, opt, chart),
+      angles: houses ? `${term("ASC")} ${E.fmtDeg(chart.houses.asc)} ${term(E.SIGNS[Math.floor(chart.houses.asc / 30)])} · ${term("MC")} ${E.fmtDeg(chart.houses.mc)} ${term(E.SIGNS[Math.floor(chart.houses.mc / 30)])}` : "",
+      posHead: houses ? [t("th.point"), t("th.position"), t("th.house")] : [t("th.point"), t("th.position")],
+      posWidths: houses ? ["*", 170, 50] : ["*", 200],
+      pos: chart.bodies.map((b) => { const r = [nm(b.id), `${b.deg} ${term(b.sign)}${b.retrograde ? " R" : ""}`]; if (houses) r.push(ROMAN[b.house]); return r; }),
+      aspHead: [t("th.aspect"), t("th.orb")], asp: chart.aspects.map((a) => [`${nm(a.a)} ${term(a.aspect)} ${nm(a.b)}`, `${a.orb.toFixed(2)}°`]),
+    },
+  };
+}
+async function savePdf(e) {
+  const rep = state.lastReport;
+  if (!rep || !state.chart || !state.last) return printSheet();
+  const btn = e.currentTarget, label = btn.querySelector("span") || btn, was = label.textContent;
+  btn.disabled = true; label.textContent = t("pdf.busy");
+  const ui = L.getLang(), lang = L.LANGS.includes(rep.language) ? rep.language : ui;
+  try {
+    L.setLang(lang); const data = pdfData(lang); L.setLang(ui);
+    const { makePdf } = await import("./report_pdf.js");
+    const blob = await makePdf(data);
+    const a = document.createElement("a");
+    const slug = (state.last.f.first || "informe").normalize("NFD").replace(/\p{M}/gu, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "informe";
+    a.href = URL.createObjectURL(blob); a.download = `asterorbis-${slug}.pdf`;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    state.pdfSaved = true;
+  } catch (err) { L.setLang(ui); console.error(err); printSheet(); }
+  finally { btn.disabled = false; label.textContent = was; }
+}
 
 // La descarga se arma entera en el idioma del informe (si no hay informe, en el de la interfaz), aunque la interfaz
 // esté en otro: así no quedan títulos en un idioma y texto en otro.
@@ -974,11 +1016,13 @@ function init() {
   $("#birth-form").addEventListener("submit", (e) => { e.preventDefault(); $("#ambig").hidden = true; calculate(); });
   $("#btn-copy-json").addEventListener("click", (e) => copyText(JSON.stringify(state.payload, null, 2), e.currentTarget));
   $("#btn-interp").addEventListener("click", callInterpreter);
-  $("#btn-print").addEventListener("click", printSheet);
-  $("#btn-print-2").addEventListener("click", printSheet);
-  $("#btn-print-3").addEventListener("click", printSheet);
+  $("#btn-print").addEventListener("click", savePdf);
+  $("#btn-print-2").addEventListener("click", savePdf);
+  $("#btn-print-3").addEventListener("click", savePdf);
   $("#btn-print-chart").addEventListener("click", printSheet);
   $("#btn-edit").addEventListener("click", () => setScreen("form"));
+  // aviso al salir si hay un informe sin guardar (no aplica a la muestra)
+  window.addEventListener("beforeunload", (e) => { if (state.lastReport && !state.sample && !state.pdfSaved) { e.preventDefault(); e.returnValue = ""; } });
   $("#btn-review-edit").addEventListener("click", () => setScreen("form"));
   // hora y minutos: solo dígitos; al completar la hora, el cursor pasa a los minutos
   for (const id of ["#bhour", "#bmin"]) $(id).addEventListener("input", (e) => { e.target.value = e.target.value.replace(/\D/g, ""); });
