@@ -25,7 +25,7 @@ const A = {
   entry_crowd: { type: "image", file: "assets/21-entrada-nadie-sabe-lo-que-vendra.jpg", title: "Nadie sabe lo que vendrá", size: [720, 670], fit: "contain", focal: "50% 50%" },
   conflict_circus: { type: "image", file: "assets/22-conflicto-el-circo-va-por-dentro.jpg", title: "El circo va por dentro (fragmento)", size: [516, 720], fit: "contain", focal: "50% 50%" },
   vocation_neurons: { type: "image", file: "assets/23-vocacion-neuronas-trabajando.jpg", title: "Neuronas trabajando", size: [963, 923], fit: "contain", focal: "50% 50%" },
-  resources_divorced: { type: "image", file: "assets/24-recursos-la-divorciada.jpg", title: "La divorciada", size: [734, 919], fit: "contain", focal: "50% 50%" },
+  resources_divorced: { type: "image", file: "assets/24-recursos-kokoon.jpg", title: "Kokoon", size: [734, 919], fit: "contain", focal: "50% 50%" },
   boundaries_wire: { type: "image", file: "assets/07-limites-glamur-alambre.jpg", title: "Glamur Atado con Alambre", size: [720, 556], fit: "cover", focal: "50% 50%" },
   brand_guardian: { type: "image", file: "assets/02-marca-guardian-del-universo.jpg", title: "Guardián del Universo", size: [604, 460], fit: "contain", focal: "50% 35%" },
   author_work: { type: "image", file: "assets/11-autoria-mary-playa-union.jpg", title: "Mary en Playa Unión", size: [1600, 798], fit: "contain", focal: "50% 50%" },
