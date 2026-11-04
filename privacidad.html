@@ -35,19 +35,19 @@ section[lang].on { display: block; }
 
   <section lang="es">
     <h1>Privacidad</h1>
-    <p class="date">Actualizado el 2 de noviembre de 2026</p>
+    <p class="date">Actualizado el 4 de noviembre de 2026</p>
 
     <h2>Quién es responsable</h2>
     <p>AsterOrbis es un proyecto personal de Bárbara Gutiérrez, Buenos Aires, Argentina. Contacto: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
 
     <h2>El cálculo de la carta</h2>
-    <p>El nombre, la fecha, la hora y el lugar de nacimiento se procesan solamente en tu dispositivo. La página descarga una vez el programa de cálculo, las efemérides y la lista de ciudades; tus datos no viajan a ningún servidor para calcular la carta.</p>
+    <p>La carta se calcula en tu dispositivo. La página descarga una vez el programa de cálculo, las efemérides y la lista de ciudades. El nombre, la fecha, la hora y el lugar no viajan a ningún servidor para calcular la carta. Solo si pedís el informe se envían los datos que se detallan más abajo.</p>
 
     <h2>Alojamiento de la página</h2>
-    <p>La página está alojada en GitHub Pages (GitHub, Inc., Estados Unidos). Al abrirla, GitHub registra la dirección IP de quien la visita por razones de seguridad. Las tipografías y las ilustraciones se sirven desde el mismo sitio. AsterOrbis no usa cookies propias, herramientas de analítica ni publicidad.</p>
+    <p>La página está alojada en GitHub Pages (GitHub, Inc., Estados Unidos). Al abrirla, GitHub registra la dirección IP de quien la visita por razones de seguridad. El dominio se administra en Cloudflare, que puede procesar datos técnicos de las visitas. Al abrir la página, además, tu navegador consulta el servicio de AsterOrbis en Cloudflare para saber si está disponible, y esa consulta incluye tu dirección IP. Las tipografías y las ilustraciones se sirven desde el mismo sitio. AsterOrbis no usa cookies propias, herramientas de analítica ni publicidad.</p>
 
     <h2>Lo que se guarda en tu navegador</h2>
-    <p>El idioma elegido y, si cargaste uno, el código de acceso se guardan en el almacenamiento local de tu navegador para la próxima visita. Cuando pedís un informe se guarda además un identificador aleatorio del pedido, con un resumen criptográfico de la carta enviada, para poder recuperar el informe si la respuesta no llega; se borra al recibir el informe y, si no llega, se reemplaza en el pedido siguiente. Podés borrar todo eliminando los datos de este sitio en tu navegador.</p>
+    <p>El idioma elegido y, si cargaste uno, el código de acceso se guardan en el almacenamiento local de tu navegador para la próxima visita. Cuando pedís un informe se guardan además un identificador aleatorio del pedido, el código, la hora del pedido y un resumen criptográfico de la carta enviada, para poder recuperar el informe si la respuesta no llega; se borran al recibir el informe y, si no llega, se reemplazan en el pedido siguiente. La aplicación también usa el almacenamiento de sesión, que el navegador borra al cerrar la pestaña. Podés borrar todo eliminando los datos de este sitio en tu navegador.</p>
 
     <h2>Si pedís el informe escrito</h2>
     <p>El informe lo redacta un modelo de lenguaje. Para eso, la página envía a un servicio propio de AsterOrbis, alojado en Cloudflare Workers (Cloudflare, Inc., Estados Unidos):</p>
@@ -56,25 +56,22 @@ section[lang].on { display: block; }
       <li>el idioma del informe y el tratamiento gramatical elegido;</li>
       <li>el nombre de pila, solo si lo cargaste.</li>
     </ul>
-    <p><strong>La fecha, la hora y el lugar de nacimiento no salen de tu dispositivo.</strong> El servicio envía a la API de Claude (Anthropic, PBC, Estados Unidos) únicamente la carta calculada —posiciones, casas, aspectos y precisión declarada—, el idioma, el tratamiento gramatical elegido y, si fue cargado, el nombre de pila, y te devuelve el informe. Según sus condiciones vigentes, Anthropic no usa por defecto los datos de la API para entrenar sus modelos y los borra dentro de los 30 días, salvo excepciones legales o de seguridad descritas en su <a href="https://privacy.claude.com/" target="_blank" rel="noopener">centro de privacidad</a>.</p>
-    <p>Mientras se escribe el informe, el servicio conserva el pedido (la carta, el idioma, el tratamiento y el nombre de pila) para poder terminarlo aunque se corte la conexión. Ese registro se borra 48 horas después de cerrado el pedido, se haya entregado o no el informe.</p>
-    <p>Además, el servicio guarda durante 90 días un registro técnico de cada pedido, sin la carta ni el nombre: fecha, modelo, idioma, costo estimado, resultado y el código usado. Sirve para controlar el gasto y atender reclamos. También guarda totales de uso del mes, sin datos personales.</p>
+    <p><strong>No se envían la fecha, la hora ni el lugar de nacimiento como tales, pero la carta contiene posiciones exactas, y a partir de ellas pueden deducirse esos datos con mucha aproximación.</strong> Por eso, si pedís el informe, conviene entenderlo como un envío de tus datos natales. El servicio pasa la carta, el idioma, el tratamiento y, si fue cargado, el nombre de pila a la API de Claude (Anthropic, PBC, Estados Unidos), que redacta el informe. Según sus condiciones vigentes, Anthropic no usa por defecto los datos de la API para entrenar sus modelos y los borra dentro de los 30 días, salvo excepciones legales o de seguridad descritas en su <a href="https://privacy.claude.com/" target="_blank" rel="noopener">centro de privacidad</a>.</p>
+    <p>Mientras se escribe el informe, el servicio conserva el pedido —la carta, el idioma, el tratamiento, el nombre de pila y el código— para poder terminarlo aunque se corte la conexión. Una vez cerrado, ese pedido y su resultado se conservan 48 horas y luego se borran, se haya entregado o no el informe.</p>
+    <p>Además, el servicio guarda durante 90 días un registro técnico de cada pedido, sin la carta ni el nombre: fecha, modelo, idioma, costo estimado, resultado, avisos técnicos y el código usado. Sirve para controlar el gasto y atender reclamos. También guarda, sin vencimiento, los totales de uso del mes y cuántos informes y comentarios lleva cada código.</p>
     <p>Para frenar abusos, la cantidad de pedidos por minuto se cuenta por código o, si un pedido llega sin código, por un seudónimo de tu dirección IP calculado con una clave secreta; ese conteo dura minutos y no se guarda. Si en algún momento la app funcionara sin código de acceso, para limitar los informes por persona el servicio guardaría ese seudónimo durante dos días; nunca la dirección misma, que no se puede obtener del seudónimo sin la clave.</p>
 
     <h2>Verificación anti-robots</h2>
     <p>Si la página muestra una verificación de Cloudflare Turnstile, Cloudflare procesa datos técnicos de tu navegador y tu dirección IP para distinguir personas de programas automáticos. Más información en el <a href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noopener">anexo de privacidad de Turnstile</a>.</p>
 
     <h2>Copia del informe durante 48 horas</h2>
-    <p>Cuando generás un informe con un código, el servicio guarda una copia durante 48 horas, asociada solo a ese código, a un identificador aleatorio del pedido y a una huella criptográfica de los datos del pedido, para que puedas recuperarlo si se perdió antes de llegar a tu pantalla (por ejemplo, si bloqueaste el teléfono). La huella permite reconocer un nuevo pedido de la misma carta sin guardar la carta. Pasado ese plazo, la copia se borra sola. No incluye tu fecha, hora ni lugar de nacimiento, y nadie la lee.</p>
+    <p>Cuando generás un informe con un código, el servicio guarda una copia durante 48 horas, junto con ese código, un identificador aleatorio del pedido y una huella criptográfica de los datos del pedido, para que puedas recuperarlo si se perdió antes de llegar a tu pantalla (por ejemplo, si bloqueaste el teléfono). Pasado ese plazo, la copia se borra sola. La copia incluye el texto del informe, que puede llevar tu nombre de pila y posiciones de tu carta. No se revisan los informes como parte del funcionamiento habitual; quien administra AsterOrbis tiene acceso técnico al servicio y solo lo usaría para resolver un problema o un reclamo.</p>
 
-    <h2>Comentarios sobre el informe (versión piloto)</h2>
-    <p>Si dejás un comentario al final del informe, se guarda en el servicio interpretativo (Cloudflare) junto con tu código de acceso, la fecha y el título del informe, para que quien administra AsterOrbis pueda leerlo. No se guardan tus datos de nacimiento, y el comentario no se publica. Podés pedir que se borre escribiendo a la dirección de contacto.</p>
-
-    <h2>Aportes voluntarios</h2>
-    <p>Si hacés un aporte, el pago se realiza en Mercado Pago, que trata tus datos según su propia política de privacidad. Esta página no recibe ni guarda datos de pago. Quien administra AsterOrbis ve en su cuenta de Mercado Pago los datos que esa plataforma informa a quien cobra.</p>
+    <h2>Comentarios sobre el informe</h2>
+    <p>Si dejás un comentario al final del informe, se guarda en el servicio (Cloudflare) junto con tu código de acceso, la fecha y el título del informe, que puede incluir tu nombre de pila, para que quien administra AsterOrbis pueda leerlo. El comentario no se publica y se conserva hasta que pidas borrarlo, escribiendo a la dirección de contacto.</p>
 
     <h2>Tus derechos</h2>
-    <p>AsterOrbis no guarda datos de nacimiento asociados a tu persona; los informes generados con código se conservan solo 48 horas. Si querés consultar algo sobre tus datos, escribí al contacto indicado arriba. Si vivís en la Unión Europea, también podés presentar una reclamación ante la autoridad de protección de datos de tu país.</p>
+    <p>Podés pedir información sobre tus datos, corregirlos o solicitar que se borren escribiendo al contacto indicado arriba. Los pedidos y las copias de los informes se borran solos a las 48 horas, y los registros técnicos a los 90 días. Si vivís en la Unión Europea, también podés presentar una reclamación ante la autoridad de protección de datos de tu país.</p>
 
     <h2>Alcance del informe</h2>
     <p>Informe digital personalizado de astrología psicológica, generado automáticamente a partir de la carta calculada. Es una obra interpretativa de carácter artístico y simbólico, pensada para la reflexión y el entretenimiento; no es una consulta personal. La astrología que usa es no predictiva: el informe no hace predicciones. No es un diagnóstico ni una evaluación psicológica, no brinda asesoramiento médico, financiero, legal ni profesional, y no reemplaza la atención psicológica o médica.</p>
@@ -82,19 +79,19 @@ section[lang].on { display: block; }
 
   <section lang="de">
     <h1>Datenschutz</h1>
-    <p class="date">Stand: 2. November 2026</p>
+    <p class="date">Aktualisiert am 4. November 2026</p>
 
     <h2>Verantwortlich</h2>
     <p>AsterOrbis ist ein privates Projekt von Bárbara Gutiérrez, Buenos Aires, Argentinien. Kontakt: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
 
     <h2>Berechnung des Horoskops</h2>
-    <p>Name, Geburtsdatum, Uhrzeit und Geburtsort werden ausschließlich auf deinem Gerät verarbeitet. Die Seite lädt einmalig das Rechenprogramm, die Ephemeriden und die Ortsliste herunter; für die Berechnung werden deine Daten an keinen Server gesendet.</p>
+    <p>Das Horoskop wird auf deinem Gerät berechnet. Die Seite lädt einmalig das Berechnungsprogramm, die Ephemeriden und die Ortsliste. Name, Datum, Uhrzeit und Ort werden für die Berechnung an keinen Server übertragen. Nur wenn du den Bericht anforderst, werden die unten genannten Daten gesendet.</p>
 
     <h2>Hosting</h2>
-    <p>Die Seite wird über GitHub Pages bereitgestellt (GitHub, Inc., USA). Beim Aufruf speichert GitHub aus Sicherheitsgründen die IP-Adresse. Schriften und Illustrationen werden von derselben Website geladen. AsterOrbis verwendet keine eigenen Cookies, keine Analysewerkzeuge und keine Werbung.</p>
+    <p>Die Seite wird bei GitHub Pages gehostet (GitHub, Inc., USA). Beim Aufruf speichert GitHub aus Sicherheitsgründen die IP-Adresse. Die Domain wird bei Cloudflare verwaltet, das technische Daten der Besuche verarbeiten kann. Außerdem fragt dein Browser beim Öffnen den AsterOrbis-Dienst bei Cloudflare ab, ob er verfügbar ist; diese Anfrage enthält deine IP-Adresse. Schriften und Illustrationen kommen von derselben Website. AsterOrbis verwendet keine eigenen Cookies, keine Analysewerkzeuge und keine Werbung.</p>
 
     <h2>Was in deinem Browser gespeichert wird</h2>
-    <p>Die gewählte Sprache und, falls du einen eingegeben hast, der Zugangscode werden im lokalen Speicher deines Browsers für den nächsten Besuch gespeichert. Wenn du einen Bericht anforderst, wird außerdem eine zufällige Kennung der Anfrage mit einem kryptografischen Hashwert des gesendeten Horoskops gespeichert, damit der Bericht wiederhergestellt werden kann, falls die Antwort nicht ankommt; sie wird beim Empfang des Berichts gelöscht und sonst bei der nächsten Anfrage ersetzt. Du kannst alles löschen, indem du die Websitedaten in deinem Browser entfernst.</p>
+    <p>Die gewählte Sprache und, falls eingegeben, der Zugangscode werden für den nächsten Besuch im lokalen Speicher deines Browsers abgelegt. Wenn du einen Bericht anforderst, werden außerdem eine zufällige Auftragskennung, der Code, die Uhrzeit des Auftrags und ein kryptografischer Hash des gesendeten Horoskops gespeichert, damit der Bericht wiederhergestellt werden kann, falls die Antwort nicht ankommt; sie werden beim Empfang des Berichts gelöscht und sonst beim nächsten Auftrag ersetzt. Die App nutzt auch den Sitzungsspeicher, den der Browser beim Schließen des Tabs löscht. Du kannst alles löschen, indem du die Daten dieser Website im Browser entfernst.</p>
 
     <h2>Wenn du den schriftlichen Bericht anforderst</h2>
     <p>Den Bericht verfasst ein Sprachmodell. Dafür sendet die Seite an einen eigenen AsterOrbis-Dienst bei Cloudflare Workers (Cloudflare, Inc., USA):</p>
@@ -103,25 +100,22 @@ section[lang].on { display: block; }
       <li>die Sprache des Berichts und die gewählte grammatische Form;</li>
       <li>den Vornamen, nur wenn du ihn eingegeben hast.</li>
     </ul>
-    <p><strong>Geburtsdatum, Uhrzeit und Geburtsort verlassen dein Gerät nicht.</strong> Der Dienst sendet an die Claude-API (Anthropic, PBC, USA) ausschließlich das berechnete Horoskop – Positionen, Häuser, Aspekte und angegebene Genauigkeit –, die Sprache, die gewählte grammatische Form und, falls eingegeben, den Vornamen, und gibt dir den Bericht zurück. Nach den derzeitigen Bedingungen verwendet Anthropic API-Daten standardmäßig nicht zum Training seiner Modelle und löscht sie innerhalb von 30 Tagen, mit den rechtlichen und sicherheitsbezogenen Ausnahmen, die im <a href="https://privacy.claude.com/" target="_blank" rel="noopener">Datenschutzcenter</a> beschrieben sind.</p>
-    <p>Während der Bericht geschrieben wird, bewahrt der Dienst die Anfrage (Horoskop, Sprache, grammatische Form und Vorname) auf, damit er sie auch bei abgebrochener Verbindung abschließen kann. Dieser Eintrag wird 48 Stunden nach Abschluss der Anfrage gelöscht, unabhängig davon, ob der Bericht zugestellt wurde.</p>
-    <p>Außerdem speichert der Dienst 90 Tage lang ein technisches Protokoll jeder Anfrage, ohne Horoskop und Namen: Datum, Modell, Sprache, geschätzte Kosten, Ergebnis und den verwendeten Code. Es dient der Kostenkontrolle und der Bearbeitung von Beschwerden. Dazu kommen monatliche Nutzungssummen ohne personenbezogene Daten.</p>
+    <p><strong>Geburtsdatum, Uhrzeit und Geburtsort werden nicht als solche gesendet, aber das Horoskop enthält genaue Positionen, aus denen sich diese Daten sehr annähernd ableiten lassen.</strong> Wenn du den Bericht anforderst, solltest du das daher als Übermittlung deiner Geburtsdaten verstehen. Der Dienst leitet Horoskop, Sprache, Anrede und, falls eingegeben, den Vornamen an die Claude-API (Anthropic, PBC, USA) weiter, die den Bericht verfasst. Nach ihren aktuellen Bedingungen nutzt Anthropic API-Daten standardmäßig nicht zum Training ihrer Modelle und löscht sie innerhalb von 30 Tagen, abgesehen von rechtlichen oder sicherheitsbezogenen Ausnahmen, die in ihrem <a href="https://privacy.claude.com/" target="_blank" rel="noopener">Datenschutzzentrum</a> beschrieben sind.</p>
+    <p>Während der Bericht geschrieben wird, bewahrt der Dienst den Auftrag auf — Horoskop, Sprache, Anrede, Vorname und Code —, damit er auch bei abgebrochener Verbindung fertiggestellt werden kann. Nach Abschluss bleiben der Auftrag und sein Ergebnis 48 Stunden gespeichert und werden dann gelöscht, unabhängig davon, ob der Bericht zugestellt wurde.</p>
+    <p>Außerdem speichert der Dienst 90 Tage lang ein technisches Protokoll jedes Auftrags, ohne Horoskop und Namen: Datum, Modell, Sprache, geschätzte Kosten, Ergebnis, technische Hinweise und den verwendeten Code. Es dient der Kostenkontrolle und der Bearbeitung von Beschwerden. Unbefristet gespeichert werden die monatlichen Nutzungssummen und die Zahl der Berichte und Kommentare pro Code.</p>
     <p>Zum Schutz vor Missbrauch wird die Zahl der Anfragen pro Minute je Code gezählt oder, wenn eine Anfrage ohne Code eintrifft, je Pseudonym deiner IP-Adresse, das mit einem geheimen Schlüssel gebildet wird; diese Zählung dauert Minuten und wird nicht gespeichert. Sollte die App einmal ohne Zugangscode funktionieren, würde der Dienst dieses Pseudonym zwei Tage lang speichern, um die Berichte pro Person zu begrenzen; nie die Adresse selbst, die sich ohne den Schlüssel nicht aus dem Pseudonym ermitteln lässt.</p>
 
     <h2>Schutz vor automatisierten Zugriffen</h2>
     <p>Wenn die Seite eine Prüfung mit Cloudflare Turnstile anzeigt, verarbeitet Cloudflare technische Daten deines Browsers und deine IP-Adresse, um Menschen von automatisierten Programmen zu unterscheiden. Mehr dazu im <a href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noopener">Turnstile-Datenschutzanhang</a>.</p>
 
     <h2>Kopie des Berichts für 48 Stunden</h2>
-    <p>Wenn du mit einem Code einen Bericht erstellst, speichert der Dienst 48 Stunden lang eine Kopie, nur mit diesem Code, einer zufälligen Kennung der Anfrage und einem kryptografischen Fingerabdruck der Anfragedaten verknüpft, damit du ihn wiederherstellen kannst, falls er nicht auf deinem Bildschirm angekommen ist. Der Fingerabdruck erlaubt es, eine neue Anfrage zum selben Horoskop zu erkennen, ohne das Horoskop zu speichern. Danach wird die Kopie automatisch gelöscht. Sie enthält keine Geburtsdaten und wird von niemandem gelesen.</p>
+    <p>Wenn du einen Bericht mit einem Code erstellst, speichert der Dienst 48 Stunden lang eine Kopie zusammen mit diesem Code, einer zufälligen Auftragskennung und einem kryptografischen Fingerabdruck der Auftragsdaten, damit du ihn wiederherstellen kannst, falls er vor der Anzeige verloren ging (zum Beispiel, wenn du das Telefon gesperrt hast). Danach wird die Kopie automatisch gelöscht. Sie enthält den Text des Berichts, der deinen Vornamen und Positionen deines Horoskops enthalten kann. Berichte werden im normalen Betrieb nicht gelesen; wer AsterOrbis betreibt, hat technischen Zugang zum Dienst und würde ihn nur zur Lösung eines Problems oder einer Beschwerde nutzen.</p>
 
-    <h2>Kommentare zum Bericht (Pilotversion)</h2>
-    <p>Wenn du am Ende des Berichts einen Kommentar hinterlässt, wird er im Deutungsdienst (Cloudflare) mit deinem Zugangscode, dem Datum und dem Titel des Berichts gespeichert, damit die Betreiberin ihn lesen kann. Geburtsdaten werden nicht gespeichert, der Kommentar wird nicht veröffentlicht. Löschung auf Anfrage an die Kontaktadresse.</p>
-
-    <h2>Freiwillige Beiträge</h2>
-    <p>Wenn du etwas beisteuerst, erfolgt die Zahlung bei Mercado Pago, das deine Daten nach eigener Datenschutzerklärung verarbeitet. Diese Seite erhält und speichert keine Zahlungsdaten. Die Betreiberin sieht in ihrem Mercado-Pago-Konto die Angaben, die die Plattform an Zahlungsempfänger weitergibt.</p>
+    <h2>Kommentare zum Bericht</h2>
+    <p>Wenn du am Ende des Berichts einen Kommentar hinterlässt, wird er im Dienst (Cloudflare) zusammen mit deinem Zugangscode, dem Datum und dem Titel des Berichts gespeichert, der deinen Vornamen enthalten kann, damit die Betreiberin von AsterOrbis ihn lesen kann. Der Kommentar wird nicht veröffentlicht und bleibt gespeichert, bis du seine Löschung über die Kontaktadresse verlangst.</p>
 
     <h2>Deine Rechte</h2>
-    <p>AsterOrbis speichert keine Geburtsdaten, die dir zugeordnet werden können; mit Code erstellte Berichte werden nur 48 Stunden aufbewahrt. Für Fragen zu deinen Daten wende dich an den oben genannten Kontakt. Du hast außerdem das Recht, dich bei einer Datenschutz-Aufsichtsbehörde zu beschweren.</p>
+    <p>Du kannst Auskunft über deine Daten verlangen, sie berichtigen oder ihre Löschung beantragen, indem du an die oben genannte Kontaktadresse schreibst. Aufträge und Berichtskopien werden nach 48 Stunden automatisch gelöscht, technische Protokolle nach 90 Tagen. Wenn du in der Europäischen Union lebst, kannst du dich auch bei der Datenschutzbehörde deines Landes beschweren.</p>
 
     <h2>Charakter des Berichts</h2>
     <p>Personalisierter digitaler Bericht der psychologischen Astrologie, automatisch aus dem berechneten Horoskop erstellt. Er ist ein interpretierendes Werk mit künstlerischem und symbolischem Charakter, gedacht zur Reflexion und Unterhaltung; er ist keine persönliche Beratung. Die verwendete Astrologie ist nicht vorhersagend: Der Bericht macht keine Vorhersagen. Er ist keine Diagnose und keine psychologische Begutachtung, bietet keine medizinische, finanzielle, rechtliche oder sonstige fachliche Beratung und ersetzt keine psychologische oder ärztliche Behandlung.</p>
@@ -129,19 +123,19 @@ section[lang].on { display: block; }
 
   <section lang="en">
     <h1>Privacy</h1>
-    <p class="date">Updated 2 November 2026</p>
+    <p class="date">Updated 4 November 2026</p>
 
     <h2>Who is responsible</h2>
     <p>AsterOrbis is a personal project by Bárbara Gutiérrez, Buenos Aires, Argentina. Contact: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
 
     <h2>Calculating the chart</h2>
-    <p>Your name, date, time and place of birth are processed only on your device. The page downloads the calculation program, the ephemeris and the list of places once; your data is not sent to any server to calculate the chart.</p>
+    <p>The chart is calculated on your device. The page downloads the calculation program, the ephemerides and the list of places once. Your name, date, time and place do not travel to any server to calculate the chart. The data detailed below are sent only if you request the report.</p>
 
     <h2>Hosting</h2>
-    <p>The page is hosted on GitHub Pages (GitHub, Inc., United States). When you open it, GitHub logs the visitor's IP address for security purposes. Fonts and illustrations are served from the same site. AsterOrbis uses no cookies of its own, no analytics and no advertising.</p>
+    <p>The page is hosted on GitHub Pages (GitHub, Inc., United States). When you open it, GitHub records the visitor's IP address for security reasons. The domain is managed at Cloudflare, which may process technical data about visits. When the page opens, your browser also checks with the AsterOrbis service at Cloudflare whether it is available, and that request includes your IP address. Fonts and illustrations are served from the same site. AsterOrbis uses no cookies of its own, no analytics tools and no advertising.</p>
 
     <h2>What is stored in your browser</h2>
-    <p>The language you chose and, if you entered one, the access code are kept in your browser's local storage for your next visit. When you request a report, a random request identifier is also kept, with a cryptographic hash of the chart sent, so the report can be recovered if the response does not arrive; it is deleted when the report arrives and otherwise replaced on the next request. You can remove all of it by clearing this site's data in your browser.</p>
+    <p>The language you chose and, if you entered one, the access code are kept in your browser's local storage for your next visit. When you request a report, a random request identifier, the code, the time of the request and a cryptographic hash of the chart sent are also kept, so the report can be recovered if the response does not arrive; they are deleted when the report is received and, if it never arrives, replaced at the next request. The app also uses session storage, which the browser clears when the tab closes. You can delete everything by removing this site's data in your browser.</p>
 
     <h2>If you request the written report</h2>
     <p>The report is written by a language model. For that, the page sends to AsterOrbis's own service on Cloudflare Workers (Cloudflare, Inc., United States):</p>
@@ -150,25 +144,22 @@ section[lang].on { display: block; }
       <li>the report language and the chosen grammatical gender;</li>
       <li>your first name, only if you entered it.</li>
     </ul>
-    <p><strong>The date, time and place of birth never leave your device.</strong> The service sends to the Claude API (Anthropic, PBC, United States) only the calculated chart – positions, houses, aspects and stated accuracy –, the language, the chosen grammatical form and, if entered, your first name, and returns the report to you. Under its current terms, Anthropic does not use API data to train its models by default and deletes it within 30 days, with the legal and safety exceptions described in its <a href="https://privacy.claude.com/" target="_blank" rel="noopener">privacy center</a>.</p>
-    <p>While the report is being written, the service keeps the request (chart, language, grammatical form and first name) so it can finish even if the connection drops. That record is deleted 48 hours after the request closes, whether or not the report was delivered.</p>
-    <p>The service also keeps a technical log of each request for 90 days, without the chart or the name: date, model, language, estimated cost, outcome and the code used. It is used to control spending and to handle complaints. It also keeps monthly usage totals without personal data.</p>
+    <p><strong>Your date, time and place of birth are not sent as such, but the chart contains exact positions from which those data can be closely worked out.</strong> So if you request the report, you should treat it as sending your birth data. The service passes the chart, the language, the form of address and, if entered, your first name to the Claude API (Anthropic, PBC, United States), which writes the report. Under its current terms, Anthropic does not use API data to train its models by default and deletes it within 30 days, except for the legal or security exceptions described in its <a href="https://privacy.claude.com/" target="_blank" rel="noopener">privacy centre</a>.</p>
+    <p>While the report is being written, the service keeps the request — the chart, language, form of address, first name and code — so it can be finished even if the connection drops. Once closed, the request and its result are kept for 48 hours and then deleted, whether or not the report was delivered.</p>
+    <p>The service also keeps a technical record of each request for 90 days, without the chart or the name: date, model, language, estimated cost, outcome, technical warnings and the code used. It serves to control spending and handle complaints. Monthly usage totals and the number of reports and comments per code are kept with no expiry.</p>
     <p>To prevent abuse, the number of requests per minute is counted per code or, if a request arrives without a code, per a pseudonym of your IP address computed with a secret key; that count lasts minutes and is not stored. If the app ever worked without access codes, the service would keep that pseudonym for two days to limit reports per person; never the address itself, which cannot be derived from the pseudonym without the key.</p>
 
     <h2>Anti-bot check</h2>
     <p>If the page shows a Cloudflare Turnstile check, Cloudflare processes technical data from your browser and your IP address to tell people apart from automated programs. See the <a href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noopener">Turnstile privacy addendum</a>.</p>
 
     <h2>Copy of the report for 48 hours</h2>
-    <p>When you generate a report with a code, the service keeps a copy for 48 hours, linked only to that code, to a random request identifier and to a cryptographic fingerprint of the request data, so you can recover it if it never reached your screen. The fingerprint makes it possible to recognise a new request for the same chart without storing the chart. The copy is then deleted automatically. It contains no birth data and nobody reads it.</p>
+    <p>When you generate a report with a code, the service keeps a copy for 48 hours, together with that code, a random request identifier and a cryptographic fingerprint of the request data, so you can recover it if it was lost before reaching your screen (for example, if you locked your phone). After that, the copy deletes itself. It contains the text of the report, which may include your first name and positions from your chart. Reports are not reviewed as part of normal operation; the person who runs AsterOrbis has technical access to the service and would use it only to solve a problem or a complaint.</p>
 
-    <h2>Comments on the report (pilot version)</h2>
-    <p>If you leave a comment at the end of the report, it is stored in the interpretation service (Cloudflare) with your access code, the date and the report title, so the operator can read it. Your birth data is not stored, and the comment is not published. You can ask for deletion at the contact address.</p>
-
-    <h2>Voluntary contributions</h2>
-    <p>If you contribute, payment takes place on Mercado Pago, which processes your data under its own privacy policy. This page receives and stores no payment data. The operator sees in her Mercado Pago account the details that the platform shares with payees.</p>
+    <h2>Comments on the report</h2>
+    <p>If you leave a comment at the end of the report, it is stored in the service (Cloudflare) with your access code, the date and the report title, which may include your first name, so that the person who runs AsterOrbis can read it. The comment is not published and is kept until you ask for it to be deleted by writing to the contact address.</p>
 
     <h2>Your rights</h2>
-    <p>AsterOrbis does not store birth data linked to you; reports generated with a code are kept for 48 hours only. For any question about your data, write to the contact above. If you live in the European Union, you can also lodge a complaint with your data protection authority.</p>
+    <p>You can ask for information about your data, correct it or request its deletion by writing to the contact above. Requests and report copies delete themselves after 48 hours, and technical records after 90 days. If you live in the European Union, you can also complain to your country's data protection authority.</p>
 
     <h2>What the report is</h2>
     <p>Personalised digital report in psychological astrology, generated automatically from the calculated chart. It is an interpretive work of an artistic and symbolic nature, intended for reflection and entertainment; it is not a personal consultation. The astrology it uses is non-predictive: the report makes no predictions. It is not a diagnosis or a psychological assessment, does not provide medical, financial, legal or other professional advice, and does not replace psychological or medical care.</p>
