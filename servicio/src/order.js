@@ -18,6 +18,8 @@
 export const PENDING_TTL_MS = 7 * 24 * 3600 * 1000; // un pedido sin pagar conserva la carta 7 días
 export const START_WATCH_MS = 10 * 60 * 1000;          // si una generación no arrancó en 10 min, se marca como fallida
 export const RUN_WATCH_MS = 75 * 60 * 1000;            // si no terminó en 75 min (3 intentos de hasta 15 min y esperas), también
+export const RETAIN_MS = 7 * 24 * 3600 * 1000;         // carta, correo e informe se conservan 7 días desde la entrega
+export const MAX_MAIL_TRIES = 5;
 
 /** Marca un pedido en la cola de excepciones (sin datos de la carta ni del informe). */
 async function flag(env, id, reason) {
@@ -55,14 +57,17 @@ export class OrderDO {
           createdAt: new Date().toISOString() };
         await this.save(o);
         await this.storage.put("payload", b.payload);
+        if (b.email) await this.storage.put("email", b.email);
         await this.storage.setAlarm(Date.now() + PENDING_TTL_MS);
         return ok({ existed: false, order: publicView(o) });
       }
       if (!o) return ok({ error: "not_found" }, 404);
 
       if (path === "/view") {
-        if (!b.token || (await sha256Hex(b.token)) !== o.tokenHash) return ok({ error: "forbidden" }, 403);
-        return ok({ order: publicView(o), jobId: o.generation.jobId });
+        const hash = b.token ? await sha256Hex(b.token) : null;
+        if (!hash || (hash !== o.tokenHash && hash !== (o.mail && o.mail.tokenHash))) return ok({ error: "forbidden" }, 403);
+        const open = o.generation.status === "delivered" && o.payment.status !== "refunded";
+        return ok({ order: publicView(o), jobId: open ? o.generation.jobId : null, chart: open ? (await this.storage.get("payload")) || null : null });
       }
       if (path === "/checkout") {
         o.payment.externalCheckoutId = b.externalCheckoutId || null;
@@ -127,7 +132,9 @@ export class OrderDO {
         if (b.outcome === "delivered") {
           o.generation.jobId = b.jobId;
           o.generation.status = "delivered"; o.generation.deliveredAt = new Date().toISOString(); o.generation.lastOutcome = "delivered";
-          await this.storage.delete("payload"); // el trabajo conserva su copia 48 h para la entrega; el pedido ya no la necesita
+          // la carta queda con el informe: permite abrirlo desde el enlace del correo en otro aparato
+          o.retainUntil = Date.now() + RETAIN_MS;
+          await this.storage.setAlarm(o.retainUntil);
         } else if (o.generation.status !== "delivered") {
           o.generation.status = "failed"; o.generation.lastOutcome = b.outcome || "error";
         }
@@ -142,6 +149,23 @@ export class OrderDO {
         await this.save(o);
         return ok({ action: "start", jobId: o.generation.jobId, payload, order: publicView(o) });
       }
+      // enlace privado para el correo: una clave nueva por intento; en el pedido solo queda su resumen
+      if (path === "/mail-prepare") {
+        o.mail = o.mail || { status: "none", tries: 0, tokenHash: null, sentAt: null };
+        if (o.generation.status !== "delivered" || o.payment.status === "refunded" || o.mail.status === "sent" || o.mail.tries >= MAX_MAIL_TRIES) return ok({ skip: true, mail: o.mail });
+        const email = await this.storage.get("email");
+        if (!email) return ok({ skip: true, mail: o.mail });
+        const token = [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, "0")).join("");
+        o.mail.tries += 1; o.mail.status = "sending"; o.mail.tokenHash = await sha256Hex(token);
+        await this.save(o);
+        return ok({ email, token, lang: o.lang, tries: o.mail.tries });
+      }
+      if (path === "/mail-result") {
+        if (o.mail) { o.mail.status = b.ok ? "sent" : "failed"; if (b.ok) o.mail.sentAt = new Date().toISOString(); await this.save(o); }
+        return ok({ mail: o.mail || null });
+      }
+      // estado para el control periódico, sin carta, correo ni informe
+      if (path === "/check") return ok({ order: publicView(o), attempts: o.generation.attempts, mail: o.mail ? { status: o.mail.status, tries: o.mail.tries } : null, createdAt: o.createdAt, provider: o.provider, paidAt: o.payment.paidAt });
       if (path === "/refund") {
         return ok({ order: publicView(o), internal: { externalId: o.payment.externalId, provider: o.provider }, refundable: o.payment.status === "paid" });
       }
@@ -168,12 +192,11 @@ export class OrderDO {
           await this.save(o); await flag(this.env, o.id, "generation_stuck");
         } else { await this.storage.setAlarm(started + limit); return; }
       }
-      const created = Date.parse(o.createdAt);
-      if (now - created < PENDING_TTL_MS) { await this.storage.setAlarm(created + PENDING_TTL_MS); return; }
-      if (o.generation.status !== "delivered" && (await this.storage.get("payload"))) {
-        await this.storage.delete("payload");
-        if (o.payment.status === "paid") await flag(this.env, o.id, "payload_expired");
-      }
+      const created = Date.parse(o.createdAt), until = Math.max(created + PENDING_TTL_MS, o.retainUntil || 0);
+      if (now < until) { await this.storage.setAlarm(until); return; }
+      if (o.generation.status !== "delivered" && (await this.storage.get("payload")) && o.payment.status === "paid") await flag(this.env, o.id, "payload_expired");
+      await this.storage.delete(["payload", "email"]);
+      if (o.mail) o.mail.tokenHash = null;
       if (!["paid", "refunded", "mismatch"].includes(o.payment.status)) { o.payment.status = "cancelled"; o.generation.lastOutcome = o.generation.lastOutcome || "expired_unpaid"; }
       await this.save(o);
     });

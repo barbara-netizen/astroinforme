@@ -11,7 +11,7 @@ let n = 0; const group = () => { n++; };
 const ok = informeOk();
 const SECRET = "secreto-de-prueba";
 const env = (over = {}) => {
-  const e = baseEnv({ SERVICE_MODE: "paid", PAYMENTS_SIM: "true", SIM_WEBHOOK_SECRET: SECRET, PRICE_USD: "15.00", ADMIN_TOKEN: "admin-xyz", ...over });
+  const e = baseEnv({ SERVICE_MODE: "paid", MAIL_API_KEY: "mail-test", MAIL_FROM: "AsterOrbis <a@asterorbis.com>", PAYMENTS_SIM: "true", SIM_WEBHOOK_SECRET: SECRET, PRICE_USD: "15.00", ADMIN_TOKEN: "admin-xyz", ...over });
   e.REPORT_JOB = new FakeNamespace(ReportJob); e.REPORT_JOB.env = e;
   e.ORDERS = new FakeNamespace(OrderDO); e.ORDERS.env = e;
   return e;
@@ -20,7 +20,7 @@ const call = async (r, e) => { const res = await worker.fetch(r, e, {}); return 
 const CONSENT = { accepted: true, terms_version: "2026-11-04", disclaimer_version: "2026-11-02" };
 let k = 0; const idem = () => "idem-" + String(++k).padStart(14, "0");
 const createReq = (over = {}) => new Request("https://svc.example/orders", { method: "POST", headers: { "content-type": "application/json", origin: ORIGIN },
-  body: JSON.stringify({ provider: "sim", product: "informe_completo", payload: carta(), consent: CONSENT, idempotency_key: idem(), ...over }) });
+  body: JSON.stringify({ provider: "sim", product: "informe_completo", payload: carta(), email: "ana@example.com", consent: CONSENT, idempotency_key: idem(), ...over }) });
 const getReq = (id, token) => new Request("https://svc.example/orders/" + id, { headers: { origin: ORIGIN, ...(token ? { "x-order-token": token } : {}) } });
 async function webhook(e, payment, eventId = "ev-" + Math.random().toString(36).slice(2), secret = SECRET) {
   const raw = JSON.stringify({ event_id: eventId, payment });
@@ -46,7 +46,7 @@ group("camino feliz: pedido → pago confirmado por webhook → generación desd
   await runJob(e, id);
   g = await call(getReq(id, c.body.token), e);
   assert.equal(g.body.generation_status, "delivered"); assert.equal(g.body.report.schema, "astroinforme.report/v1");
-  assert.equal(await e.ORDERS.obj(id).storage.get("payload"), undefined, "la carta se borra del pedido al entregar");
+  assert.ok(await e.ORDERS.obj(id).storage.get("payload"), "la carta queda 7 días para abrir el enlace del correo");
   assert.equal((await ledgerState(e, "ORDER:" + id)).used, 1);
   const gen = JSON.parse(await e.ASTRO_KV.get("gen:" + id));
   assert.equal(gen.access, "order"); assert.equal(gen.ref, "order:" + id);

@@ -45,6 +45,8 @@ export const mercadoPagoProvider = {
     const pref = await mp(env, "/checkout/preferences", { method: "POST", headers: { "x-idempotency-key": order.id }, body: JSON.stringify({
       items: [{ id: order.product, title: PRODUCT_TITLE[order.lang] || PRODUCT_TITLE.es, quantity: 1, currency_id: order.currency, unit_price: order.amountMinor / 100 }],
       external_reference: order.id,
+      // el enlace vence antes que la carta guardada: no se puede pagar un pedido que ya no se puede generar
+      expires: true, expiration_date_to: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
       metadata: { order_id: order.id },
       back_urls: { success: back("ok"), pending: back("pendiente"), failure: back("error") },
       auto_return: "approved",
@@ -72,6 +74,13 @@ export const mercadoPagoProvider = {
     const item = p.additional_info && p.additional_info.items && p.additional_info.items[0];
     return normalized({ status: MP_STATUS[p.status] || "pending", orderId: p.external_reference, externalId: p.id,
       amountMinor: toMinor(p.transaction_amount), currency: p.currency_id, productRef: item ? item.id : null });
+  },
+
+  /** Conciliación: busca el pago por identificador del pedido, por si el aviso se perdió. */
+  async findPayment(env, orderId) {
+    const r = await mp(env, "/v1/payments/search?sort=date_created&criteria=desc&external_reference=" + encodeURIComponent(orderId));
+    const p = (r.results || []).find((x) => x.status === "approved") || (r.results || [])[0];
+    return p ? this.getTransaction(env, p.id) : null;
   },
 
   async refund(env, order) {

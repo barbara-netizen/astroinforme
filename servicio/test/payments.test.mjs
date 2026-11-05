@@ -13,7 +13,7 @@ const call = async (r, e) => { const res = await worker.fetch(r, e, {}); return 
 const CONSENT = { accepted: true, terms_version: "2026-11-04" };
 let k = 0; const idem = () => "idem-pay-" + String(++k).padStart(10, "0");
 function mkEnv(over) {
-  const e = baseEnv({ SERVICE_MODE: "paid", ...over });
+  const e = baseEnv({ SERVICE_MODE: "paid", MAIL_API_KEY: "mail-test", MAIL_FROM: "AsterOrbis <a@asterorbis.com>", ...over });
   e.REPORT_JOB = new FakeNamespace(ReportJob); e.REPORT_JOB.env = e;
   e.ORDERS = new FakeNamespace(OrderDO); e.ORDERS.env = e;
   return e;
@@ -75,7 +75,7 @@ group("MP de punta a punta: aviso firmado → consulta del pago → generación 
   const env = mkEnv(MP);
   mockApis([[/checkout\/preferences$/, () => jsonRes({ id: "pref-1", init_point: "https://mp/ip" }, 201)]]);
   const c = await call(new Request("https://svc/orders", { method: "POST", headers: { "content-type": "application/json", origin: ORIGIN },
-    body: JSON.stringify({ provider: "mercadopago", payload: carta(), consent: CONSENT, idempotency_key: idem() }) }), env);
+    body: JSON.stringify({ provider: "mercadopago", payload: carta(), email: "ana@example.com", consent: CONSENT, idempotency_key: idem() }) }), env);
   assert.equal(c.status, 201);
   const id = c.body.order_id;
   let estado = "pending";

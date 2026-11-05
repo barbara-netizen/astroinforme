@@ -861,6 +861,9 @@ var mercadoPagoProvider = {
     const pref = await mp(env, "/checkout/preferences", { method: "POST", headers: { "x-idempotency-key": order.id }, body: JSON.stringify({
       items: [{ id: order.product, title: PRODUCT_TITLE[order.lang] || PRODUCT_TITLE.es, quantity: 1, currency_id: order.currency, unit_price: order.amountMinor / 100 }],
       external_reference: order.id,
+      // el enlace vence antes que la carta guardada: no se puede pagar un pedido que ya no se puede generar
+      expires: true,
+      expiration_date_to: new Date(Date.now() + 48 * 3600 * 1e3).toISOString(),
       metadata: { order_id: order.id },
       back_urls: { success: back("ok"), pending: back("pendiente"), failure: back("error") },
       auto_return: "approved",
@@ -896,6 +899,12 @@ var mercadoPagoProvider = {
       currency: p.currency_id,
       productRef: item ? item.id : null
     });
+  },
+  /** Conciliación: busca el pago por identificador del pedido, por si el aviso se perdió. */
+  async findPayment(env, orderId) {
+    const r = await mp(env, "/v1/payments/search?sort=date_created&criteria=desc&external_reference=" + encodeURIComponent(orderId));
+    const p = (r.results || []).find((x) => x.status === "approved") || (r.results || [])[0];
+    return p ? this.getTransaction(env, p.id) : null;
   },
   async refund(env, order) {
     const r = await mp(env, `/v1/payments/${encodeURIComponent(order.externalId)}/refunds`, { method: "POST", headers: { "x-idempotency-key": "refund-" + order.id }, body: "{}" });
@@ -1023,6 +1032,8 @@ function safeEqual(a, b) {
 var PENDING_TTL_MS = 7 * 24 * 3600 * 1e3;
 var START_WATCH_MS = 10 * 60 * 1e3;
 var RUN_WATCH_MS = 75 * 60 * 1e3;
+var RETAIN_MS = 7 * 24 * 3600 * 1e3;
+var MAX_MAIL_TRIES = 5;
 async function flag(env, id, reason) {
   if (env && env.ASTRO_KV) await env.ASTRO_KV.put("exc:" + id, JSON.stringify({ order_id: id, reason, at: (/* @__PURE__ */ new Date()).toISOString() })).catch(() => {
   });
@@ -1078,13 +1089,16 @@ var OrderDO = class {
         };
         await this.save(o);
         await this.storage.put("payload", b.payload);
+        if (b.email) await this.storage.put("email", b.email);
         await this.storage.setAlarm(Date.now() + PENDING_TTL_MS);
         return ok2({ existed: false, order: publicView(o) });
       }
       if (!o) return ok2({ error: "not_found" }, 404);
       if (path === "/view") {
-        if (!b.token || await sha256Hex(b.token) !== o.tokenHash) return ok2({ error: "forbidden" }, 403);
-        return ok2({ order: publicView(o), jobId: o.generation.jobId });
+        const hash = b.token ? await sha256Hex(b.token) : null;
+        if (!hash || hash !== o.tokenHash && hash !== (o.mail && o.mail.tokenHash)) return ok2({ error: "forbidden" }, 403);
+        const open = o.generation.status === "delivered" && o.payment.status !== "refunded";
+        return ok2({ order: publicView(o), jobId: open ? o.generation.jobId : null, chart: open ? await this.storage.get("payload") || null : null });
       }
       if (path === "/checkout") {
         o.payment.externalCheckoutId = b.externalCheckoutId || null;
@@ -1163,7 +1177,8 @@ var OrderDO = class {
           o.generation.status = "delivered";
           o.generation.deliveredAt = (/* @__PURE__ */ new Date()).toISOString();
           o.generation.lastOutcome = "delivered";
-          await this.storage.delete("payload");
+          o.retainUntil = Date.now() + RETAIN_MS;
+          await this.storage.setAlarm(o.retainUntil);
         } else if (o.generation.status !== "delivered") {
           o.generation.status = "failed";
           o.generation.lastOutcome = b.outcome || "error";
@@ -1182,6 +1197,27 @@ var OrderDO = class {
         await this.save(o);
         return ok2({ action: "start", jobId: o.generation.jobId, payload, order: publicView(o) });
       }
+      if (path === "/mail-prepare") {
+        o.mail = o.mail || { status: "none", tries: 0, tokenHash: null, sentAt: null };
+        if (o.generation.status !== "delivered" || o.payment.status === "refunded" || o.mail.status === "sent" || o.mail.tries >= MAX_MAIL_TRIES) return ok2({ skip: true, mail: o.mail });
+        const email = await this.storage.get("email");
+        if (!email) return ok2({ skip: true, mail: o.mail });
+        const token = [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, "0")).join("");
+        o.mail.tries += 1;
+        o.mail.status = "sending";
+        o.mail.tokenHash = await sha256Hex(token);
+        await this.save(o);
+        return ok2({ email, token, lang: o.lang, tries: o.mail.tries });
+      }
+      if (path === "/mail-result") {
+        if (o.mail) {
+          o.mail.status = b.ok ? "sent" : "failed";
+          if (b.ok) o.mail.sentAt = (/* @__PURE__ */ new Date()).toISOString();
+          await this.save(o);
+        }
+        return ok2({ mail: o.mail || null });
+      }
+      if (path === "/check") return ok2({ order: publicView(o), attempts: o.generation.attempts, mail: o.mail ? { status: o.mail.status, tries: o.mail.tries } : null, createdAt: o.createdAt, provider: o.provider, paidAt: o.payment.paidAt });
       if (path === "/refund") {
         return ok2({ order: publicView(o), internal: { externalId: o.payment.externalId, provider: o.provider }, refundable: o.payment.status === "paid" });
       }
@@ -1212,15 +1248,14 @@ var OrderDO = class {
           return;
         }
       }
-      const created = Date.parse(o.createdAt);
-      if (now - created < PENDING_TTL_MS) {
-        await this.storage.setAlarm(created + PENDING_TTL_MS);
+      const created = Date.parse(o.createdAt), until = Math.max(created + PENDING_TTL_MS, o.retainUntil || 0);
+      if (now < until) {
+        await this.storage.setAlarm(until);
         return;
       }
-      if (o.generation.status !== "delivered" && await this.storage.get("payload")) {
-        await this.storage.delete("payload");
-        if (o.payment.status === "paid") await flag(this.env, o.id, "payload_expired");
-      }
+      if (o.generation.status !== "delivered" && await this.storage.get("payload") && o.payment.status === "paid") await flag(this.env, o.id, "payload_expired");
+      await this.storage.delete(["payload", "email"]);
+      if (o.mail) o.mail.tokenHash = null;
       if (!["paid", "refunded", "mismatch"].includes(o.payment.status)) {
         o.payment.status = "cancelled";
         o.generation.lastOutcome = o.generation.lastOutcome || "expired_unpaid";
@@ -1230,10 +1265,68 @@ var OrderDO = class {
   }
 };
 
+// src/mail.js
+var mailEnabled = (env) => !!(env.MAIL_API_KEY && env.MAIL_FROM);
+async function sendMail(env, { to, subject, text, key }) {
+  if (!mailEnabled(env) || !to) return false;
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer " + env.MAIL_API_KEY, ...key ? { "idempotency-key": key } : {} },
+      body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject, text, ...env.ADMIN_EMAIL ? { reply_to: env.ADMIN_EMAIL } : {} })
+    });
+    if (!r.ok) console.log(JSON.stringify({ event: "mail_rejected", status: r.status }));
+    return r.ok;
+  } catch (e) {
+    console.log(JSON.stringify({ event: "mail_error" }));
+    return false;
+  }
+}
+var TEXTS = {
+  es: { subject: "Tu informe de AsterOrbis est\xE1 listo", body: (u, d) => `Tu informe est\xE1 listo.
+
+Abrilo desde este enlace privado:
+${u}
+
+El enlace funciona durante ${d} d\xEDas. Desde ah\xED pod\xE9s guardar el PDF. Despu\xE9s de ese plazo, el informe y tu carta se borran.
+
+No compartas este enlace: quien lo tenga puede leer el informe. Si algo no funciona, respond\xE9 este correo.
+
+B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis` },
+  de: { subject: "Dein AsterOrbis-Bericht ist fertig", body: (u, d) => `Dein Bericht ist fertig.
+
+\xD6ffne ihn \xFCber diesen privaten Link:
+${u}
+
+Der Link gilt ${d} Tage. Dort kannst du das PDF speichern. Nach Ablauf dieser Frist werden Bericht und Horoskop gel\xF6scht.
+
+Teile diesen Link nicht: Wer ihn hat, kann den Bericht lesen. Wenn etwas nicht funktioniert, antworte auf diese E-Mail.
+
+B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis` },
+  en: { subject: "Your AsterOrbis report is ready", body: (u, d) => `Your report is ready.
+
+Open it from this private link:
+${u}
+
+The link works for ${d} days. You can save the PDF from there. After that, the report and your chart are deleted.
+
+Do not share this link: anyone who has it can read the report. If something does not work, reply to this email.
+
+B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis` }
+};
+function reportMail(lang, url, days) {
+  const t = TEXTS[lang] || TEXTS.es;
+  return { subject: t.subject, text: t.body(url, days) };
+}
+var validEmail = (x) => typeof x === "string" && x.length <= 254 && /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;".]{2,}$/.test(x.trim());
+
 // src/orders.js
 var ORDER_CODE_PREFIX = "ORDER:";
-var TERMS_VERSIONS = ["2026-11-04"];
+var TERMS_VERSIONS = ["2026-11-04", "2026-11-05"];
 var MAX_ORDER_BODY = 12e4;
+var MAX_GENERATIONS = 3;
+var OPEN_TTL = 9 * 86400;
+var HOUR = 3600 * 1e3;
 var json = (obj2, status, headers = {}) => new Response(JSON.stringify(obj2), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers } });
 var randHex = (n) => {
   const a = new Uint8Array(n);
@@ -1273,6 +1366,7 @@ async function startOrderJob(env, orderId, jobId, payload, providerRef) {
     useCode: true,
     code,
     limit: 1,
+    retainMs: RETAIN_MS,
     mk: monthKey(),
     vKey: null,
     vUsed: 0,
@@ -1288,7 +1382,111 @@ async function notifyOrderGeneration(env, orderId, jobId, outcome) {
   if (!env.ORDERS || !orderId) return;
   const r = await call(orderStub(env, orderId), "generation", { jobId, outcome });
   if (r.exception) await flagException(env, orderId, r.exception);
-  else if (outcome === "delivered") await clearException(env, orderId);
+  else if (outcome === "delivered") {
+    await clearException(env, orderId);
+    await deliverMail(env, orderId);
+  }
+}
+async function deliverMail(env, orderId) {
+  const stub = orderStub(env, orderId), p = await call(stub, "mail-prepare", {});
+  if (p.skip || !p.email) return false;
+  const url = `${(env.APP_URL || "https://asterorbis.com").replace(/\/$/, "")}/?pedido=${orderId}#k=${p.token}`;
+  const m = reportMail(p.lang, url, Math.round(RETAIN_MS / (24 * HOUR)));
+  const sent = await sendMail(env, { to: p.email, subject: m.subject, text: m.text, key: `${orderId}-${p.tries}` });
+  await call(stub, "mail-result", { ok: sent });
+  return sent;
+}
+async function alertAdmin(env, orderId, reason) {
+  if (!env.ADMIN_EMAIL || !env.ASTRO_KV) return;
+  const key = `alerted:${orderId}:${reason}`;
+  if (await env.ASTRO_KV.get(key)) return;
+  const ok4 = await sendMail(env, { to: env.ADMIN_EMAIL, subject: `AsterOrbis: revisar pedido (${reason})`, text: `Pedido: ${orderId}
+Motivo: ${reason}
+
+Ver /admin/exceptions.`, key });
+  if (ok4) await env.ASTRO_KV.put(key, "1", { expirationTtl: 86400 });
+}
+async function reconcile(env, id, st) {
+  const provider = getProvider(env, st.provider);
+  if (!provider || !provider.findPayment) return;
+  let tx;
+  try {
+    tx = await provider.findPayment(env, id);
+  } catch (e) {
+    return;
+  }
+  if (!tx || tx.orderId !== id || tx.status !== "paid") return;
+  await applyPayment(env, "recon:" + tx.externalId, tx, st.provider);
+}
+async function runControls(env, now = Date.now()) {
+  if (serviceMode(env) !== "paid" || !env.ORDERS || !env.ASTRO_KV) return { skipped: true };
+  const list = await env.ASTRO_KV.list({ prefix: "open:" }), out = { checked: 0, retried: 0, mailed: 0, alerts: 0 };
+  for (const { name } of list.keys) {
+    const id = name.slice(5);
+    if (!ORDER_ID_RE.test(id)) continue;
+    let st = await call(orderStub(env, id), "check", {});
+    if (st.status === 404) {
+      await env.ASTRO_KV.delete(name);
+      continue;
+    }
+    out.checked++;
+    if (["created", "pending"].includes(st.order.payment_status)) {
+      await reconcile(env, id, st);
+      st = await call(orderStub(env, id), "check", {});
+    }
+    const pay = st.order.payment_status, gen = st.order.generation_status;
+    if (["cancelled", "failed", "refunded", "mismatch"].includes(pay)) {
+      if (pay === "mismatch") {
+        await alertAdmin(env, id, "payment_mismatch");
+        out.alerts++;
+      }
+      await env.ASTRO_KV.delete(name);
+      continue;
+    }
+    if (pay !== "paid") continue;
+    if (gen === "failed") {
+      if (st.attempts < MAX_GENERATIONS) {
+        const r = await call(orderStub(env, id), "retry", {});
+        if (r.status === 200) {
+          await startOrderJob(env, id, r.jobId, r.payload, null);
+          await clearException(env, id);
+          out.retried++;
+        }
+      } else {
+        await alertAdmin(env, id, "generation_failed");
+        out.alerts++;
+      }
+    } else if (gen === "delivered") {
+      if (st.mail && st.mail.status === "sent") {
+        await env.ASTRO_KV.delete(name);
+        continue;
+      }
+      if (mailEnabled(env) && (!st.mail || st.mail.tries < MAX_MAIL_TRIES)) {
+        if (await deliverMail(env, id)) {
+          out.mailed++;
+          await env.ASTRO_KV.delete(name);
+        }
+      } else {
+        await alertAdmin(env, id, "mail_failed");
+        out.alerts++;
+      }
+    } else if (st.paidAt && now - Date.parse(st.paidAt) > 3 * HOUR) {
+      await alertAdmin(env, id, "paid_without_report");
+      out.alerts++;
+    }
+  }
+  await dailySummary(env, now, list.keys.length);
+  return out;
+}
+async function dailySummary(env, now, open) {
+  const d = new Date(now), day = d.toISOString().slice(0, 10), key = "summary:" + day;
+  if (!env.ADMIN_EMAIL || d.getUTCHours() < 12 || await env.ASTRO_KV.get(key)) return;
+  const month = await kvGetJSON(env.ASTRO_KV, monthKey(d), { reports: 0, usd: 0, failed: 0 });
+  const exc = await env.ASTRO_KV.list({ prefix: "exc:" });
+  const ok4 = await sendMail(env, { to: env.ADMIN_EMAIL, subject: `AsterOrbis: resumen ${day}`, text: `Pedidos abiertos: ${open}
+Pedidos para revisar: ${exc.keys.length}
+Mes: ${month.reports} informes, ${month.failed} fallidos, US$ ${month.usd}`, key });
+  if (ok4) await env.ASTRO_KV.put(key, "1", { expirationTtl: 3 * 86400 });
 }
 async function createOrder(request, env, cors) {
   if (serviceMode(env) !== "paid") return json({ error: serviceMode(env) === "disabled" ? "disabled" : "not_available" }, serviceMode(env) === "disabled" ? 503 : 404, cors);
@@ -1309,6 +1507,8 @@ async function createOrder(request, env, cors) {
   if (!price) return json({ error: "price_not_configured" }, 503, cors);
   const c = b.consent || {};
   if (c.accepted !== true || !TERMS_VERSIONS.includes(c.terms_version)) return json({ error: "consent_required" }, 400, cors);
+  if (!validEmail(b.email)) return json({ error: "email_invalid" }, 400, cors);
+  if (!mailEnabled(env) || !await generationAvailable(env)) return json({ error: "unavailable" }, 503, cors);
   const idem = normalizeRequestId(b.idempotency_key);
   if (!idem) return json({ error: "bad_request" }, 400, cors);
   const norm = normalizePayload(b.payload);
@@ -1331,7 +1531,8 @@ async function createOrder(request, env, cors) {
     idemKey: idem,
     consent: { terms_version: c.terms_version, disclaimer_version: String(c.disclaimer_version || ""), at: (/* @__PURE__ */ new Date()).toISOString() }
   };
-  await call(orderStub(env, id), "create", { order, payload: norm.payload });
+  await call(orderStub(env, id), "create", { order, payload: norm.payload, email: b.email.trim() });
+  if (env.ASTRO_KV) await env.ASTRO_KV.put("open:" + id, "1", { expirationTtl: OPEN_TTL });
   if (env.ASTRO_KV) await env.ASTRO_KV.put("idem:" + idem, JSON.stringify({ id, token }), { expirationTtl: 7 * 86400 });
   return checkout(id, token, 201);
   async function checkout(oid, tok, okStatus = 200) {
@@ -1353,7 +1554,7 @@ async function getOrder(request, env, cors, id) {
   if (!ORDER_ID_RE.test(id) || !env.ORDERS) return json({ error: "not_found" }, 404, cors);
   const v = await call(orderStub(env, id), "view", { token: request.headers.get("x-order-token") || "" });
   if (v.status !== 200) return json({ error: v.error }, v.status, cors);
-  const out = { ...v.order };
+  const out = { ...v.order, chart: v.chart || void 0 };
   if (out.generation_status === "delivered" && v.jobId) {
     const r = await env.REPORT_JOB.get(env.REPORT_JOB.idFromName(v.jobId)).fetch("https://job/status", { method: "POST", body: JSON.stringify({ code: ORDER_CODE_PREFIX + id }) });
     const body = await r.json().catch(() => ({}));
@@ -1376,18 +1577,23 @@ async function handleWebhook(request, env, name, rawOverride) {
     return json({ error: "provider_unavailable" }, 502);
   }
   if (!tx.orderId || !ORDER_ID_RE.test(tx.orderId)) return json({ ok: true, ignored: "no_order" }, 200);
-  const r = await call(orderStub(env, tx.orderId), "payment", { eventId: v.eventId, tx, provider: name });
+  const r = await applyPayment(env, v.eventId, tx, name);
   if (r.status === 404) return json({ ok: true, ignored: "unknown_order" }, 200);
+  return json({ ok: true, duplicate: !!r.duplicate }, 200);
+}
+async function applyPayment(env, eventId, tx, name) {
+  const r = await call(orderStub(env, tx.orderId), "payment", { eventId, tx, provider: name });
+  if (r.status === 404) return r;
   if (r.exception) await flagException(env, tx.orderId, r.exception);
   if (r.action === "start") {
     try {
-      const s = await startOrderJob(env, tx.orderId, r.jobId, r.payload, r.internal && r.internal.externalId);
+      await startOrderJob(env, tx.orderId, r.jobId, r.payload, r.internal && r.internal.externalId);
     } catch (e) {
       await call(orderStub(env, tx.orderId), "generation", { jobId: r.jobId, outcome: "start_error" });
       await flagException(env, tx.orderId, "generation_failed");
     }
   }
-  return json({ ok: true, duplicate: !!r.duplicate }, 200);
+  return r;
 }
 async function simRoute(request, env, url) {
   if (!simProvider.enabled(env)) return json({ error: "not_found" }, 404);
@@ -2019,7 +2225,16 @@ async function rateLimited(env, key) {
     return false;
   }
 }
+async function generationAvailable(env) {
+  if (!env.ANTHROPIC_API_KEY || !env.ASTRO_KV || !await loadProtocol(env)) return false;
+  const month = await kvGetJSON(env.ASTRO_KV, monthKey(), { usd: 0 });
+  return month.usd < +(env.MONTHLY_USD_LIMIT || 15);
+}
 var worker_default = {
+  // control periódico de pedidos pagos (Cron); no hace nada fuera del modo "paid"
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runControls(env, event.scheduledTime || Date.now()));
+  },
   async fetch(request, env, ctx) {
     const cors = corsHeaders(request, env);
     const url = new URL(request.url);
@@ -2211,7 +2426,7 @@ var ReportJob = class {
   /** Guarda el resultado, borra las fases intermedias y programa la limpieza a las 48 h. */
   async close(meta, out) {
     meta.status = out.error ? "failed" : "done";
-    meta.cleanupAt = Date.now() + REPORT_TTL * 1e3;
+    meta.cleanupAt = Date.now() + (meta.job.retainMs || REPORT_TTL * 1e3);
     await this.storage.put("out", out);
     await this.storage.delete(["phase:analisis", "phase:report_b"]);
     await this.storage.put("meta", meta);

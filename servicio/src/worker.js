@@ -33,7 +33,7 @@ import { styleCheck, describeStyle } from "./style.js";
 import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION } from "./prompts.js";
 import { normalizePayload, normalizeRequestId } from "./validate.js";
 import { ledger } from "./ledger.js";
-import { routePayments, routeOrders, notifyOrderGeneration } from "./orders.js";
+import { routePayments, routeOrders, notifyOrderGeneration, runControls } from "./orders.js";
 import { getProvider, providerNames } from "./payments/provider.js";
 
 export const SERVICE_VERSION = "2.1";
@@ -578,7 +578,16 @@ export async function rateLimited(env, key) {
   try { const { success } = await env.RATE_LIMITER.limit({ key }); return !success; } catch (e) { return false; }
 }
 
+/** Si hoy se puede generar un informe: clave, protocolo y tope mensual. */
+export async function generationAvailable(env) {
+  if (!env.ANTHROPIC_API_KEY || !env.ASTRO_KV || !(await loadProtocol(env))) return false;
+  const month = await kvGetJSON(env.ASTRO_KV, monthKey(), { usd: 0 });
+  return month.usd < +(env.MONTHLY_USD_LIMIT || 15);
+}
+
 export default {
+  // control periódico de pedidos pagos (Cron); no hace nada fuera del modo "paid"
+  async scheduled(event, env, ctx) { ctx.waitUntil(runControls(env, event.scheduledTime || Date.now())); },
   async fetch(request, env, ctx) {
     const cors = corsHeaders(request, env);
     const url = new URL(request.url);

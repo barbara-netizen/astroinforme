@@ -38,6 +38,10 @@ namespace_id = "1001"
   limit = 6
   period = 60
 
+# Control periódico de pedidos pagos: reintentos, conciliación, avisos y resumen. Fuera del modo "paid" no hace nada.
+[triggers]
+crons = ["*/15 * * * *"]
+
 # Pedidos pagos (servicio 2.0): un Durable Object por pedido. Solo se usan con SERVICE_MODE = "paid".
 [[durable_objects.bindings]]
 name = "ORDERS"

@@ -86,7 +86,7 @@ export class ReportJob {
   /** Guarda el resultado, borra las fases intermedias y programa la limpieza a las 48 h. */
   async close(meta, out) {
     meta.status = out.error ? "failed" : "done";
-    meta.cleanupAt = Date.now() + REPORT_TTL * 1000;
+    meta.cleanupAt = Date.now() + (meta.job.retainMs || REPORT_TTL * 1000);
     await this.storage.put("out", out);
     await this.storage.delete(["phase:analisis", "phase:report_b"]);
     await this.storage.put("meta", meta);

@@ -373,6 +373,7 @@ function render(scroll = false) {
 }
 /** Línea de procedencia del cálculo, en el idioma activo (la usa también la descarga, en el idioma del informe). */
 function provText(f, opt, chart) {
+  if (f.restored) return "";
   return `${fmtOffset(opt.offsetMin)} · ${fmtUtc(opt.utcMs)} · ${state.place.lat.toFixed(4)}, ${state.place.lon.toFixed(4)}. ` + t("prov", {
     engine: chart.ephemeris.engine, flags: "SEFLG_SWIEPH|SEFLG_SPEED",
     sys: chart.houses ? chart.houses.system_effective : t("prov.noHouses"), pol: chart.aspect_policy, zone: f.zone,
@@ -381,6 +382,7 @@ function provText(f, opt, chart) {
 }
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 function humanBirth(f) {
+  if (f.restored) return ""; // en el pedido no están la fecha, la hora ni el lugar
   let date;
   try { date = new Intl.DateTimeFormat(LOCALE[L.getLang()], { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(Date.UTC(f.y, f.mo - 1, f.d)); }
   catch (e) { date = `${f.d} de ${MONTHS[f.mo - 1]} de ${f.y}`; }
@@ -645,9 +647,11 @@ async function buyReport(provider) {
   const status = $("#interp-status");
   if (!acceptancesOk(status)) return;
   status.hidden = true;
+  const email = ($("#buy-email").value || "").trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { status.hidden = false; status.textContent = t("i.err.email_invalid"); $("#buy-email").focus(); return; }
   const payload = servicePayload(state.payload);
-  const body = { provider, product: "informe_completo", payload, idempotency_key: newRequestId(),
-    consent: { accepted: true, terms_version: CONFIG.termsVersion || "2026-11-04", disclaimer_version: "2026-11-02" } };
+  const body = { provider, product: "informe_completo", payload, email, idempotency_key: newRequestId(),
+    consent: { accepted: true, terms_version: CONFIG.termsVersion || "2026-11-05", disclaimer_version: "2026-11-02" } };
   let r, res = null;
   try { r = await fetch(serviceUrl() + "orders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); res = await r.json(); }
   catch (e) { status.hidden = false; status.textContent = t("i.fail", { msg: t("i.err.upstream") }); return; }
@@ -661,9 +665,9 @@ async function pollOrder(o) {
   const t0 = Date.now();
   for (;;) {
     let body = null;
-    try { const r = await fetch(serviceUrl() + "orders/" + encodeURIComponent(o.id), { headers: { "x-order-token": o.token }, cache: "no-store" }); body = await r.json(); if (r.status === 403 || r.status === 404) throw new ServiceError("i.err.not_found"); }
+    try { const r = await fetch(serviceUrl() + "orders/" + encodeURIComponent(o.id), { headers: { "x-order-token": o.token }, cache: "no-store" }); body = await r.json(); if (r.status === 403 || r.status === 404) throw new ServiceError(o.payload ? "i.err.not_found" : "i.err.report_expired"); }
     catch (e) { if (e instanceof ServiceError) throw e; }
-    if (body && body.report) return { report: body.report };
+    if (body && body.report) { restoreFromOrder(body.chart); return { report: body.report }; }
     if (body && body.report_expired) throw new ServiceError("i.err.report_expired");
     if (body && ["failed", "cancelled"].includes(body.payment_status)) throw new ServiceError("i.err.payment_failed");
     if (body && (body.payment_status === "mismatch" || body.payment_status === "refunded" || body.generation_status === "failed")) throw new ServiceError("i.err.order_problem");
@@ -671,10 +675,30 @@ async function pollOrder(o) {
     await new Promise((res) => setTimeout(res, JOB_POLL_MS));
   }
 }
+/** Rearma la carta desde el pedido: al volver del pago o al abrir el enlace del correo en otro aparato no hay carta en memoria. */
+function restoreFromOrder(p) {
+  if (!p || !p.chart) return;
+  const c = p.chart, chart = {
+    bodies: c.bodies.map((b) => ({ ...b, lon: b.longitude, deg: b.position })), south_node: c.south_node,
+    houses: c.houses ? { ...c.houses, system_effective: c.houses.system, cusps: c.houses.cusps.map((x) => x.longitude) } : null,
+    aspects: c.aspects, derived: c.derived, sensitivity: c.sensitivity, ephemeris: { engine: "Swiss Ephemeris" }, aspect_policy: p.engine.aspect_policy,
+  };
+  state.chart = chart; state.payload = p;
+  state.last = { f: { first: p.person.first_name, lang: p.request.report_language, prec: p.birth.time_precision, restored: true }, opt: null, warnings: [] };
+  $("#rep-wheel-in").innerHTML = wheelSVG(chart);
+  $("#btn-to-chart").hidden = true;
+}
 function resumeOrderFromUrl() {
   const q = new URLSearchParams(location.search);
   const id = q.get("pedido"); if (!id) return;
-  const o = savedOrder();
+  // enlace del correo: la clave viene después del «#», que no se envía a ningún servidor
+  const key = (location.hash.match(/^#k=([0-9a-f]{48})$/) || [])[1];
+  let o = savedOrder();
+  if (key) {
+    o = { id, token: key, payload: null, at: Date.now() };
+    try { localStorage.setItem(ORDER_KEY, JSON.stringify(o)); } catch (e) { }
+    history.replaceState(null, "", location.pathname + location.search);
+  }
   if (!o || o.id !== id) return;
   callInterpreter(() => pollOrder(o), o.payload);
 }
@@ -881,6 +905,7 @@ async function callInterpreter(fetcher = obtainReport, auditPayload = null) {
   prepareNotice();
   status.hidden = true;
   openWait();
+  if (fetcher !== obtainReport) $("#wait-stay-text").textContent = t("buy.waitMail");
   if (CONFIG.demo) $("#wait-clock").textContent = "…"; else startProgress();
   let ok = false;
   try {
@@ -902,6 +927,8 @@ async function callInterpreter(fetcher = obtainReport, auditPayload = null) {
     clearInterval(notify.timer);
     status.hidden = false;
     status.textContent = t("i.fail", { msg: e instanceof ServiceError ? t(e.key, e.params) : e.message });
+    // al abrir un enlace del correo no hay carta en pantalla: el aviso va en el formulario
+    if (!state.chart) setStatus($("#form-error"), "bad", esc(e instanceof ServiceError ? t(e.key, e.params) : e.message));
   }
   closeWait();
   if (!CONFIG.demo) finishProgress(ok);
@@ -992,7 +1019,7 @@ ${audit}
   const blob = new Blob([doc], { type: "text/html;charset=utf-8" });
   const a = document.createElement("a");
   const slug = (f.first || "carta").normalize("NFD").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "carta";
-  a.href = URL.createObjectURL(blob); a.download = `asterorbis-${slug}-${state.payload.birth.local_date}.html`;
+  a.href = URL.createObjectURL(blob); a.download = `asterorbis-${slug}-${state.payload.birth.local_date || "informe"}.html`;
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
