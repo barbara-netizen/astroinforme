@@ -51,6 +51,7 @@ assert.ok(JSON.stringify(rc).length < 1200);
 // La regla llega a las dos fases y solo la redacción compara secciones.
 const a = PROMPT_ANALISIS("{}"), b = PROMPT_INFORME({ idioma: IDIOMA.es, lang: "es", nombre: "", tratamiento: TRATAMIENTO.UNSPECIFIED, analisis: "{}", carta: "{}" });
 for (const t of [a, b]) { assert.ok(t.includes("Comprobación de alcance")); assert.ok(t.includes("ruler_chains")); }
+for (const t of [a, b]) assert.ok(t.includes("es un control, no un tema"));
 assert.ok(b.includes("la apertura, los recursos y la síntesis"));
 assert.ok(!a.includes("la apertura, los recursos y la síntesis"));
 console.log("OK — recorrido de regencias 2.3");

@@ -18,7 +18,10 @@ Para las regencias usá chart.derived.ruler_chains: points da el recorrido de ca
 que puede ser un domicilio o un ciclo. El recorrido usa regencias modernas: si te apoyás en un co-regente tradicional, decilo. Los puntos
 de unreliable no sostienen conclusiones.
 Si la afirmación vale para todos los elementos, podés hacerla. Si vale para algunos, nombrá cuáles y decí qué cambia para los demás.
-Un conjunto no queda fuera de un patrón porque lo esté uno de sus miembros. Si no podés comprobarla con estos datos, dejala como hipótesis o quitala.`;
+Un conjunto no queda fuera de un patrón porque lo esté uno de sus miembros. Si no podés comprobarla con estos datos, dejala como hipótesis o quitala.
+ruler_chains es un control, no un tema: no lo conviertas en el eje del informe ni en un recurso de cada carta. En el texto para la persona no
+enumeres recorridos ni listas de planetas que desembocan en otro, y no uses «cadena» ni «ciclo» como vocabulario técnico. Mencioná una regencia
+solo cuando sostenga una idea importante, y decí primero qué vive la persona.`;
 
 export const PROMPT_ANALISIS = (carta, mitosRecientes = []) => `FASE A — ANÁLISIS ESTRUCTURAL (no es el informe).
 Leé la carta calculada que sigue y devolvé SOLO un objeto JSON, sin texto antes ni después, con esta forma:

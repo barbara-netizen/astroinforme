@@ -345,7 +345,10 @@ Para las regencias us\xE1 chart.derived.ruler_chains: points da el recorrido de 
 que puede ser un domicilio o un ciclo. El recorrido usa regencias modernas: si te apoy\xE1s en un co-regente tradicional, decilo. Los puntos
 de unreliable no sostienen conclusiones.
 Si la afirmaci\xF3n vale para todos los elementos, pod\xE9s hacerla. Si vale para algunos, nombr\xE1 cu\xE1les y dec\xED qu\xE9 cambia para los dem\xE1s.
-Un conjunto no queda fuera de un patr\xF3n porque lo est\xE9 uno de sus miembros. Si no pod\xE9s comprobarla con estos datos, dejala como hip\xF3tesis o quitala.`;
+Un conjunto no queda fuera de un patr\xF3n porque lo est\xE9 uno de sus miembros. Si no pod\xE9s comprobarla con estos datos, dejala como hip\xF3tesis o quitala.
+ruler_chains es un control, no un tema: no lo conviertas en el eje del informe ni en un recurso de cada carta. En el texto para la persona no
+enumeres recorridos ni listas de planetas que desembocan en otro, y no uses \xABcadena\xBB ni \xABciclo\xBB como vocabulario t\xE9cnico. Mencion\xE1 una regencia
+solo cuando sostenga una idea importante, y dec\xED primero qu\xE9 vive la persona.`;
 var PROMPT_ANALISIS = (carta, mitosRecientes = []) => `FASE A \u2014 AN\xC1LISIS ESTRUCTURAL (no es el informe).
 Le\xE9 la carta calculada que sigue y devolv\xE9 SOLO un objeto JSON, sin texto antes ni despu\xE9s, con esta forma:
 {
