@@ -34,7 +34,7 @@ import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION
 import { normalizePayload, normalizeRequestId } from "./validate.js";
 import { ledger } from "./ledger.js";
 
-export const SERVICE_VERSION = "1.9.3";
+export const SERVICE_VERSION = "1.9.4";
 const DEFAULT_MODEL = "claude-opus-5-5";
 // la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
 const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
@@ -282,6 +282,9 @@ export async function readStream(r, model) {
  * spent.phases registra el costo de cada fase (para el registro de costos «gen:»).
  */
 export const REPORT_MIN_SECTIONS = 6, REPORT_MIN_WORDS = 800, PHASE_TRIES = 2;
+// Topes de salida por llamada. En Opus 5.5 el pensamiento adaptativo siempre está activo, se cobra como salida y cuenta
+// dentro de max_tokens: con 32.000 la redacción quedaba al borde, y una respuesta cortada se pagaba y se repetía entera.
+export const MAX_TOKENS_ANALYSIS = 24000, MAX_TOKENS_REPORT = 48000;
 /** Respuesta de una fase que no sirve (cortada, JSON roto, informe incompleto): se reintenta esa fase, no todo el pedido. */
 function malformed(detail) { const e = new Error("malformed"); e.detail = detail; return e; }
 function parseJSON(reply) {
@@ -296,11 +299,15 @@ export function assertComplete(report) {
   if (!sections.some((s) => s.id === "myth")) throw malformed("no_myth");
 }
 /** Llama a una fase y reintenta una vez si la respuesta no sirve. Los errores de la API siguen su camino. */
-async function phase(name, call, charge, parse) {
+async function phase(name, call, charge, parse, note = () => { }) {
   for (let i = 1; ; i++) {
+    const t0 = Date.now();
     const reply = await call();
     charge(name, reply.usage);
-    try { return parse(reply); } catch (e) { if (e.message !== "malformed" || i >= PHASE_TRIES) throw e; }
+    // registro técnico de cada llamada, sin texto de la carta ni del informe
+    const entry = { phase: name, stop: reply.stop || null, output_tokens: (reply.usage && reply.usage.output_tokens) || 0, seconds: Math.round((Date.now() - t0) / 1000) };
+    note(entry);
+    try { return parse(reply); } catch (e) { entry.problem = e.detail || "error"; if (e.message !== "malformed" || i >= PHASE_TRIES) throw e; }
   }
 }
 
@@ -308,6 +315,8 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   const model = env.MODEL || DEFAULT_MODEL;
   spent.phases = spent.phases || {};
   const load = hooks.load || (async () => null), save = hooks.save || (async () => { });
+  spent.calls = spent.calls || [];
+  const note = (entry) => spent.calls.push(entry);
   const charge = (phase, usage) => { const c = costUSD(usage, model); spent.usd += c; spent.phases[phase] = +((spent.phases[phase] || 0) + c).toFixed(4); };
   const carta = JSON.stringify(chartForModel(payload));
   const lang = payload.request.report_language;
@@ -315,15 +324,15 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   const tratamiento = TRATAMIENTO[payload.request.address_gender] || TRATAMIENTO.UNSPECIFIED;
   let analisis = await load("analisis");
   if (!analisis) {
-    analisis = await phase("a", async () => callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [...new Set([...(await recentMyths(env)), ...REFERENCE_MYTHS])]), maxTokens: 16000 }), charge, parseJSON);
+    analisis = await phase("a", async () => callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [...new Set([...(await recentMyths(env)), ...REFERENCE_MYTHS])]), maxTokens: MAX_TOKENS_ANALYSIS }), charge, parseJSON, note);
     await save("analisis", analisis);
     await rememberMyth(env, analisis);
   }
   let report = await load("report_b");
   if (!report) {
-    report = await phase("b", () => callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 32000 }), charge, (reply) => {
+    report = await phase("b", () => callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: MAX_TOKENS_REPORT }), charge, (reply) => {
       const r = normalizeReferences(withoutDedication(parseJSON(reply))); assertComplete(r); return r;
-    });
+    }, note);
     await save("report_b", report);
   }
   normalizeReferences(withoutDedication(report)); // también en un informe recuperado de una generación anterior
@@ -334,9 +343,9 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   // una sola corrección, que atiende a la vez los problemas técnicos y los de estilo
   if (!audit.ok || !style.ok || argument.ok === false) {
     try {
-      const fixed = await phase("c", () => callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32000 }), charge, (reply) => {
+      const fixed = await phase("c", () => callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: MAX_TOKENS_REPORT }), charge, (reply) => {
         const r = normalizeReferences(withoutDedication(parseJSON(reply))); assertComplete(r); return r;
-      });
+      }, note);
       const fixedAudit = auditReport(fixed, payload);
       // si la corrección solo era de estilo y rompió la parte técnica, se conserva la versión anterior
       if (fixedAudit.ok || !audit.ok) { report = fixed; audit = fixedAudit; style = styleCheck(fixed); argument = argumentAudit(fixed, payload); corrected = true; }
@@ -525,7 +534,7 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
     at: new Date().toISOString(), model: env.MODEL || DEFAULT_MODEL, service: SERVICE_VERSION, mode: extra.mode || "stream",
     access: useCode ? (job.codeKind || "code") : "public",
     // referencia para conciliar reclamos: número de orden de la compra (licencias) o el código (códigos de regalo)
-    ref: useCode ? (job.codeKind === "license" ? (job.order ? "order:" + job.order : null) : job.code) : null, usd: +spent.usd.toFixed(4), phases: spent.phases || {}, corrected: !!(result && result.corrected),
+    ref: useCode ? (job.codeKind === "license" ? (job.order ? "order:" + job.order : null) : job.code) : null, usd: +spent.usd.toFixed(4), phases: spent.phases || {}, calls: spent.calls || [], corrected: !!(result && result.corrected),
     outcome, quota_unsettled: unsettled || undefined, reason: error ? String(error.status || error.detail || error.message || "").slice(0, 60) : undefined, attempts: extra.attempts || 1, lang: job.payload.request.report_language,
   }), { expirationTtl: GEN_TTL }).catch(() => { });
   return out;

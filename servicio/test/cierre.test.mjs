@@ -44,4 +44,13 @@ const ID1 = "cierre-0000000000001", ID2 = "cierre-0000000000002";
   const sent = state.calls.map((x) => x.messages[0].content).join("\n");
   assert.ok(!sent.includes("ignora_todo")); assert.ok(sent.includes("orbes_v1"));
 }
-console.log("OK — cierre 1.9.3: 4 grupos");
+{ // la redacción tiene margen y cada llamada queda registrada, con el motivo si se repitió
+  const e = env(); mockClaude([]); await call(post(ID1), e); mockClaude([ANALISIS, { __stop: "max_tokens", text: "{ \"sections\": [" }, ok]);
+  await e.REPORT_JOB.obj(ID1).alarm();
+  assert.equal(state.calls[0].max_tokens, 24000); assert.equal(state.calls[1].max_tokens, 48000); assert.equal(state.calls[2].max_tokens, 48000);
+  const g = JSON.parse(await e.ASTRO_KV.get("gen:" + ID1));
+  assert.deepEqual(g.calls.map((c) => [c.phase, c.stop, c.problem]), [["a", "end_turn", undefined], ["b", "max_tokens", "max_tokens"], ["b", "end_turn", undefined]]);
+  assert.ok(g.calls.every((c) => Number.isInteger(c.output_tokens) && Number.isInteger(c.seconds)));
+  assert.ok(!JSON.stringify(g).includes("Prueba"));
+}
+console.log("OK — cierre 1.9.4: 5 grupos");

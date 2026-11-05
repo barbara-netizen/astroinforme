@@ -647,6 +647,15 @@ const serviceError = (status, body) => {
   const k = body && body.error ? "i.err." + body.error : null;
   return k && L.t(k) !== k ? new ServiceError(k) : new ServiceError("i.status", { status });
 };
+// espera hasta la próxima consulta; al volver a la pantalla consulta enseguida, porque el teléfono pausa los temporizadores
+function waitForNextPoll() {
+  return new Promise((res) => {
+    const done = () => { clearTimeout(timer); document.removeEventListener("visibilitychange", back); res(); };
+    const back = () => { if (!document.hidden) done(); };
+    const timer = setTimeout(done, JOB_POLL_MS);
+    document.addEventListener("visibilitychange", back);
+  });
+}
 async function obtainReportJob(headers, chartBody, request_id, code, retried = false) {
   let r, body = null;
   try { r = await fetch(serviceUrl() + "jobs", { method: "POST", headers, body: JSON.stringify({ ...JSON.parse(chartBody), request_id }) }); }
@@ -669,7 +678,7 @@ async function obtainReportJob(headers, chartBody, request_id, code, retried = f
       throw serviceError(r ? r.status : 0, body);
     }
     if (Date.now() - t0 > JOB_MAX_MS) throw new ServiceError("i.err.timeout");
-    await new Promise((res) => setTimeout(res, JOB_POLL_MS));
+    await waitForNextPoll();
     try {
       r = await fetch(serviceUrl() + "jobs/" + encodeURIComponent(request_id), { headers: code ? { "x-astro-code": code } : {}, cache: "no-store" });
       body = await r.json();
