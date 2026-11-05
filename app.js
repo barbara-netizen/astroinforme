@@ -630,7 +630,10 @@ function renderBuyBox(paused) {
   const providers = (state.health && state.health.payments) || [];
   const show = appMode() === "paid" && !paused && !CONFIG.demo && !!serviceUrl() && providers.length > 0;
   box.hidden = !show;
+  $("#regret-link-wrap").hidden = appMode() !== "paid";
   if (!show) return;
+  const terms = document.querySelector("#terms-box [data-i18n]"); // en la venta, la aceptación incluye edad, datos y arrepentimiento
+  if (terms && terms.dataset.i18n !== "buy.consent") { terms.dataset.i18n = "buy.consent"; terms.textContent = t("buy.consent"); }
   const wrap = $("#buy-buttons"), sig = providers.join("|") + L.getLang();
   if (wrap.dataset.sig !== sig) {
     wrap.innerHTML = ""; wrap.dataset.sig = sig;
