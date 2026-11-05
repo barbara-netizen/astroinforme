@@ -63,7 +63,7 @@ Después de la auditoría técnica, el servicio revisa el texto (`servicio/src/s
 | `chart.south_node` | derivado: Nodo Norte + 180° |
 | `chart.houses` | `system` efectivo (`PLACIDUS` o `PORPHYRY`), `asc`, `mc`, `cusps[]`. `null` si la hora es desconocida |
 | `chart.aspects[]` | `a`, `b`, `aspect`, `orb`, `max_orb`, `orb_class` (`TIGHT` ≤2°, `MEDIUM` ≤5°, `WIDE`), `applying` (`null` con ángulos), `reliable` |
-| `chart.derived` | elementos, modalidades, hemisferios, angulares (≤10°), regentes de ángulos y casas, dispositores, recepciones mutuas, stelliums, configuraciones (cuadratura en T, gran trígono, gran cruz, yod), planetas sin aspectos, fase Sol–Luna |
+| `chart.derived` | elementos, modalidades, hemisferios, angulares (≤10°), regentes de ángulos y casas, dispositores, recepciones mutuas, stelliums, configuraciones (cuadratura en T, gran trígono, gran cruz, yod), planetas sin aspectos, fase Sol–Luna. El servicio agrega `ruler_chains`, calculado por él a partir de los signos validados: recorrido de regencias modernas de cada planeta, Quirón y ángulo |
 | `chart.sensitivity` | ventana horaria analizada y lista `unreliable` de signos, casas y aspectos que cambian dentro de ella |
 | `warnings[]` | `code` + `text`: `PRE_1970_TZ`, `AMBIGUOUS_LOCAL_TIME`, `MANUAL_OFFSET`, `MANUAL_COORDS`, `PLACIDUS_FAILED`, `UNKNOWN_TIME`, `TIME_SENSITIVE` |
 

@@ -36,7 +36,7 @@ import { ledger } from "./ledger.js";
 import { routePayments, routeOrders, notifyOrderGeneration, runControls } from "./orders.js";
 import { getProvider, providerNames } from "./payments/provider.js";
 
-export const SERVICE_VERSION = "2.2.1";
+export const SERVICE_VERSION = "2.3";
 const DEFAULT_MODEL = "claude-opus-5-5";
 // la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
 const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";

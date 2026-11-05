@@ -339,6 +339,13 @@ var TRATAMIENTO = {
   NEUTRAL: "La persona prefiere un tratamiento neutro: no uses marcas de g\xE9nero gramatical para referirte a ella. Eleg\xED construcciones que no las requieran (por ejemplo, \xABten\xE9s tendencia a\u2026\xBB en lugar de \xABsos propenso/propensa a\u2026\xBB). No uses \xABe\xBB, \xABx\xBB ni \xAB@\xBB como desinencias.",
   UNSPECIFIED: "No sab\xE9s el g\xE9nero de la persona: no uses marcas de g\xE9nero gramatical para referirte a ella. Eleg\xED construcciones que no las requieran (por ejemplo, \xABten\xE9s tendencia a\u2026\xBB en lugar de \xABsos propenso/propensa a\u2026\xBB). No uses \xABe\xBB, \xABx\xBB ni \xAB@\xBB como desinencias."
 };
+var REGLA_ALCANCE = `Comprobaci\xF3n de alcance. Antes de afirmar que una parte de la carta queda dentro o fuera de un patr\xF3n, o de escribir \xABtodo\xBB,
+\xABsolo\xBB, \xABel \xFAnico\xBB, \xABlibre de\xBB, \xABno pasa por\xBB o \xABtermina en\xBB, revis\xE1 uno por uno los elementos que nombr\xE1s, con los datos calculados.
+Para las regencias us\xE1 chart.derived.ruler_chains: points da el recorrido de cada punto; groups re\xFAne los puntos con el mismo final,
+que puede ser un domicilio o un ciclo. El recorrido usa regencias modernas: si te apoy\xE1s en un co-regente tradicional, decilo. Los puntos
+de unreliable no sostienen conclusiones.
+Si la afirmaci\xF3n vale para todos los elementos, pod\xE9s hacerla. Si vale para algunos, nombr\xE1 cu\xE1les y dec\xED qu\xE9 cambia para los dem\xE1s.
+Un conjunto no queda fuera de un patr\xF3n porque lo est\xE9 uno de sus miembros. Si no pod\xE9s comprobarla con estos datos, dejala como hip\xF3tesis o quitala.`;
 var PROMPT_ANALISIS = (carta, mitosRecientes = []) => `FASE A \u2014 AN\xC1LISIS ESTRUCTURAL (no es el informe).
 Le\xE9 la carta calculada que sigue y devolv\xE9 SOLO un objeto JSON, sin texto antes ni despu\xE9s, con esta forma:
 {
@@ -356,6 +363,7 @@ Le\xE9 la carta calculada que sigue y devolv\xE9 SOLO un objeto JSON, sin texto 
 Antes de responder, hac\xE9 dos pasadas: forma general de la carta y revisi\xF3n planeta por planeta. Escrib\xED entre tres y cinco tesis. Toda tesis
 central necesita al menos dos indicadores distintos. Prioriz\xE1 los aspectos m\xE1s cerrados y us\xE1 chart.derived.structure si existe. Consider\xE1 tres
 mitos y explic\xE1 por qu\xE9 eleg\xEDs uno.
+${REGLA_ALCANCE}
 Us\xE1 exclusivamente los datos del JSON. Nada de memoria ni c\xE1lculos propios. Si la hora es desconocida, no uses casas ni \xE1ngulos.
 Con hora desconocida, la Luna est\xE1 calculada a las 12:00 y pudo estar unos 6\xB0 antes o despu\xE9s: no la cuentes entre los aspectos m\xE1s cerrados
 ni bases una tesis en que un aspecto suyo sea exacto.
@@ -385,6 +393,9 @@ Devolv\xE9 SOLO un objeto JSON v\xE1lido, sin texto antes ni despu\xE9s, con est
  "theses": [{"id": "t1", "claim": "\u2026", "sections": ["ids de secci\xF3n"], "central": true, "indicators": [referencias con el mismo formato de technical_references_used]}]
 }
 Cada tesis central del an\xE1lisis debe figurar en "theses" y desarrollarse en al menos una secci\xF3n.
+${REGLA_ALCANCE}
+Antes de cerrar, compar\xE1 lo que afirman la apertura, los recursos y la s\xEDntesis. Si una parte contradice a otra, correg\xED la formulaci\xF3n,
+salvo que la contradicci\xF3n sea de la carta: en ese caso presentala como tal.
 No incluyas dedicatoria ni ninguna secci\xF3n dirigida a la persona despu\xE9s del corolario mitol\xF3gico.
 Reglas para technical_references_used: inclu\xED cada posici\xF3n, \xE1ngulo y aspecto que el texto menciona, con los valores exactos del
 JSON (deg = grados y minutos de "position"). Omit\xED "house" si no la mencion\xE1s o si la casa figura como no fiable. No incluyas
@@ -419,6 +430,49 @@ ${informe}
 
 CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
+
+// src/chains.js
+var MODERN_RULER = {
+  ARIES: "MARS",
+  TAURUS: "VENUS",
+  GEMINI: "MERCURY",
+  CANCER: "MOON",
+  LEO: "SUN",
+  VIRGO: "MERCURY",
+  LIBRA: "VENUS",
+  SCORPIO: "PLUTO",
+  SAGITTARIUS: "JUPITER",
+  CAPRICORN: "SATURN",
+  AQUARIUS: "URANUS",
+  PISCES: "NEPTUNE"
+};
+var PLANETS = ["SUN", "MOON", "MERCURY", "VENUS", "MARS", "JUPITER", "SATURN", "URANUS", "NEPTUNE", "PLUTO"];
+var ANGLE_CUSP = { ASC: 0, DSC: 6, MC: 9, IC: 3 };
+function rulerChains(bodies, houses, unreliable = []) {
+  const signOfBody = Object.fromEntries(bodies.map((b) => [b.id, b.sign]));
+  const unsure = new Set(unreliable.filter((u) => u.field === "sign").map((u) => u.item));
+  const starts = PLANETS.map((id) => [id, MODERN_RULER[signOfBody[id]]]);
+  if (signOfBody.CHIRON) starts.push(["CHIRON", MODERN_RULER[signOfBody.CHIRON]]);
+  if (houses) for (const [angle, i] of Object.entries(ANGLE_CUSP)) starts.push([angle, MODERN_RULER[houses.cusps[i].sign]]);
+  const points = {}, groups = /* @__PURE__ */ new Map(), dudosos = [];
+  for (const [start, first] of starts) {
+    const path = [start];
+    let cur = first;
+    while (!path.includes(cur)) {
+      path.push(cur);
+      cur = MODERN_RULER[signOfBody[cur]];
+    }
+    const loop = path.slice(path.indexOf(cur));
+    const kind = loop.length === 1 ? "DOMICILE" : "CYCLE";
+    const ends_in = kind === "DOMICILE" ? [cur] : [...loop].sort();
+    if (path.some((id) => unsure.has(id) || id === "DSC" && unsure.has("ASC") || id === "IC" && unsure.has("MC"))) dudosos.push(start);
+    points[start] = path;
+    const key = ends_in.join("+");
+    if (!groups.has(key)) groups.set(key, { ends_in, kind, points: [] });
+    groups.get(key).points.push(start);
+  }
+  return { rulership: "MODERN", points, groups: [...groups.values()], unreliable: dudosos };
+}
 
 // src/validate.js
 var SIGNS2 = ["ARIES", "TAURUS", "GEMINI", "CANCER", "LEO", "VIRGO", "LIBRA", "SCORPIO", "SAGITTARIUS", "CAPRICORN", "AQUARIUS", "PISCES"];
@@ -659,6 +713,8 @@ function normalizePayload(p) {
     const aspects = arr(c.aspects, LIMITS.aspects, "chart.aspects").map(normAspect);
     if (!timeKnown && aspects.some((a) => a.a === "ASC" || a.a === "MC" || a.b === "ASC" || a.b === "MC")) fail("aspects.angles");
     const warnings = arr(p.warnings || [], LIMITS.warnings, "warnings").map((w) => ({ code: oneOf(isObj(w) ? w.code : null, WARNINGS, "warning.code") }));
+    const sensitivity = normSensitivity(c.sensitivity);
+    const derived = { ...normDerived(c.derived, timeKnown), ruler_chains: rulerChains(bodies, houses, sensitivity.unreliable) };
     const payload = {
       schema: "astroinforme.chart/v1",
       engine: { version: ID_RE.test(engine.version || "") ? engine.version : fail("engine.version"), aspect_policy: oneOf(engine.aspect_policy, ["orbes_v1"], "engine.aspect_policy") },
@@ -671,7 +727,7 @@ function normalizePayload(p) {
         include_myth: true
       },
       birth: { time_precision: precision, time_precision_label: PRECISIONS[precision] },
-      chart: { bodies, south_node, houses, aspects, derived: normDerived(c.derived, timeKnown), sensitivity: normSensitivity(c.sensitivity) },
+      chart: { bodies, south_node, houses, aspects, derived, sensitivity },
       warnings
     };
     return { ok: true, payload };
@@ -1046,6 +1102,7 @@ function publicView(o) {
     currency: o.currency,
     payment_status: o.payment.status,
     generation_status: o.generation.status,
+    generation_started_at: o.generation.startedAt,
     created_at: o.createdAt,
     updated_at: o.updatedAt
   };
@@ -1684,7 +1741,7 @@ async function routeOrders(request, env, cors, url) {
 }
 
 // src/worker.js
-var SERVICE_VERSION = "2.2";
+var SERVICE_VERSION = "2.3";
 var DEFAULT_MODEL = "claude-opus-5-5";
 var DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
 var PRICES = {

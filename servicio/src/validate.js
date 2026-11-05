@@ -6,6 +6,8 @@
 // Nada de lo que sale de acá puede contener texto libre, salvo el nombre de pila, que tiene su propio control.
 // La fecha, la hora, el lugar, la zona y el día juliano nunca forman parte del resultado.
 
+import { rulerChains } from "./chains.js";
+
 const SIGNS = ["ARIES", "TAURUS", "GEMINI", "CANCER", "LEO", "VIRGO", "LIBRA", "SCORPIO", "SAGITTARIUS", "CAPRICORN", "AQUARIUS", "PISCES"];
 const CORE = ["SUN", "MOON", "MERCURY", "VENUS", "MARS", "JUPITER", "SATURN", "URANUS", "NEPTUNE", "PLUTO"];
 const BODY_IDS = [...CORE, "CHIRON", "NORTH_NODE"];
@@ -210,6 +212,9 @@ export function normalizePayload(p) {
     const aspects = arr(c.aspects, LIMITS.aspects, "chart.aspects").map(normAspect);
     if (!timeKnown && aspects.some((a) => a.a === "ASC" || a.a === "MC" || a.b === "ASC" || a.b === "MC")) fail("aspects.angles");
     const warnings = arr(p.warnings || [], LIMITS.warnings, "warnings").map((w) => ({ code: oneOf(isObj(w) ? w.code : null, WARNINGS, "warning.code") }));
+    const sensitivity = normSensitivity(c.sensitivity);
+    // se calcula acá, con signos ya validados: lo que el cliente envíe con este nombre se descarta
+    const derived = { ...normDerived(c.derived, timeKnown), ruler_chains: rulerChains(bodies, houses, sensitivity.unreliable) };
     const payload = {
       schema: "astroinforme.chart/v1",
       engine: { version: ID_RE.test(engine.version || "") ? engine.version : fail("engine.version"), aspect_policy: oneOf(engine.aspect_policy, ["orbes_v1"], "engine.aspect_policy") },
@@ -220,7 +225,7 @@ export function normalizePayload(p) {
         include_myth: true,
       },
       birth: { time_precision: precision, time_precision_label: PRECISIONS[precision] },
-      chart: { bodies, south_node, houses, aspects, derived: normDerived(c.derived, timeKnown), sensitivity: normSensitivity(c.sensitivity) },
+      chart: { bodies, south_node, houses, aspects, derived, sensitivity },
       warnings,
     };
     return { ok: true, payload };

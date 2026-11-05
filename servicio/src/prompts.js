@@ -11,6 +11,15 @@ export const TRATAMIENTO = {
   UNSPECIFIED: "No sabés el género de la persona: no uses marcas de género gramatical para referirte a ella. Elegí construcciones que no las requieran (por ejemplo, «tenés tendencia a…» en lugar de «sos propenso/propensa a…»). No uses «e», «x» ni «@» como desinencias.",
 };
 
+// Comprobación de alcance: compartida por las fases A y B.
+const REGLA_ALCANCE = `Comprobación de alcance. Antes de afirmar que una parte de la carta queda dentro o fuera de un patrón, o de escribir «todo»,
+«solo», «el único», «libre de», «no pasa por» o «termina en», revisá uno por uno los elementos que nombrás, con los datos calculados.
+Para las regencias usá chart.derived.ruler_chains: points da el recorrido de cada punto; groups reúne los puntos con el mismo final,
+que puede ser un domicilio o un ciclo. El recorrido usa regencias modernas: si te apoyás en un co-regente tradicional, decilo. Los puntos
+de unreliable no sostienen conclusiones.
+Si la afirmación vale para todos los elementos, podés hacerla. Si vale para algunos, nombrá cuáles y decí qué cambia para los demás.
+Un conjunto no queda fuera de un patrón porque lo esté uno de sus miembros. Si no podés comprobarla con estos datos, dejala como hipótesis o quitala.`;
+
 export const PROMPT_ANALISIS = (carta, mitosRecientes = []) => `FASE A — ANÁLISIS ESTRUCTURAL (no es el informe).
 Leé la carta calculada que sigue y devolvé SOLO un objeto JSON, sin texto antes ni después, con esta forma:
 {
@@ -28,6 +37,7 @@ Leé la carta calculada que sigue y devolvé SOLO un objeto JSON, sin texto ante
 Antes de responder, hacé dos pasadas: forma general de la carta y revisión planeta por planeta. Escribí entre tres y cinco tesis. Toda tesis
 central necesita al menos dos indicadores distintos. Priorizá los aspectos más cerrados y usá chart.derived.structure si existe. Considerá tres
 mitos y explicá por qué elegís uno.
+${REGLA_ALCANCE}
 Usá exclusivamente los datos del JSON. Nada de memoria ni cálculos propios. Si la hora es desconocida, no uses casas ni ángulos.
 Con hora desconocida, la Luna está calculada a las 12:00 y pudo estar unos 6° antes o después: no la cuentes entre los aspectos más cerrados
 ni bases una tesis en que un aspecto suyo sea exacto.
@@ -56,6 +66,9 @@ Devolvé SOLO un objeto JSON válido, sin texto antes ni después, con esta form
  "theses": [{"id": "t1", "claim": "…", "sections": ["ids de sección"], "central": true, "indicators": [referencias con el mismo formato de technical_references_used]}]
 }
 Cada tesis central del análisis debe figurar en "theses" y desarrollarse en al menos una sección.
+${REGLA_ALCANCE}
+Antes de cerrar, compará lo que afirman la apertura, los recursos y la síntesis. Si una parte contradice a otra, corregí la formulación,
+salvo que la contradicción sea de la carta: en ese caso presentala como tal.
 No incluyas dedicatoria ni ninguna sección dirigida a la persona después del corolario mitológico.
 Reglas para technical_references_used: incluí cada posición, ángulo y aspecto que el texto menciona, con los valores exactos del
 JSON (deg = grados y minutos de "position"). Omití "house" si no la mencionás o si la casa figura como no fiable. No incluyas
