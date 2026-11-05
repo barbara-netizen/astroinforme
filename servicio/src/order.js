@@ -49,6 +49,16 @@ export class OrderDO {
     const path = new URL(request.url).pathname;
     const b = await request.json().catch(() => ({}));
     return this.serial(async () => {
+      // reparto del pedido de un intento de compra (objeto aparte, nombrado por la clave de idempotencia)
+      if (path === "/claim") {
+        const c = await this.storage.get("claim");
+        if (c) return ok({ ...c, first: false });
+        await this.storage.put("claim", { id: b.id, token: b.token, url: null });
+        await this.storage.setAlarm(Date.now() + PENDING_TTL_MS);
+        return ok({ id: b.id, token: b.token, url: null, first: true });
+      }
+      if (path === "/claim-url") { const c = await this.storage.get("claim"); if (c) { c.url = b.url; await this.storage.put("claim", c); } return ok({}); }
+      if (path === "/claim-release") { await this.storage.delete("claim"); return ok({}); }
       let o = await this.storage.get("o");
       if (path === "/create") {
         if (o) return ok({ existed: true, order: publicView(o) });
@@ -183,7 +193,7 @@ export class OrderDO {
   async alarm() {
     return this.serial(async () => {
       const o = await this.storage.get("o");
-      if (!o) return;
+      if (!o) { await this.storage.deleteAll(); return; } // reparto vencido
       const now = Date.now(), started = o.generation.startedAt ? Date.parse(o.generation.startedAt) : 0;
       if (o.generation.status === "starting" || o.generation.status === "running") {
         const limit = o.generation.status === "starting" ? START_WATCH_MS : RUN_WATCH_MS;

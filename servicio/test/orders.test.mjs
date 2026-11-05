@@ -160,7 +160,7 @@ group("idempotencia al crear: el mismo intento devuelve el mismo pedido");
   assert.equal(b.body.order_id, a.body.order_id); assert.equal(b.body.existed, true);
   assert.equal(b.body.token, a.body.token, "si la primera respuesta se perdió, el reintento recupera la clave");
   assert.equal(b.body.checkout_url, a.body.checkout_url);
-  assert.equal(e.ORDERS.objs.size, 1);
+  assert.equal([...e.ORDERS.objs.keys()].filter((x) => x.startsWith("ord-")).length, 1);
 }
 
 group("CORS: el navegador puede enviar la clave del pedido; los códigos ORDER: no se aceptan desde afuera");

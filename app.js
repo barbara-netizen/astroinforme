@@ -623,7 +623,7 @@ const isPilot = () => appMode() === "pilot";
 // ---------- compra (modo "paid"): pedido interno → checkout del proveedor → confirmación por webhook → informe
 // La app nunca envía datos natales al proveedor: crea el pedido en el servicio de AsterOrbis con la carta calculada
 // (como un pedido con código) y abre el enlace de pago, que solo lleva el identificador opaco del pedido.
-const ORDER_KEY = "astroinforme.order", ORDER_MS = 7 * 24 * 3600 * 1000;
+const PURCHASE_KEY = "astroinforme.purchase", ORDER_KEY = "astroinforme.order", ORDER_MS = 7 * 24 * 3600 * 1000;
 const PROVIDER_LABEL = { mercadopago: "buy.mp", dodo: "buy.dodo", sim: "buy.sim" };
 function renderBuyBox(paused) {
   const box = $("#buy-box"); if (!box) return;
@@ -643,6 +643,16 @@ function renderBuyBox(paused) {
 function savedOrder() {
   try { const o = JSON.parse(localStorage.getItem(ORDER_KEY) || "null"); return o && Date.now() - o.at < ORDER_MS ? o : null; } catch (e) { return null; }
 }
+/** Clave del intento de compra: la misma carta, correo y proveedor reusan el pedido durante 2 horas (doble toque, otra pestaña). */
+async function purchaseKey(provider, email, payload) {
+  const hash = await payloadHash(JSON.stringify([provider, email, payload]));
+  let k = null; try { k = JSON.parse(localStorage.getItem(PURCHASE_KEY) || "null"); } catch (e) { }
+  if (k && k.hash === hash && Date.now() - k.at < 2 * 3600 * 1000) return k.key;
+  const key = newRequestId();
+  try { localStorage.setItem(PURCHASE_KEY, JSON.stringify({ hash, key, at: Date.now() })); } catch (e) { }
+  return key;
+}
+const unlockBuy = () => $("#buy-buttons").querySelectorAll("button").forEach((b) => { b.disabled = false; });
 async function buyReport(provider) {
   const status = $("#interp-status");
   if (!acceptancesOk(status)) return;
@@ -650,14 +660,17 @@ async function buyReport(provider) {
   const email = ($("#buy-email").value || "").trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { status.hidden = false; status.textContent = t("i.err.email_invalid"); $("#buy-email").focus(); return; }
   const payload = servicePayload(state.payload);
-  const body = { provider, product: "informe_completo", payload, email, idempotency_key: newRequestId(),
+  $("#buy-buttons").querySelectorAll("button").forEach((b) => { b.disabled = true; });
+  const body = { provider, product: "informe_completo", payload, email, idempotency_key: await purchaseKey(provider, email, payload),
     consent: { accepted: true, terms_version: CONFIG.termsVersion || "2026-11-05", disclaimer_version: "2026-11-02" } };
   let r, res = null;
   try { r = await fetch(serviceUrl() + "orders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); res = await r.json(); }
-  catch (e) { status.hidden = false; status.textContent = t("i.fail", { msg: t("i.err.upstream") }); return; }
-  if (!r.ok || !res || !res.checkout_url || !res.token) { const se = serviceError(r.status, res); status.hidden = false; status.textContent = t("i.fail", { msg: t(se.key, se.params) }); return; }
+  catch (e) { unlockBuy(); status.hidden = false; status.textContent = t("i.fail", { msg: t("i.err.upstream") }); return; }
+  if (!r.ok || !res || !(res.checkout_url || res.already_paid) || !res.token) { unlockBuy(); const se = serviceError(r.status, res); status.hidden = false; status.textContent = t("i.fail", { msg: t(se.key, se.params) }); return; }
   // se guarda en este navegador para retomar al volver del pago: el pedido, su clave y la carta (sin fecha, hora ni lugar)
   try { localStorage.setItem(ORDER_KEY, JSON.stringify({ id: res.order_id, token: res.token, payload, at: Date.now() })); } catch (e) { }
+  // ese pedido ya se pagó: no se cobra otra vez, se espera el informe
+  if (res.already_paid) { const o = { id: res.order_id, token: res.token, payload }; unlockBuy(); return callInterpreter(() => pollOrder(o), payload); }
   location.href = res.checkout_url;
 }
 /** Espera la confirmación del pago y la entrega del informe de un pedido (al volver del checkout). */

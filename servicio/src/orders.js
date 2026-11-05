@@ -159,21 +159,21 @@ async function createOrder(request, env, cors) {
   const norm = normalizePayload(b.payload);
   if (!norm.ok) return json({ error: norm.error }, 400, cors);
 
-  // idempotencia: el mismo intento de compra (por ejemplo, doble toque o reintento de red) devuelve el mismo pedido
-  // la clave de idempotencia la genera la app y es secreta como la del pedido: con ella se devuelve el mismo pedido,
-  // su clave y su enlace de pago aunque la primera respuesta se haya perdido
-  const prev = env.ASTRO_KV ? await kvGetJSON(env.ASTRO_KV, "idem:" + idem, null) : null;
-  if (prev && prev.id) {
-    if (prev.url) return json({ order_id: prev.id, token: prev.token, checkout_url: prev.url, existed: true }, 200, cors);
-    return checkout(prev.id, prev.token);
+  // idempotencia atómica: un objeto por clave reparte un solo pedido, aunque lleguen dos intentos a la vez
+  const claimStub = env.ORDERS.get(env.ORDERS.idFromName("idem:" + idem));
+  const claim = await call(claimStub, "claim", { id: "ord-" + randHex(16), token: randHex(24) });
+  const id = claim.id, token = claim.token;
+  if (!claim.first) {
+    const v = await call(orderStub(env, id), "view", { token });
+    if (v.order && v.order.payment_status === "paid") return json({ order_id: id, token, already_paid: true, existed: true }, 200, cors);
+    if (claim.url) return json({ order_id: id, token, checkout_url: claim.url, existed: true }, 200, cors);
+    return json({ error: "order_in_progress" }, 409, cors);
   }
-  const id = "ord-" + randHex(16), token = randHex(24);
   const order = { id, product, provider: providerName, amountMinor: price.amountMinor, currency: price.currency, productRef: price.productRef,
     lang: norm.payload.request.report_language, tokenHash: await sha256Hex(token), idemKey: idem,
     consent: { terms_version: c.terms_version, disclaimer_version: String(c.disclaimer_version || ""), at: new Date().toISOString() } };
   await call(orderStub(env, id), "create", { order, payload: norm.payload, email: b.email.trim() });
   if (env.ASTRO_KV) await env.ASTRO_KV.put("open:" + id, "1", { expirationTtl: OPEN_TTL });
-  if (env.ASTRO_KV) await env.ASTRO_KV.put("idem:" + idem, JSON.stringify({ id, token }), { expirationTtl: 7 * 86400 });
   return checkout(id, token, 201);
 
   async function checkout(oid, tok, okStatus = 200) {
@@ -181,9 +181,9 @@ async function createOrder(request, env, cors) {
     const serviceOrigin = new URL(request.url).origin;
     let ck;
     try { ck = await provider.createCheckout(env, { id: oid, product, amountMinor: price.amountMinor, currency: price.currency, lang: norm.payload.request.report_language }, { appOrigin, serviceOrigin }); }
-    catch (e) { console.log(JSON.stringify({ event: "checkout_error", provider: providerName, status: e.status || null })); return json({ error: "checkout_unavailable", order_id: oid }, 502, cors); }
+    catch (e) { console.log(JSON.stringify({ event: "checkout_error", provider: providerName, status: e.status || null })); await call(claimStub, "claim-release", {}); return json({ error: "checkout_unavailable", order_id: oid }, 502, cors); }
     await call(orderStub(env, oid), "checkout", { externalCheckoutId: ck.externalCheckoutId });
-    if (env.ASTRO_KV) await env.ASTRO_KV.put("idem:" + idem, JSON.stringify({ id: oid, token: tok, url: ck.url }), { expirationTtl: 7 * 86400 });
+    await call(claimStub, "claim-url", { url: ck.url });
     return json({ order_id: oid, token: tok, checkout_url: ck.url, ...(okStatus === 200 ? { existed: true } : {}) }, okStatus, cors);
   }
 }

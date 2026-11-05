@@ -37,6 +37,7 @@ Garantías probadas (`test/orders.test.mjs`, `test/payments.test.mjs`):
 - El enlace abre informe, rueda y PDF en cualquier aparato durante 7 días. Después se borran carta, correo e informe. Sin fecha, hora ni lugar, esos datos no aparecen en esa vista.
 - Cada 15 minutos, `runControls` concilia pagos con Mercado Pago, reintenta hasta 3 generaciones y 5 correos, y avisa a `ADMIN_EMAIL` lo que no pudo resolver. A partir de las 12:00 UTC manda un resumen diario sin datos personales.
 - Dodo todavía no concilia: falta confirmar cómo buscar un pago por pedido.
+- Un intento de compra se reparte en un Durable Object por clave: dos toques simultáneos dan un solo pedido. Si ya está pagado, no se abre otro pago.
 
 Variables nuevas: `MAIL_API_KEY` (secreto de Resend), `MAIL_FROM`, `ADMIN_EMAIL` y `APP_URL` (opcional). Antes de activar: verificar el dominio en Resend, confirmar que su plan gratuito admite este uso, y actualizar el listado de encargados con el abogado.
 

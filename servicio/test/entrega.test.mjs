@@ -95,4 +95,22 @@ const run = async (e, jobId, s) => { seq = s; state.calls = []; await e.REPORT_J
   assert.equal(mails.filter((m) => m.subject.includes("resumen")).length, 1);
   assert.deepEqual(await runControls(env({ SERVICE_MODE: "pilot" })), { skipped: true });
 }
-console.log("OK — entrega 2.1: 8 grupos");
+{ // doble toque simultáneo: un solo pedido; con la misma clave vuelve el mismo enlace; ya pagado, no se vuelve a cobrar
+  const e = env(); const K = { idempotency_key: "idem-doble-000000001" };
+  const [a, b] = await Promise.all([create(e, K), create(e, K)]);
+  const firstOk = [a, b].filter((x) => x.status === 201), other = [a, b].find((x) => x.status !== 201);
+  assert.equal(firstOk.length, 1); assert.ok([200, 409].includes(other.status));
+  assert.equal([...e.ORDERS.objs.keys()].filter((x) => x.startsWith("ord-")).length, 1);
+  const again = await create(e, K);
+  assert.equal(again.status, 200); assert.equal(again.body.order_id, firstOk[0].body.order_id); assert.equal(again.body.token, firstOk[0].body.token); assert.equal(again.body.checkout_url, firstOk[0].body.checkout_url);
+  await pay(e, again.body.order_id);
+  const paid = await create(e, K);
+  assert.equal(paid.body.already_paid, true); assert.equal(paid.body.checkout_url, undefined);
+  // si el proveedor falla al abrir el pago, se puede reintentar con la misma clave
+  const e2 = env({ PRICE_USD: "10.00" }); const K2 = { idempotency_key: "idem-doble-000000002" };
+  const sim = (await import("../src/payments/sim.js")).simProvider, real = sim.createCheckout;
+  sim.createCheckout = async () => { throw new Error("caido"); };
+  assert.equal((await create(e2, K2)).status, 502); sim.createCheckout = real;
+  assert.equal((await create(e2, K2)).status, 201);
+}
+console.log("OK — entrega 2.1: 9 grupos");
