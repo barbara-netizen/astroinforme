@@ -36,7 +36,7 @@ export async function sha256Hex(s) {
 /** Vista pública de un pedido: nunca incluye la carta, la clave de acceso ni los eventos del proveedor. */
 export function publicView(o) {
   return { order_id: o.id, product: o.product, provider: o.provider, amount: o.amountMinor / 100, currency: o.currency,
-    payment_status: o.payment.status, generation_status: o.generation.status, created_at: o.createdAt, updated_at: o.updatedAt };
+    payment_status: o.payment.status, generation_status: o.generation.status, generation_started_at: o.generation.startedAt, created_at: o.createdAt, updated_at: o.updatedAt };
 }
 
 export class OrderDO {

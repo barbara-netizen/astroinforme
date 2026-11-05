@@ -556,7 +556,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
       <p id="rep-meta"></p>
     </header>
     <aside class="save-now no-print" id="save-now">
-      <p><strong data-i18n="savenow.h">Guardalo ahora.</strong> <span data-i18n="savenow.text"></span></p>
+      <p><strong data-i18n="savenow.h">Guardalo ahora.</strong> <span id="savenow-text" data-i18n="savenow.text"></span></p>
       <button type="button" class="btn" id="btn-print-3">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 19h16"/></svg>
         <span data-i18n="btn.savePdf">Guardar PDF</span></button>
@@ -583,7 +583,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
         <button type="button" class="btn ghost" id="btn-print-2"><span data-i18n="btn.savePdfLong">Guardar el informe en PDF</span></button>
         <button type="button" class="btn ghost" id="btn-download" data-i18n="btn.download">Descargar (archivo HTML)</button>
       </div>
-      <p class="small muted no-print" data-i18n="save.note"></p>
+      <p id="save-note" class="small muted no-print" data-i18n="save.note"></p>
       <div id="feedback-box" class="feedback" hidden>
         <h3><label for="fb-text" data-i18n="fb.h">Tu opinión sobre el informe</label></h3>
         <p class="small muted" data-i18n="fb.note"></p>
@@ -603,7 +603,7 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
     <figure id="fig-reader" class="art" hidden></figure>
     <p id="wait-who"></p>
     <div id="wait-clock" aria-live="off">0:00</div>
-    <p style="color:#98a0ad" data-i18n="wait.usual">suele tardar entre cinco y siete minutos</p>
+    <p id="wait-usual" style="color:#98a0ad" data-i18n="wait.usual">suele tardar entre cinco y siete minutos</p>
     <button type="button" class="wait-read" id="wait-read"><span data-i18n="wait.read">Leer mientras esperás</span> <span aria-hidden="true">↓</span></button>
     <p class="wait-steps" data-i18n="wait.steps"></p>
     <div class="wait-alert"><strong id="wait-stay" data-i18n="wait.stay">Quedate en esta pantalla</strong><p id="wait-stay-text" data-i18n="wait.stayText"></p><p id="wait-awake" hidden data-i18n="wait.awake"></p></div>
