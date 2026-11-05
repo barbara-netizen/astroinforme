@@ -269,14 +269,14 @@ group("al proveedor de pagos no le llega la carta ni datos natales");
 {
   const e = env({ PAYMENTS_SIM: "false", MP_ACCESS_TOKEN: "TEST-x", MP_WEBHOOK_SECRET: "s", PRICE_ARS: "15000.00" });
   const sent = [];
-  globalThis.fetch = async (url, init) => { sent.push({ url: String(url), body: init && init.body }); return new Response(JSON.stringify({ id: "pref-1", init_point: "https://mp/checkout/pref-1" }), { status: 201 }); };
+  globalThis.fetch = async (url, init) => { sent.push({ url: String(url), body: init && init.body }); return new Response(JSON.stringify({ id: "pref-1", checkout_url: "https://mp/checkout/pref-1" }), { status: 201 }); };
   const c = await call(createReq({ provider: "mercadopago" }), e);
   assert.equal(c.status, 201); assert.equal(c.body.checkout_url, "https://mp/checkout/pref-1");
-  assert.equal(sent.length, 1); assert.match(sent[0].url, /checkout\/preferences$/);
+  assert.equal(sent.length, 1); assert.match(sent[0].url, /v1\/orders$/);
   const body = sent[0].body;
   for (const s of ["SUN", "MOON", "bodies", "houses", "aspects", "Prueba", "lon"]) assert.ok(!body.includes(s), "no envía " + s);
   const pref = JSON.parse(body);
-  assert.equal(pref.external_reference, c.body.order_id); assert.equal(pref.items[0].unit_price, 15000); assert.equal(pref.items[0].currency_id, "ARS");
+  assert.equal(pref.external_reference, c.body.order_id); assert.equal(pref.items[0].unit_price, "15000.00");
 }
 
 group("pedido sin pagar vence: se borra la carta y queda cancelado");

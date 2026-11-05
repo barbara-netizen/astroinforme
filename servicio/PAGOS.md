@@ -65,7 +65,6 @@ Con `ADMIN_TOKEN` configurado (cabecera `Authorization: Bearer <token>`):
 | `ADMIN_TOKEN` | secreto | acceso a `/admin/` |
 | `MP_ACCESS_TOKEN` | secreto | Mercado Pago (de prueba: `TEST-…`) |
 | `MP_WEBHOOK_SECRET` | secreto | clave secreta de Webhooks de la aplicación de Mercado Pago |
-| `MP_USE_SANDBOX_POINT` | variable | `true` para usar `sandbox_init_point` |
 | `DODO_API_KEY` | secreto | Dodo (no cargar hasta la aprobación) |
 | `DODO_WEBHOOK_SECRET` | secreto | secreto del webhook de Dodo (`whsec_…`) |
 | `DODO_PRODUCT_ID` | variable | producto de pago único creado en Dodo |
@@ -88,7 +87,7 @@ Binding nuevo en `wrangler.toml`: `ORDERS` (clase `OrderDO`, migración `v3`). S
 
 ## Pendiente de confirmar con pruebas reales
 
-- **Mercado Pago:** la plantilla de firma `id:<data.id>;request-id:<x-request-id>;ts:<ts>;` (HMAC-SHA256 en hexadecimal) figura en la documentación, pero la página consultada no muestra el paso manual completo. Hay que confirmarla con un aviso real en modo de prueba.
+- **Mercado Pago (API de Orders, porque Preferences será descontinuada):** el aviso se configura en el panel, evento **Order**, con la URL `/webhooks/mercadopago`. Falta confirmar con una compra de prueba que `payer` no sea obligatorio y la ruta de reembolso. La plantilla de firma `id:<data.id>;request-id:<x-request-id>;ts:<ts>;` (HMAC-SHA256 en hexadecimal) figura en la documentación, pero la página consultada no muestra el paso manual completo. Hay que confirmarla con un aviso real en modo de prueba.
 - **Dodo:**
   - la URL base de producción (se asume `https://live.dodopayments.com`);
   - los nombres de los campos de `GET /payments/{id}`;

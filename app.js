@@ -616,6 +616,8 @@ function showResumeNote() {
 }
 /** Modo efectivo: "pilot" | "paid" | "disabled". El servicio puede pausar la generación aunque la app diga otra cosa. */
 function appMode() {
+  // acceso de prueba de la venta: solo con esta dirección especial; al público le sigue valiendo lo que diga config.js
+  try { if (new URLSearchParams(location.search).get("venta") === "prueba" || sessionStorage.getItem("astroinforme.venta") === "prueba") { sessionStorage.setItem("astroinforme.venta", "prueba"); return "paid"; } } catch (e) { }
   const m = ["pilot", "paid", "disabled"].includes(CONFIG.mode) ? CONFIG.mode : (CONFIG.pilot === false ? "paid" : "pilot");
   return state.health && state.health.mode === "disabled" ? "disabled" : m;
 }
