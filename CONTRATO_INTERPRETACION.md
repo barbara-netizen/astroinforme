@@ -16,7 +16,7 @@ export const CONFIG = { interpreterUrl: "https://astroinforme.gutierrez-barbarit
 
 Con servicio conectado, la página consulta `GET <interpreterUrl>health` al cargar. Si `available` es `false`, avisa que no quedan informes y desactiva el botón (salvo que se cargue un código).
 
-El botón «Generar el informe» hace `POST interpreterUrl` con `Content-Type: application/json`, los encabezados opcionales `x-astro-code` y `x-turnstile-token`, y como cuerpo una **versión reducida** de `astroinforme.chart/v1`: `schema`, `engine`, `person.first_name`, `request`, `birth.time_precision` y `birth.time_precision_label`, `chart` sin `jd_ut` y solo los códigos de `warnings`. La fecha, la hora, el lugar, la zona y el instante UTC no salen del dispositivo.
+El botón «Generar el informe» hace `POST interpreterUrl` con `Content-Type: application/json`, los encabezados opcionales `x-astro-code` y `x-turnstile-token`, y como cuerpo una **versión reducida** de `astroinforme.chart/v1`: `schema`, `engine`, `person.first_name`, `request`, `birth.time_precision` y `birth.time_precision_label`, `chart` sin `jd_ut` y solo los códigos de `warnings`. La fecha, la hora, el lugar, la zona y el instante UTC no se envían como campos, pero las posiciones exactas de la carta permiten deducirlos.
 
 Desde el servicio 1.5 el cuerpo puede llevar además `request_id` (16 a 64 letras, números o guiones), elegido por la app para cada pedido. Si la respuesta no llega, la app reintenta con el mismo `request_id` (misma carta, mismo código) y el servicio devuelve el informe ya generado sin descontar otro. El `request_id` no llega al modelo. Un servicio anterior lo ignora.
 

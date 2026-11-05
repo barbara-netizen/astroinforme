@@ -85,7 +85,7 @@ Obra de Bárbara Gutiérrez (https://barbaragutierrez.art), integrada según las
 
 ## Privacidad
 
-Los datos de nacimiento no salen del navegador. La página solo descarga sus propios archivos, incluidas las tipografías (`fonts/`, sin Google Fonts). En el navegador guarda únicamente el idioma elegido y, si se cargó, el código de acceso. Al pedir un informe se envía al servicio una carta reducida, sin fecha, hora ni lugar. Detalle para visitantes en `privacidad.html` (es/de/en).
+La carta se calcula en el navegador: para ese cálculo, los datos de nacimiento no salen del dispositivo. La página solo descarga sus propios archivos, incluidas las tipografías (`fonts/`, sin Google Fonts). En el navegador guarda únicamente el idioma elegido y, si se cargó, el código de acceso. Al pedir un informe se envía al servicio la carta calculada. No lleva fecha, hora ni lugar como campos, pero sus posiciones exactas permiten deducirlos, así que equivale a enviar los datos natales. Detalle para visitantes en `privacidad.html` (es/de/en).
 
 ## Limitaciones conocidas
 

@@ -200,6 +200,8 @@ function readForm() {
     const m = v.match(/^([+-])?(\d{1,2})(?::(\d{2}))?$/) || v.match(/^([+-])?(\d{1,2}(?:\.\d+)?)$/);
     if (!m) throw new FormError("err.offset");
     const sign = m[1] === "-" ? -1 : 1; const hrs = parseFloat(m[2]); const mins = m[3] ? +m[3] : 0;
+    // hasta ±16 h: alcanza para las horas locales históricas, que llegaron a superar ±15 h
+    if (mins > 59 || hrs * 60 + mins > 16 * 60) throw new FormError("err.offset");
     manual = sign * Math.round(hrs * 60 + mins);
   }
   return { first: $("#fname").value.trim(), lang: $("#lang").value, gender: $("#gender").value || "UNSPECIFIED", y, mo, d: dd, h, mi, prec, zone, manual };
@@ -243,10 +245,10 @@ async function calculate(chosenUtc = null) {
   if (f.manual !== null) warnings.push({ code: "MANUAL_OFFSET", params: { offset: fmtOffset(f.manual) } });
   if (state.place.source === "MANUAL") warnings.push({ code: "MANUAL_COORDS", params: {} });
 
-  const dayEdge = (h, mi) => { const r = E.resolveLocalTime({ y: f.y, mo: f.mo, d: f.d, h, mi }, f.zone, f.manual); return (r.options[0] || opt).utcMs; };
+  const dayEdge = (last) => E.dayEdgeUtc(f, f.zone, f.manual, last) ?? opt.utcMs;
   let chart;
   try {
-    chart = E.buildChart({ utcMs: opt.utcMs, lat: state.place.lat, lon: state.place.lon, precision: f.prec, zoneNoonUtcMs: opt.utcMs, dayStartUtcMs: dayEdge(0, 0), dayEndUtcMs: dayEdge(23, 59) });
+    chart = E.buildChart({ utcMs: opt.utcMs, lat: state.place.lat, lon: state.place.lon, precision: f.prec, zoneNoonUtcMs: opt.utcMs, dayStartUtcMs: dayEdge(false), dayEndUtcMs: dayEdge(true) });
   } catch (e) { setStatus(err, "bad", esc(t("err.calc", { code: e.code || e.message }))); return; }
   if (chart.houses && chart.houses.warning) warnings.push({ code: chart.houses.warning, params: {} });
   if (f.prec === "UNKNOWN") warnings.push({ code: "UNKNOWN_TIME", params: {} });
@@ -566,7 +568,8 @@ function renderReport(rep) {
   $("#rep-index-sum").textContent = t("rep.index", { n: list.children.length });
 }
 
-// Al servicio solo viaja lo necesario para interpretar: la fecha, la hora, el lugar y el día juliano no salen del dispositivo.
+// Al servicio solo viaja lo necesario para interpretar. La fecha, la hora, el lugar y el día juliano no se envían como
+// campos, pero la carta contiene posiciones exactas de las que pueden deducirse (lo declara privacidad.html).
 function servicePayload(p) {
   return {
     schema: p.schema, engine: p.engine, person: { first_name: p.person.first_name }, request: p.request,

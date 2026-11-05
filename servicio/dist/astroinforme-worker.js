@@ -762,7 +762,7 @@ function ledger(env, code) {
 }
 
 // src/worker.js
-var SERVICE_VERSION = "1.9.2";
+var SERVICE_VERSION = "1.9.3";
 var DEFAULT_MODEL = "claude-opus-5-5";
 var DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
 var PRICES = {
@@ -881,8 +881,8 @@ function normalizeReferences(report) {
 function chartForModel(p) {
   const n = normalizePayload(p);
   if (!n.ok) throw new Error("bad_request");
-  const { person, ...rest } = n.payload;
-  return rest;
+  const { person, engine, ...rest } = n.payload;
+  return { ...rest, engine: { aspect_policy: engine.aspect_policy } };
 }
 function describeArgument(argument) {
   if (argument.ok !== false) return "";
@@ -1157,6 +1157,7 @@ async function payloadFingerprint(payload) {
   return [...h.slice(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 var savedReport = (s) => s && s.report ? s.report : s && s.schema ? s : null;
+var CONSUME_TRIES = 3;
 var GEN_TTL = 90 * 86400;
 async function loadProtocol(env) {
   const base = env.PROTOCOL || (env.ASTRO_KV ? await env.ASTRO_KV.get("protocol") : null);
@@ -1226,22 +1227,31 @@ async function admit(request, env, cors, { requireCode, cap, incoming }) {
 async function finalizeJob(env, job, spent, result, error, extra = {}) {
   const kv = env.ASTRO_KV;
   const { useCode, code, requestId, limit, mk, vKey, vUsed, dKey, dUsed, fp, token } = job;
-  let out, outcome, consumed = false;
+  let out, outcome, consumed = false, unsettled = false;
   if (result) {
     const strict = env.AUDIT_STRICT !== "false";
     if (!result.audit.ok && strict) {
-      await addToMonth(kv, mk, { usd: spent.usd, failed: 1 });
+      await addToMonth(kv, mk, { usd: spent.usd, failed: 1 }).catch((e) => console.log(JSON.stringify({ event: "month_failed", detail: String(e && e.message || e) })));
       out = { error: "audit_failed" };
       outcome = "audit_failed";
     } else {
       let used = null;
       if (useCode) {
         await kv.put("rep:" + code, JSON.stringify({ request_id: requestId, fp: fp || null, report: result.report, at: (/* @__PURE__ */ new Date()).toISOString() }), { expirationTtl: REPORT_TTL }).catch((e) => console.log(JSON.stringify({ event: "report_copy_failed", detail: String(e && e.message || e) })));
-        used = (await ledger(env, code).consume(token)).used;
-        consumed = true;
+        for (let i = 1; i <= CONSUME_TRIES && !consumed; i++) {
+          try {
+            used = (await ledger(env, code).consume(token)).used;
+            consumed = true;
+          } catch (e) {
+            if (i === CONSUME_TRIES) {
+              unsettled = true;
+              console.log(JSON.stringify({ event: "consume_failed", detail: String(e && e.message || e) }));
+            }
+          }
+        }
       }
       await addToMonth(kv, mk, { usd: spent.usd, reports: 1 }).catch((e) => console.log(JSON.stringify({ event: "month_failed", detail: String(e && e.message || e) })));
-      out = { report: result.report, remaining: useCode ? Math.max(0, limit - used) : null };
+      out = { report: result.report, remaining: useCode && used != null ? Math.max(0, limit - used) : null };
       outcome = "delivered";
     }
   } else {
@@ -1257,7 +1267,7 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
       });
     }
   }
-  if (useCode && !consumed) await ledger(env, code).release(token).catch(() => {
+  if (useCode && !consumed && !unsettled) await ledger(env, code).release(token).catch(() => {
   });
   const genId = requestId || crypto.randomUUID();
   await kv.put("gen:" + genId, JSON.stringify({
@@ -1272,12 +1282,23 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
     phases: spent.phases || {},
     corrected: !!(result && result.corrected),
     outcome,
+    quota_unsettled: unsettled || void 0,
     reason: error ? String(error.status || error.detail || error.message || "").slice(0, 60) : void 0,
     attempts: extra.attempts || 1,
     lang: job.payload.request.report_language
   }), { expirationTtl: GEN_TTL }).catch(() => {
   });
   return out;
+}
+async function undoAdmission(env, job) {
+  if (job.useCode) await ledger(env, job.code).release(job.token).catch(() => {
+  });
+  if (job.vKey) {
+    await env.ASTRO_KV.put(job.vKey, String(job.vUsed), { expirationTtl: 172800 }).catch(() => {
+    });
+    await env.ASTRO_KV.put(job.dKey, String(job.dUsed), { expirationTtl: 172800 }).catch(() => {
+    });
+  }
 }
 async function readBody(request, cors) {
   const raw = await request.text();
@@ -1360,8 +1381,15 @@ var worker_default = {
       }
       const adm2 = await admit(request, env, cors, { requireCode, cap, incoming: body.incoming });
       if (adm2.response) return adm2.response;
-      const r = await stub.fetch("https://job/start", { method: "POST", body: JSON.stringify(adm2.job) });
-      return json(await r.json(), 202, { ...cors, "cache-control": "no-store" });
+      try {
+        const r = await stub.fetch("https://job/start", { method: "POST", body: JSON.stringify(adm2.job) });
+        if (!r.ok) throw new Error("job_start");
+        return json(await r.json(), 202, { ...cors, "cache-control": "no-store" });
+      } catch (e) {
+        console.log(JSON.stringify({ event: "job_start_failed", detail: String(e && e.message || e) }));
+        await undoAdmission(env, adm2.job);
+        return json({ error: "upstream" }, 503, cors);
+      }
     }
     if (env.LEGACY_STREAM !== "true") return json({ error: "app_outdated" }, 410, cors);
     const adm = await admit(request, env, cors, { requireCode, cap, incoming: body.incoming });
