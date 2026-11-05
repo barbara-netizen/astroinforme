@@ -7,7 +7,7 @@ Conecta la app web con la API de Claude **sin exponer la clave**. La app envía 
 1. Si está configurado, verifica el control anti-robots de **Cloudflare Turnstile**.
 2. Verifica el **código de acceso** y su cupo, o, en **acceso público**, el límite por visitante y por día.
 3. Verifica el **tope mensual** de gasto del servicio.
-4. Valida la carta y la **reconstruye con una lista blanca** (`src/validate.js`): enums, rangos, coherencia entre longitud, signo y grado, y topes de tamaño. Descarta cualquier campo desconocido y controla el nombre de pila. Envía a Claude solo esos datos astrológicos, el nombre de pila y el tratamiento elegido. **Nunca** la fecha, la hora, el lugar ni el día juliano (la app ya no los envía).
+4. Valida la carta y la **reconstruye con una lista blanca** (`src/validate.js`): enums, rangos, coherencia entre longitud, signo y grado, y topes de tamaño. Descarta cualquier campo desconocido y controla el nombre de pila. Envía a Claude solo esos datos astrológicos, el nombre de pila y el tratamiento elegido. La fecha, la hora, el lugar y el día juliano no se envían como campos, pero las posiciones exactas de la carta permiten deducirlos: `privacidad.html` lo declara.
 5. Fase A: análisis estructural (JSON). Fase B: redacción (contrato `astroinforme.report/v1`), con el tratamiento gramatical pedido.
 6. **Auditoría técnica** (`audit.js`, la misma de la app; verifica solo las referencias que el informe declara) y **control de estilo** (`src/style.js`). Si alguno falla, pide una sola corrección (fase C) que atiende ambos y vuelve a auditar. El estilo nunca bloquea la entrega.
 7. Si la auditoría técnica sigue fallando, **no entrega el informe** (`audit_failed`) y no descuenta el cupo; el gasto queda registrado en el mes.

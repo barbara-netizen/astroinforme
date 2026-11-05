@@ -101,6 +101,19 @@ export function resolveLocalTime({ y, mo, d, h, mi }, zone, manualOffsetMin = nu
   return { status: opts.length === 1 ? "OK" : opts.length === 0 ? "NONEXISTENT" : "AMBIGUOUS", source: "IANA", options: opts };
 }
 
+/**
+ * Primer o último instante real de un día civil. Si esa hora no existió (cambio de hora a las 00:00, por ejemplo),
+ * busca minuto a minuto hasta dar con una que sí. Devuelve null si el día entero no existió en esa zona.
+ */
+export function dayEdgeUtc({ y, mo, d }, zone, manualOffsetMin, last) {
+  const step = last ? -1 : 1;
+  for (let m = last ? 1439 : 0, n = 0; n <= 240; n++, m += step) {
+    const { options } = resolveLocalTime({ y, mo, d, h: Math.floor(m / 60), mi: m % 60 }, zone, manualOffsetMin);
+    if (options.length) return options[last ? options.length - 1 : 0].utcMs;
+  }
+  return null;
+}
+
 // ---------------- Cálculo ----------------
 
 function jdFromUtc(utcMs) {
