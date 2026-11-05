@@ -36,7 +36,7 @@ import { ledger } from "./ledger.js";
 import { routePayments, routeOrders, notifyOrderGeneration } from "./orders.js";
 import { getProvider, providerNames } from "./payments/provider.js";
 
-export const SERVICE_VERSION = "2.0";
+export const SERVICE_VERSION = "2.1";
 const DEFAULT_MODEL = "claude-opus-5-5";
 // la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
 const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
@@ -182,8 +182,9 @@ export function normalizeReferences(report) {
 export function chartForModel(p) {
   const n = normalizePayload(p);
   if (!n.ok) throw new Error("bad_request");
-  const { person, ...rest } = n.payload;
-  return rest;
+  // al modelo solo llega la política de aspectos: engine.version es texto elegido por el cliente y no le hace falta
+  const { person, engine, ...rest } = n.payload;
+  return { ...rest, engine: { aspect_policy: engine.aspect_policy } };
 }
 
 function describeArgument(argument) {
@@ -283,6 +284,9 @@ export async function readStream(r, model) {
  * spent.phases registra el costo de cada fase (para el registro de costos «gen:»).
  */
 export const REPORT_MIN_SECTIONS = 6, REPORT_MIN_WORDS = 800, PHASE_TRIES = 2;
+// Topes de salida por llamada. En Opus 5.5 el pensamiento adaptativo siempre está activo, se cobra como salida y cuenta
+// dentro de max_tokens: con 32.000 la redacción quedaba al borde, y una respuesta cortada se pagaba y se repetía entera.
+export const MAX_TOKENS_ANALYSIS = 24000, MAX_TOKENS_REPORT = 48000;
 /** Respuesta de una fase que no sirve (cortada, JSON roto, informe incompleto): se reintenta esa fase, no todo el pedido. */
 function malformed(detail) { const e = new Error("malformed"); e.detail = detail; return e; }
 function parseJSON(reply) {
@@ -297,11 +301,15 @@ export function assertComplete(report) {
   if (!sections.some((s) => s.id === "myth")) throw malformed("no_myth");
 }
 /** Llama a una fase y reintenta una vez si la respuesta no sirve. Los errores de la API siguen su camino. */
-async function phase(name, call, charge, parse) {
+async function phase(name, call, charge, parse, note = () => { }) {
   for (let i = 1; ; i++) {
+    const t0 = Date.now();
     const reply = await call();
     charge(name, reply.usage);
-    try { return parse(reply); } catch (e) { if (e.message !== "malformed" || i >= PHASE_TRIES) throw e; }
+    // registro técnico de cada llamada, sin texto de la carta ni del informe
+    const entry = { phase: name, stop: reply.stop || null, output_tokens: (reply.usage && reply.usage.output_tokens) || 0, seconds: Math.round((Date.now() - t0) / 1000) };
+    note(entry);
+    try { return parse(reply); } catch (e) { entry.problem = e.detail || "error"; if (e.message !== "malformed" || i >= PHASE_TRIES) throw e; }
   }
 }
 
@@ -309,6 +317,8 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   const model = env.MODEL || DEFAULT_MODEL;
   spent.phases = spent.phases || {};
   const load = hooks.load || (async () => null), save = hooks.save || (async () => { });
+  spent.calls = spent.calls || [];
+  const note = (entry) => spent.calls.push(entry);
   const charge = (phase, usage) => { const c = costUSD(usage, model); spent.usd += c; spent.phases[phase] = +((spent.phases[phase] || 0) + c).toFixed(4); };
   const carta = JSON.stringify(chartForModel(payload));
   const lang = payload.request.report_language;
@@ -316,15 +326,15 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   const tratamiento = TRATAMIENTO[payload.request.address_gender] || TRATAMIENTO.UNSPECIFIED;
   let analisis = await load("analisis");
   if (!analisis) {
-    analisis = await phase("a", async () => callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [...new Set([...(await recentMyths(env)), ...REFERENCE_MYTHS])]), maxTokens: 16000 }), charge, parseJSON);
+    analisis = await phase("a", async () => callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [...new Set([...(await recentMyths(env)), ...REFERENCE_MYTHS])]), maxTokens: MAX_TOKENS_ANALYSIS }), charge, parseJSON, note);
     await save("analisis", analisis);
     await rememberMyth(env, analisis);
   }
   let report = await load("report_b");
   if (!report) {
-    report = await phase("b", () => callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 32000 }), charge, (reply) => {
+    report = await phase("b", () => callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: MAX_TOKENS_REPORT }), charge, (reply) => {
       const r = normalizeReferences(withoutDedication(parseJSON(reply))); assertComplete(r); return r;
-    });
+    }, note);
     await save("report_b", report);
   }
   normalizeReferences(withoutDedication(report)); // también en un informe recuperado de una generación anterior
@@ -335,9 +345,9 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   // una sola corrección, que atiende a la vez los problemas técnicos y los de estilo
   if (!audit.ok || !style.ok || argument.ok === false) {
     try {
-      const fixed = await phase("c", () => callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32000 }), charge, (reply) => {
+      const fixed = await phase("c", () => callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: MAX_TOKENS_REPORT }), charge, (reply) => {
         const r = normalizeReferences(withoutDedication(parseJSON(reply))); assertComplete(r); return r;
-      });
+      }, note);
       const fixedAudit = auditReport(fixed, payload);
       // si la corrección solo era de estilo y rompió la parte técnica, se conserva la versión anterior
       if (fixedAudit.ok || !audit.ok) { report = fixed; audit = fixedAudit; style = styleCheck(fixed); argument = argumentAudit(fixed, payload); corrected = true; }
@@ -396,6 +406,7 @@ export async function payloadFingerprint(payload) {
   return [...h.slice(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 const savedReport = (s) => (s && s.report ? s.report : s && s.schema ? s : null);
+const CONSUME_TRIES = 3;
 export const GEN_TTL = 90 * 86400; // registro de costos por pedido: 90 días
 
 /** Protocolo interpretativo (KV «protocol» + «style»), o null si falta. */
@@ -485,11 +496,11 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
 export async function finalizeJob(env, job, spent, result, error, extra = {}) {
   const kv = env.ASTRO_KV;
   const { useCode, code, requestId, limit, mk, vKey, vUsed, dKey, dUsed, fp, token } = job;
-  let out, outcome, consumed = false;
+  let out, outcome, consumed = false, unsettled = false;
   if (result) {
     const strict = env.AUDIT_STRICT !== "false";
     if (!result.audit.ok && strict) {
-      await addToMonth(kv, mk, { usd: spent.usd, failed: 1 });
+      await addToMonth(kv, mk, { usd: spent.usd, failed: 1 }).catch((e) => console.log(JSON.stringify({ event: "month_failed", detail: String((e && e.message) || e) })));
       out = { error: "audit_failed" }; outcome = "audit_failed";
     } else {
       let used = null;
@@ -498,10 +509,15 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
         // primero la copia del último informe (48 h), para recuperarlo si no llegó a la pantalla; un fallo acá no frena la entrega
         await kv.put("rep:" + code, JSON.stringify({ request_id: requestId, fp: fp || null, report: result.report, at: new Date().toISOString() }), { expirationTtl: REPORT_TTL })
           .catch((e) => console.log(JSON.stringify({ event: "report_copy_failed", detail: String((e && e.message) || e) })));
-        used = (await ledger(env, code).consume(token)).used; consumed = true;
+        // un informe terminado se entrega aunque el libro de cupo no responda: el consumo es idempotente y se reintenta;
+        // si sigue fallando, la reserva vence sola y el pedido queda marcado en «gen:» para revisarlo
+        for (let i = 1; i <= CONSUME_TRIES && !consumed; i++) {
+          try { used = (await ledger(env, code).consume(token)).used; consumed = true; }
+          catch (e) { if (i === CONSUME_TRIES) { unsettled = true; console.log(JSON.stringify({ event: "consume_failed", detail: String((e && e.message) || e) })); } }
+        }
       }
       await addToMonth(kv, mk, { usd: spent.usd, reports: 1 }).catch((e) => console.log(JSON.stringify({ event: "month_failed", detail: String((e && e.message) || e) })));
-      out = { report: result.report, remaining: useCode ? Math.max(0, limit - used) : null }; outcome = "delivered";
+      out = { report: result.report, remaining: useCode && used != null ? Math.max(0, limit - used) : null }; outcome = "delivered";
     }
   } else {
     out = { error: "upstream" }; outcome = "upstream";
@@ -513,19 +529,28 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
     if (vKey) { await kv.put(vKey, String(vUsed), { expirationTtl: 172800 }).catch(() => { }); await kv.put(dKey, String(dUsed), { expirationTtl: 172800 }).catch(() => { }); }
   }
   // sin informe entregado, la reserva se libera sin descontar cupo
-  if (useCode && !consumed) await ledger(env, code).release(token).catch(() => { });
+  if (useCode && !consumed && !unsettled) await ledger(env, code).release(token).catch(() => { });
   // registro de costos por pedido, sin datos personales ni de la carta
   const genId = requestId || crypto.randomUUID();
   await kv.put("gen:" + genId, JSON.stringify({
     at: new Date().toISOString(), model: env.MODEL || DEFAULT_MODEL, service: SERVICE_VERSION, mode: extra.mode || "stream",
     access: useCode ? (job.codeKind || "code") : "public",
     // referencia para conciliar reclamos: número de orden de la compra (licencias) o el código (códigos de regalo)
-    ref: useCode ? (job.codeKind === "license" ? (job.order ? "order:" + job.order : null) : job.codeKind === "order" ? "order:" + job.orderId : job.code) : null, usd: +spent.usd.toFixed(4), phases: spent.phases || {}, corrected: !!(result && result.corrected),
-    outcome, reason: error ? String(error.status || error.detail || error.message || "").slice(0, 60) : undefined, attempts: extra.attempts || 1, lang: job.payload.request.report_language,
+    ref: useCode ? (job.codeKind === "license" ? (job.order ? "order:" + job.order : null) : job.codeKind === "order" ? "order:" + job.orderId : job.code) : null, usd: +spent.usd.toFixed(4), phases: spent.phases || {}, calls: spent.calls || [], corrected: !!(result && result.corrected),
+    outcome, quota_unsettled: unsettled || undefined, reason: error ? String(error.status || error.detail || error.message || "").slice(0, 60) : undefined, attempts: extra.attempts || 1, lang: job.payload.request.report_language,
   }), { expirationTtl: GEN_TTL }).catch(() => { });
   // pedido pago: el pedido registra cómo terminó la generación (entregado o fallido, para la cola de excepciones)
   if (job.codeKind === "order") await notifyOrderGeneration(env, job.orderId, requestId, outcome).catch(() => { });
   return out;
+}
+
+/** Deshace la reserva de un pedido admitido que no llegó a arrancar. */
+async function undoAdmission(env, job) {
+  if (job.useCode) await ledger(env, job.code).release(job.token).catch(() => { });
+  if (job.vKey) {
+    await env.ASTRO_KV.put(job.vKey, String(job.vUsed), { expirationTtl: 172800 }).catch(() => { });
+    await env.ASTRO_KV.put(job.dKey, String(job.dUsed), { expirationTtl: 172800 }).catch(() => { });
+  }
 }
 
 /** Lee el cuerpo JSON de un pedido con tope de tamaño. */
@@ -640,8 +665,16 @@ export default {
       }
       const adm = await admit(request, env, cors, { requireCode, cap, incoming: body.incoming });
       if (adm.response) return adm.response;
-      const r = await stub.fetch("https://job/start", { method: "POST", body: JSON.stringify(adm.job) });
-      return json(await r.json(), 202, { ...cors, "cache-control": "no-store" });
+      try {
+        const r = await stub.fetch("https://job/start", { method: "POST", body: JSON.stringify(adm.job) });
+        if (!r.ok) throw new Error("job_start");
+        return json(await r.json(), 202, { ...cors, "cache-control": "no-store" });
+      } catch (e) {
+        // el trabajo no arrancó: sin esto, el código quedaría trabado hasta que venza la reserva (1 hora)
+        console.log(JSON.stringify({ event: "job_start_failed", detail: String((e && e.message) || e) }));
+        await undoAdmission(env, adm.job);
+        return json({ error: "upstream" }, 503, cors);
+      }
     }
 
     // modo anterior (app 1.5 o anterior): respuesta en flujo mientras dura la generación. Apagado por defecto desde

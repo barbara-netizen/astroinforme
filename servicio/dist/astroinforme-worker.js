@@ -1446,7 +1446,7 @@ async function routeOrders(request, env, cors, url) {
 }
 
 // src/worker.js
-var SERVICE_VERSION = "2.0";
+var SERVICE_VERSION = "2.1";
 var DEFAULT_MODEL = "claude-opus-5-5";
 var DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
 var PRICES = {
@@ -1565,8 +1565,8 @@ function normalizeReferences(report) {
 function chartForModel(p) {
   const n = normalizePayload(p);
   if (!n.ok) throw new Error("bad_request");
-  const { person, ...rest } = n.payload;
-  return rest;
+  const { person, engine, ...rest } = n.payload;
+  return { ...rest, engine: { aspect_policy: engine.aspect_policy } };
 }
 function describeArgument(argument) {
   if (argument.ok !== false) return "";
@@ -1690,6 +1690,8 @@ async function readStream(r, model) {
 var REPORT_MIN_SECTIONS = 6;
 var REPORT_MIN_WORDS = 800;
 var PHASE_TRIES = 2;
+var MAX_TOKENS_ANALYSIS = 24e3;
+var MAX_TOKENS_REPORT = 48e3;
 function malformed(detail) {
   const e = new Error("malformed");
   e.detail = detail;
@@ -1709,13 +1711,18 @@ function assertComplete(report) {
   if (sections.map((s) => s.body_markdown).join(" ").trim().split(/\s+/).length < REPORT_MIN_WORDS) throw malformed("short");
   if (!sections.some((s) => s.id === "myth")) throw malformed("no_myth");
 }
-async function phase(name, call2, charge, parse) {
+async function phase(name, call2, charge, parse, note = () => {
+}) {
   for (let i = 1; ; i++) {
+    const t0 = Date.now();
     const reply = await call2();
     charge(name, reply.usage);
+    const entry = { phase: name, stop: reply.stop || null, output_tokens: reply.usage && reply.usage.output_tokens || 0, seconds: Math.round((Date.now() - t0) / 1e3) };
+    note(entry);
     try {
       return parse(reply);
     } catch (e) {
+      entry.problem = e.detail || "error";
       if (e.message !== "malformed" || i >= PHASE_TRIES) throw e;
     }
   }
@@ -1725,6 +1732,8 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   spent.phases = spent.phases || {};
   const load = hooks.load || (async () => null), save = hooks.save || (async () => {
   });
+  spent.calls = spent.calls || [];
+  const note = (entry) => spent.calls.push(entry);
   const charge = (phase2, usage) => {
     const c = costUSD(usage, model);
     spent.usd += c;
@@ -1736,17 +1745,17 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   const tratamiento = TRATAMIENTO[payload.request.address_gender] || TRATAMIENTO.UNSPECIFIED;
   let analisis = await load("analisis");
   if (!analisis) {
-    analisis = await phase("a", async () => callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [.../* @__PURE__ */ new Set([...await recentMyths(env), ...REFERENCE_MYTHS])]), maxTokens: 16e3 }), charge, parseJSON);
+    analisis = await phase("a", async () => callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [.../* @__PURE__ */ new Set([...await recentMyths(env), ...REFERENCE_MYTHS])]), maxTokens: MAX_TOKENS_ANALYSIS }), charge, parseJSON, note);
     await save("analisis", analisis);
     await rememberMyth(env, analisis);
   }
   let report = await load("report_b");
   if (!report) {
-    report = await phase("b", () => callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 32e3 }), charge, (reply) => {
+    report = await phase("b", () => callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: MAX_TOKENS_REPORT }), charge, (reply) => {
       const r = normalizeReferences(withoutDedication(parseJSON(reply)));
       assertComplete(r);
       return r;
-    });
+    }, note);
     await save("report_b", report);
   }
   normalizeReferences(withoutDedication(report));
@@ -1756,11 +1765,11 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   let corrected = false;
   if (!audit.ok || !style.ok || argument.ok === false) {
     try {
-      const fixed = await phase("c", () => callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32e3 }), charge, (reply) => {
+      const fixed = await phase("c", () => callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: MAX_TOKENS_REPORT }), charge, (reply) => {
         const r = normalizeReferences(withoutDedication(parseJSON(reply)));
         assertComplete(r);
         return r;
-      });
+      }, note);
       const fixedAudit = auditReport(fixed, payload);
       if (fixedAudit.ok || !audit.ok) {
         report = fixed;
@@ -1841,6 +1850,7 @@ async function payloadFingerprint(payload) {
   return [...h.slice(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 var savedReport = (s) => s && s.report ? s.report : s && s.schema ? s : null;
+var CONSUME_TRIES = 3;
 var GEN_TTL = 90 * 86400;
 async function loadProtocol(env) {
   const base2 = env.PROTOCOL || (env.ASTRO_KV ? await env.ASTRO_KV.get("protocol") : null);
@@ -1910,22 +1920,31 @@ async function admit(request, env, cors, { requireCode, cap, incoming }) {
 async function finalizeJob(env, job, spent, result, error, extra = {}) {
   const kv = env.ASTRO_KV;
   const { useCode, code, requestId, limit, mk, vKey, vUsed, dKey, dUsed, fp, token } = job;
-  let out, outcome, consumed = false;
+  let out, outcome, consumed = false, unsettled = false;
   if (result) {
     const strict = env.AUDIT_STRICT !== "false";
     if (!result.audit.ok && strict) {
-      await addToMonth(kv, mk, { usd: spent.usd, failed: 1 });
+      await addToMonth(kv, mk, { usd: spent.usd, failed: 1 }).catch((e) => console.log(JSON.stringify({ event: "month_failed", detail: String(e && e.message || e) })));
       out = { error: "audit_failed" };
       outcome = "audit_failed";
     } else {
       let used = null;
       if (useCode) {
         await kv.put("rep:" + code, JSON.stringify({ request_id: requestId, fp: fp || null, report: result.report, at: (/* @__PURE__ */ new Date()).toISOString() }), { expirationTtl: REPORT_TTL }).catch((e) => console.log(JSON.stringify({ event: "report_copy_failed", detail: String(e && e.message || e) })));
-        used = (await ledger(env, code).consume(token)).used;
-        consumed = true;
+        for (let i = 1; i <= CONSUME_TRIES && !consumed; i++) {
+          try {
+            used = (await ledger(env, code).consume(token)).used;
+            consumed = true;
+          } catch (e) {
+            if (i === CONSUME_TRIES) {
+              unsettled = true;
+              console.log(JSON.stringify({ event: "consume_failed", detail: String(e && e.message || e) }));
+            }
+          }
+        }
       }
       await addToMonth(kv, mk, { usd: spent.usd, reports: 1 }).catch((e) => console.log(JSON.stringify({ event: "month_failed", detail: String(e && e.message || e) })));
-      out = { report: result.report, remaining: useCode ? Math.max(0, limit - used) : null };
+      out = { report: result.report, remaining: useCode && used != null ? Math.max(0, limit - used) : null };
       outcome = "delivered";
     }
   } else {
@@ -1941,7 +1960,7 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
       });
     }
   }
-  if (useCode && !consumed) await ledger(env, code).release(token).catch(() => {
+  if (useCode && !consumed && !unsettled) await ledger(env, code).release(token).catch(() => {
   });
   const genId = requestId || crypto.randomUUID();
   await kv.put("gen:" + genId, JSON.stringify({
@@ -1954,8 +1973,10 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
     ref: useCode ? job.codeKind === "license" ? job.order ? "order:" + job.order : null : job.codeKind === "order" ? "order:" + job.orderId : job.code : null,
     usd: +spent.usd.toFixed(4),
     phases: spent.phases || {},
+    calls: spent.calls || [],
     corrected: !!(result && result.corrected),
     outcome,
+    quota_unsettled: unsettled || void 0,
     reason: error ? String(error.status || error.detail || error.message || "").slice(0, 60) : void 0,
     attempts: extra.attempts || 1,
     lang: job.payload.request.report_language
@@ -1964,6 +1985,16 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
   if (job.codeKind === "order") await notifyOrderGeneration(env, job.orderId, requestId, outcome).catch(() => {
   });
   return out;
+}
+async function undoAdmission(env, job) {
+  if (job.useCode) await ledger(env, job.code).release(job.token).catch(() => {
+  });
+  if (job.vKey) {
+    await env.ASTRO_KV.put(job.vKey, String(job.vUsed), { expirationTtl: 172800 }).catch(() => {
+    });
+    await env.ASTRO_KV.put(job.dKey, String(job.dUsed), { expirationTtl: 172800 }).catch(() => {
+    });
+  }
 }
 async function readBody(request, cors) {
   const raw = await request.text();
@@ -2061,8 +2092,15 @@ var worker_default = {
       }
       const adm2 = await admit(request, env, cors, { requireCode, cap, incoming: body.incoming });
       if (adm2.response) return adm2.response;
-      const r = await stub.fetch("https://job/start", { method: "POST", body: JSON.stringify(adm2.job) });
-      return json2(await r.json(), 202, { ...cors, "cache-control": "no-store" });
+      try {
+        const r = await stub.fetch("https://job/start", { method: "POST", body: JSON.stringify(adm2.job) });
+        if (!r.ok) throw new Error("job_start");
+        return json2(await r.json(), 202, { ...cors, "cache-control": "no-store" });
+      } catch (e) {
+        console.log(JSON.stringify({ event: "job_start_failed", detail: String(e && e.message || e) }));
+        await undoAdmission(env, adm2.job);
+        return json2({ error: "upstream" }, 503, cors);
+      }
     }
     if (env.LEGACY_STREAM !== "true") return json2({ error: "app_outdated" }, 410, cors);
     const adm = await admit(request, env, cors, { requireCode, cap, incoming: body.incoming });
