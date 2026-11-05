@@ -37,57 +37,61 @@ group("MP: firma x-signature (plantilla id;request-id;ts) — válida, inválida
 {
   const env = mkEnv(MP);
   const sig = await mpManifestSignature("mp-secreto", "123456", "req-1", "1742505638683");
-  const req = (s, id = "123456") => new Request(`https://svc/webhooks/mercadopago?data.id=${id}&type=payment`, { method: "POST", headers: { "x-signature": `ts=1742505638683,v1=${s}`, "x-request-id": "req-1" } });
-  let v = await mercadoPagoProvider.verifyWebhook(env, req(sig), JSON.stringify({ id: 99, action: "payment.updated", type: "payment", data: { id: "123456" } }));
+  const req = (s, id = "123456") => new Request(`https://svc/webhooks/mercadopago?data.id=${id}&type=order`, { method: "POST", headers: { "x-signature": `ts=1742505638683,v1=${s}`, "x-request-id": "req-1" } });
+  let v = await mercadoPagoProvider.verifyWebhook(env, req(sig), JSON.stringify({ id: 99, action: "order.processed", type: "order", data: { id: "123456" } }));
   assert.equal(v.ok, true); assert.equal(v.kind, "payment"); assert.equal(v.externalId, "123456");
   v = await mercadoPagoProvider.verifyWebhook(env, req("0".repeat(64)), "{}");
   assert.equal(v.ok, false);
   const upper = await mpManifestSignature("mp-secreto", "ORD01ABC", "req-1", "1");
   const lower = await mpManifestSignature("mp-secreto", "ord01abc", "req-1", "1");
   assert.equal(upper, lower, "un id alfanumérico se firma en minúsculas");
-  const sinCab = new Request("https://svc/webhooks/mercadopago?data.id=1&type=payment", { method: "POST" });
+  const sinCab = new Request("https://svc/webhooks/mercadopago?data.id=1&type=order", { method: "POST" });
   assert.equal((await mercadoPagoProvider.verifyWebhook(env, sinCab, "{}")).ok, false);
 }
 
-group("MP: crear preferencia (solo producto, precio y referencia opaca), estados del pago y reembolso idempotente");
+group("MP: crear order (solo producto, precio y referencia opaca), estados y reembolso idempotente");
 {
   const env = mkEnv(MP);
+  const estados = { ORDOK: ["processed", "accredited"], ORDRF: ["refunded", "refunded"], ORDFA: ["failed", "high_risk"], ORDCA: ["canceled", "canceled"], ORDPR: ["processing", "in_process"], ORDPA: ["processed", "partially_refunded"] };
   const log = mockApis([
-    [/checkout\/preferences$/, () => jsonRes({ id: "pref-9", init_point: "https://mp/ip", sandbox_init_point: "https://mp/sb" }, 201)],
-    [/v1\/payments\/777$/, () => jsonRes({ id: 777, status: "approved", transaction_amount: 15000, currency_id: "ARS", external_reference: "ord-x", additional_info: { items: [{ id: "informe_completo" }] } })],
-    [/v1\/payments\/777\/refunds$/, () => jsonRes({ id: 1, status: "approved" }, 201)],
+    [/v1\/orders\/ORD[A-Z]+\/refund$/, () => jsonRes({ id: "ORDOK", status: "refunded" }, 201)],
+    [/v1\/orders\/ORD[A-Z]+$/, (u) => { const id = u.split("/").pop(), [status, status_detail] = estados[id]; return jsonRes({ id, status, status_detail, total_amount: "15000.00", currency: "ARS", external_reference: "ord-x", items: [{ external_code: "informe_completo" }] }); }],
+    [/v1\/orders\?/, () => jsonRes({ data: [{ id: "ORDFA", status: "failed", status_detail: "high_risk" }, { id: "ORDOK", status: "processed", status_detail: "accredited" }], paging: {} })],
+    [/v1\/orders$/, () => jsonRes({ id: "ORDOK", status: "created", checkout_url: "https://mp/checkout" }, 201)],
   ]);
-  const ck = await mercadoPagoProvider.createCheckout(env, { id: "ord-x", product: "informe_completo", amountMinor: 1500000, currency: "ARS", lang: "es" }, { appOrigin: ORIGIN, serviceOrigin: "https://svc" });
-  assert.equal(ck.url, "https://mp/ip"); assert.equal(ck.externalCheckoutId, "pref-9");
-  const pref = JSON.parse(log[0].body);
-  assert.equal(pref.notification_url, "https://svc/webhooks/mercadopago"); assert.match(pref.back_urls.success, /\?pedido=ord-x&resultado=ok$/);
+  const ck = await mercadoPagoProvider.createCheckout(env, { id: "ord-" + "ab".repeat(16), product: "informe_completo", amountMinor: 1500000, currency: "ARS", lang: "es" }, { appOrigin: ORIGIN, serviceOrigin: "https://svc" });
+  assert.equal(ck.url, "https://mp/checkout"); assert.equal(ck.externalCheckoutId, "ORDOK");
+  const o = JSON.parse(log[0].body);
+  assert.equal(o.total_amount, "15000.00"); assert.equal(o.items[0].unit_price, "15000.00"); assert.equal(o.external_reference, "ord-" + "ab".repeat(16)); assert.equal(o.expiration_time, "P2D");
+  assert.match(o.config.online.success_url, /\?pedido=ord-[a-f0-9]+&resultado=ok$/); assert.equal(o.payer, undefined);
+  assert.match(log[0].headers["x-idempotency-key"], /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   assert.equal(log[0].headers.authorization, "Bearer TEST-123");
-  const tx = await mercadoPagoProvider.getTransaction(env, "777");
-  assert.deepEqual(tx, { status: "paid", orderId: "ord-x", externalId: "777", amountMinor: 1500000, currency: "ARS", productRef: "informe_completo" });
-  const rf = await mercadoPagoProvider.refund(env, { id: "ord-x", externalId: "777" });
-  assert.equal(rf.status, "refunded"); assert.equal(log[2].headers["x-idempotency-key"], "refund-ord-x");
-  const env2 = mkEnv({ ...MP, MP_USE_SANDBOX_POINT: "true" });
-  assert.equal((await mercadoPagoProvider.createCheckout(env2, { id: "ord-y", product: "informe_completo", amountMinor: 100, currency: "ARS", lang: "es" }, { appOrigin: ORIGIN, serviceOrigin: "https://svc" })).url, "https://mp/sb");
+  assert.deepEqual(await mercadoPagoProvider.getTransaction(env, "ORDOK"), { status: "paid", orderId: "ord-x", externalId: "ORDOK", amountMinor: 1500000, currency: "ARS", productRef: "informe_completo" });
+  const st = async (id) => (await mercadoPagoProvider.getTransaction(env, id)).status;
+  assert.equal(await st("ORDRF"), "refunded"); assert.equal(await st("ORDFA"), "failed"); assert.equal(await st("ORDCA"), "cancelled"); assert.equal(await st("ORDPR"), "pending"); assert.equal(await st("ORDPA"), "paid");
+  assert.equal((await mercadoPagoProvider.findPayment(env, "ord-x")).externalId, "ORDOK");
+  const rf = await mercadoPagoProvider.refund(env, { id: "ord-x", externalId: "ORDOK" });
+  assert.equal(rf.status, "refunded");
 }
 
 group("MP de punta a punta: aviso firmado → consulta del pago → generación una sola vez, aunque el aviso se repita");
 {
   const env = mkEnv(MP);
-  mockApis([[/checkout\/preferences$/, () => jsonRes({ id: "pref-1", init_point: "https://mp/ip" }, 201)]]);
+  mockApis([[/v1\/orders$/, () => jsonRes({ id: "ORDUNO", checkout_url: "https://mp/ip" }, 201)]]);
   const c = await call(new Request("https://svc/orders", { method: "POST", headers: { "content-type": "application/json", origin: ORIGIN },
     body: JSON.stringify({ provider: "mercadopago", payload: carta(), email: "ana@example.com", consent: CONSENT, idempotency_key: idem() }) }), env);
   assert.equal(c.status, 201);
   const id = c.body.order_id;
-  let estado = "pending";
-  const log = mockApis([[/v1\/payments\/555$/, () => jsonRes({ id: 555, status: estado, transaction_amount: 15000, currency_id: "ARS", external_reference: id, additional_info: { items: [{ id: "informe_completo" }] } })]]);
+  let estado = "processing";
+  const log = mockApis([[/v1\/orders\/ORDUNO$/, () => jsonRes({ id: "ORDUNO", status: estado, status_detail: estado === "processed" ? "accredited" : "in_process", total_amount: "15000.00", currency: "ARS", external_reference: id, items: [{ external_code: "informe_completo" }] })]]);
   const aviso = async (reqId) => {
-    const ts = String(Date.now()), s = await mpManifestSignature("mp-secreto", "555", reqId, ts);
-    return call(new Request("https://svc/webhooks/mercadopago?data.id=555&type=payment", { method: "POST", headers: { "x-signature": `ts=${ts},v1=${s}`, "x-request-id": reqId },
-      body: JSON.stringify({ id: reqId, action: "payment.updated", type: "payment", data: { id: "555" } }) }), env);
+    const ts = String(Date.now()), s = await mpManifestSignature("mp-secreto", "ORDUNO", reqId, ts);
+    return call(new Request("https://svc/webhooks/mercadopago?data.id=ORDUNO&type=order", { method: "POST", headers: { "x-signature": `ts=${ts},v1=${s}`, "x-request-id": reqId },
+      body: JSON.stringify({ id: reqId, action: "order.processed", type: "order", data: { id: "ORDUNO" } }) }), env);
   };
   await aviso("r1");
   assert.equal(env.REPORT_JOB.objs.size, 0, "pago pendiente: no se genera");
-  estado = "approved";
+  estado = "processed";
   assert.equal((await aviso("r2")).status, 200);
   assert.equal((await aviso("r2")).body.duplicate, true);
   await aviso("r3");
@@ -102,9 +106,9 @@ group("MP de punta a punta: aviso firmado → consulta del pago → generación 
 group("MP: si la consulta del pago falla, el aviso devuelve 502 para que Mercado Pago lo reintente");
 {
   const env = mkEnv(MP);
-  mockApis([[/v1\/payments\//, () => jsonRes({ message: "error" }, 500)]]);
+  mockApis([[/v1\/orders\//, () => jsonRes({ message: "error" }, 500)]]);
   const ts = "1", s = await mpManifestSignature("mp-secreto", "1", "q", ts);
-  const r = await call(new Request("https://svc/webhooks/mercadopago?data.id=1&type=payment", { method: "POST", headers: { "x-signature": `ts=${ts},v1=${s}`, "x-request-id": "q" }, body: "{}" }), env);
+  const r = await call(new Request("https://svc/webhooks/mercadopago?data.id=1&type=order", { method: "POST", headers: { "x-signature": `ts=${ts},v1=${s}`, "x-request-id": "q" }, body: "{}" }), env);
   assert.equal(r.status, 502);
 }
 
