@@ -36,6 +36,8 @@ Garantías probadas (`test/orders.test.mjs`, `test/payments.test.mjs`):
 - Al entregar se manda un solo correo con `/?pedido=<id>#k=<clave>`. La clave nunca llega al servidor en la dirección, y en el pedido solo queda su resumen.
 - El enlace abre informe, rueda y PDF en cualquier aparato durante 7 días. Después se borran carta, correo e informe. Sin fecha, hora ni lugar, esos datos no aparecen en esa vista.
 - Cada 15 minutos, `runControls` concilia pagos con Mercado Pago, reintenta hasta 3 generaciones y 5 correos, y avisa a `ADMIN_EMAIL` lo que no pudo resolver. A partir de las 12:00 UTC manda un resumen diario sin datos personales.
+- El resumen diario lista una vez cada venta para facturar: fecha, importe, proveedor y número de pago.
+- Primer proveedor: Mercado Pago (`PRICE_ARS` = `14500.00`). Dodo se suma cuando esté aprobado.
 - Dodo todavía no concilia: falta confirmar cómo buscar un pago por pedido.
 - Un intento de compra se reparte en un Durable Object por clave: dos toques simultáneos dan un solo pedido. Si ya está pagado, no se abre otro pago.
 

@@ -1505,10 +1505,22 @@ async function dailySummary(env, now, open) {
   if (!env.ADMIN_EMAIL || d.getUTCHours() < 12 || await env.ASTRO_KV.get(key)) return;
   const month = await kvGetJSON(env.ASTRO_KV, monthKey(d), { reports: 0, usd: 0, failed: 0 });
   const exc = await env.ASTRO_KV.list({ prefix: "exc:" });
+  const saleKeys = (await env.ASTRO_KV.list({ prefix: "sale:" })).keys, sales = [];
+  for (const k of saleKeys) {
+    const s = await kvGetJSON(env.ASTRO_KV, k.name, null);
+    if (s) sales.push(`${s.at.slice(0, 10)} \xB7 ${s.currency} ${(s.minor / 100).toFixed(2)} \xB7 ${s.provider} \xB7 pago ${s.external}`);
+  }
+  const salesText = sales.length ? `
+
+Ventas para facturar (${sales.length}):
+${sales.sort().join("\n")}` : "\n\nVentas para facturar: ninguna";
   const ok4 = await sendMail(env, { to: env.ADMIN_EMAIL, subject: `AsterOrbis: resumen ${day}`, text: `Pedidos abiertos: ${open}
 Pedidos para revisar: ${exc.keys.length}
-Mes: ${month.reports} informes, ${month.failed} fallidos, US$ ${month.usd}`, key });
-  if (ok4) await env.ASTRO_KV.put(key, "1", { expirationTtl: 3 * 86400 });
+Mes: ${month.reports} informes, ${month.failed} fallidos, US$ ${month.usd}${salesText}`, key });
+  if (ok4) {
+    await env.ASTRO_KV.put(key, "1", { expirationTtl: 3 * 86400 });
+    for (const k of saleKeys) await env.ASTRO_KV.delete(k.name);
+  }
 }
 async function createOrder(request, env, cors) {
   if (serviceMode(env) !== "paid") return json({ error: serviceMode(env) === "disabled" ? "disabled" : "not_available" }, serviceMode(env) === "disabled" ? 503 : 404, cors);
@@ -1611,6 +1623,8 @@ async function applyPayment(env, eventId, tx, name) {
   if (r.status === 404) return r;
   if (r.exception) await flagException(env, tx.orderId, r.exception);
   if (r.action === "start") {
+    if (env.ASTRO_KV) await env.ASTRO_KV.put("sale:" + tx.orderId, JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), minor: tx.amountMinor, currency: tx.currency, provider: name, external: tx.externalId }), { expirationTtl: 60 * 86400 }).catch(() => {
+    });
     try {
       await startOrderJob(env, tx.orderId, r.jobId, r.payload, r.internal && r.internal.externalId);
     } catch (e) {

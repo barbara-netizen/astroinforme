@@ -95,6 +95,14 @@ const run = async (e, jobId, s) => { seq = s; state.calls = []; await e.REPORT_J
   assert.equal(mails.filter((m) => m.subject.includes("resumen")).length, 1);
   assert.deepEqual(await runControls(env({ SERVICE_MODE: "pilot" })), { skipped: true });
 }
+{ // las ventas salen una vez en el resumen, sin datos de la persona
+  mails.length = 0; const e = env(); const c = await create(e), id = c.body.order_id; await pay(e, id);
+  const t = Date.parse("2026-11-21T13:00:00Z"); await runControls(e, t);
+  const r1 = mails.find((m) => m.subject.includes("resumen"));
+  assert.match(r1.text, /Ventas para facturar \(1\)/); assert.match(r1.text, /USD 10\.00/); assert.ok(!r1.text.includes("ana@example.com"));
+  mails.length = 0; await runControls(e, t + 864e5);
+  assert.match(mails.find((m) => m.subject.includes("resumen")).text, /Ventas para facturar: ninguna/);
+}
 { // doble toque simultáneo: un solo pedido; con la misma clave vuelve el mismo enlace; ya pagado, no se vuelve a cobrar
   const e = env(); const K = { idempotency_key: "idem-doble-000000001" };
   const [a, b] = await Promise.all([create(e, K), create(e, K)]);
@@ -113,4 +121,4 @@ const run = async (e, jobId, s) => { seq = s; state.calls = []; await e.REPORT_J
   assert.equal((await create(e2, K2)).status, 502); sim.createCheckout = real;
   assert.equal((await create(e2, K2)).status, 201);
 }
-console.log("OK — entrega 2.1: 9 grupos");
+console.log("OK — entrega 2.1: 10 grupos");

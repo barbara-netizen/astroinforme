@@ -133,8 +133,14 @@ async function dailySummary(env, now, open) {
   if (!env.ADMIN_EMAIL || d.getUTCHours() < 12 || (await env.ASTRO_KV.get(key))) return;
   const month = await kvGetJSON(env.ASTRO_KV, monthKey(d), { reports: 0, usd: 0, failed: 0 });
   const exc = await env.ASTRO_KV.list({ prefix: "exc:" });
-  const ok = await sendMail(env, { to: env.ADMIN_EMAIL, subject: `AsterOrbis: resumen ${day}`, text: `Pedidos abiertos: ${open}\nPedidos para revisar: ${exc.keys.length}\nMes: ${month.reports} informes, ${month.failed} fallidos, US$ ${month.usd}`, key });
-  if (ok) await env.ASTRO_KV.put(key, "1", { expirationTtl: 3 * 86400 });
+  const saleKeys = (await env.ASTRO_KV.list({ prefix: "sale:" })).keys, sales = [];
+  for (const k of saleKeys) { const s = await kvGetJSON(env.ASTRO_KV, k.name, null); if (s) sales.push(`${s.at.slice(0, 10)} · ${s.currency} ${(s.minor / 100).toFixed(2)} · ${s.provider} · pago ${s.external}`); }
+  const salesText = sales.length ? `\n\nVentas para facturar (${sales.length}):\n${sales.sort().join("\n")}` : "\n\nVentas para facturar: ninguna";
+  const ok = await sendMail(env, { to: env.ADMIN_EMAIL, subject: `AsterOrbis: resumen ${day}`, text: `Pedidos abiertos: ${open}\nPedidos para revisar: ${exc.keys.length}\nMes: ${month.reports} informes, ${month.failed} fallidos, US$ ${month.usd}${salesText}`, key });
+  if (ok) {
+    await env.ASTRO_KV.put(key, "1", { expirationTtl: 3 * 86400 });
+    for (const k of saleKeys) await env.ASTRO_KV.delete(k.name);
+  }
 }
 
 // ---------------------------------------------------------------- POST /orders
@@ -225,6 +231,8 @@ async function applyPayment(env, eventId, tx, name) {
   if (r.status === 404) return r;
   if (r.exception) await flagException(env, tx.orderId, r.exception);
   if (r.action === "start") {
+    // venta para facturar: va en el próximo resumen diario, sin datos de la persona
+    if (env.ASTRO_KV) await env.ASTRO_KV.put("sale:" + tx.orderId, JSON.stringify({ at: new Date().toISOString(), minor: tx.amountMinor, currency: tx.currency, provider: name, external: tx.externalId }), { expirationTtl: 60 * 86400 }).catch(() => { });
     try { await startOrderJob(env, tx.orderId, r.jobId, r.payload, r.internal && r.internal.externalId); }
     catch (e) { await call(orderStub(env, tx.orderId), "generation", { jobId: r.jobId, outcome: "start_error" }); await flagException(env, tx.orderId, "generation_failed"); }
   }
