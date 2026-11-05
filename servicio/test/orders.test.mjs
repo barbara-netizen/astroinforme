@@ -269,7 +269,7 @@ group("al proveedor de pagos no le llega la carta ni datos natales");
 {
   const e = env({ PAYMENTS_SIM: "false", MP_ACCESS_TOKEN: "TEST-x", MP_WEBHOOK_SECRET: "s", PRICE_ARS: "15000.00" });
   const sent = [];
-  globalThis.fetch = async (url, init) => { sent.push({ url: String(url), body: init && init.body }); return new Response(JSON.stringify({ id: "pref-1", init_point: "https://mp/checkout/pref-1" }), { status: 201 }); };
+  globalThis.fetch = async (url, init) => { sent.push({ url: String(url), body: init && init.body }); return new Response(JSON.stringify({ id: "pref-1", checkout_url: "https://mp/checkout/pref-1" }), { status: 201 }); };
   const c = await call(createReq({ provider: "mercadopago" }), e);
   assert.equal(c.status, 201); assert.equal(c.body.checkout_url, "https://mp/checkout/pref-1");
   assert.equal(sent.length, 1); assert.match(sent[0].url, /checkout\/preferences$/);

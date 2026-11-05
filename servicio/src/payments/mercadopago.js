@@ -92,5 +92,3 @@ export const mercadoPagoProvider = {
     return { ok: true, status: r && r.status === "refunded" ? "refunded" : "pending" };
   },
 };
-  },
-};
