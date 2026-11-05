@@ -762,7 +762,7 @@ function ledger(env, code) {
 }
 
 // src/worker.js
-var SERVICE_VERSION = "1.9.3";
+var SERVICE_VERSION = "1.9.4";
 var DEFAULT_MODEL = "claude-opus-5-5";
 var DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
 var PRICES = {
@@ -1006,6 +1006,8 @@ async function readStream(r, model) {
 var REPORT_MIN_SECTIONS = 6;
 var REPORT_MIN_WORDS = 800;
 var PHASE_TRIES = 2;
+var MAX_TOKENS_ANALYSIS = 24e3;
+var MAX_TOKENS_REPORT = 48e3;
 function malformed(detail) {
   const e = new Error("malformed");
   e.detail = detail;
@@ -1025,13 +1027,18 @@ function assertComplete(report) {
   if (sections.map((s) => s.body_markdown).join(" ").trim().split(/\s+/).length < REPORT_MIN_WORDS) throw malformed("short");
   if (!sections.some((s) => s.id === "myth")) throw malformed("no_myth");
 }
-async function phase(name, call, charge, parse) {
+async function phase(name, call, charge, parse, note = () => {
+}) {
   for (let i = 1; ; i++) {
+    const t0 = Date.now();
     const reply = await call();
     charge(name, reply.usage);
+    const entry = { phase: name, stop: reply.stop || null, output_tokens: reply.usage && reply.usage.output_tokens || 0, seconds: Math.round((Date.now() - t0) / 1e3) };
+    note(entry);
     try {
       return parse(reply);
     } catch (e) {
+      entry.problem = e.detail || "error";
       if (e.message !== "malformed" || i >= PHASE_TRIES) throw e;
     }
   }
@@ -1041,6 +1048,8 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   spent.phases = spent.phases || {};
   const load = hooks.load || (async () => null), save = hooks.save || (async () => {
   });
+  spent.calls = spent.calls || [];
+  const note = (entry) => spent.calls.push(entry);
   const charge = (phase2, usage) => {
     const c = costUSD(usage, model);
     spent.usd += c;
@@ -1052,17 +1061,17 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   const tratamiento = TRATAMIENTO[payload.request.address_gender] || TRATAMIENTO.UNSPECIFIED;
   let analisis = await load("analisis");
   if (!analisis) {
-    analisis = await phase("a", async () => callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [.../* @__PURE__ */ new Set([...await recentMyths(env), ...REFERENCE_MYTHS])]), maxTokens: 16e3 }), charge, parseJSON);
+    analisis = await phase("a", async () => callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [.../* @__PURE__ */ new Set([...await recentMyths(env), ...REFERENCE_MYTHS])]), maxTokens: MAX_TOKENS_ANALYSIS }), charge, parseJSON, note);
     await save("analisis", analisis);
     await rememberMyth(env, analisis);
   }
   let report = await load("report_b");
   if (!report) {
-    report = await phase("b", () => callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: 32e3 }), charge, (reply) => {
+    report = await phase("b", () => callClaude(env, { system: protocol, user: PROMPT_INFORME({ idioma: IDIOMA[lang], lang, nombre, tratamiento, analisis: JSON.stringify(analisis), carta }), maxTokens: MAX_TOKENS_REPORT }), charge, (reply) => {
       const r = normalizeReferences(withoutDedication(parseJSON(reply)));
       assertComplete(r);
       return r;
-    });
+    }, note);
     await save("report_b", report);
   }
   normalizeReferences(withoutDedication(report));
@@ -1072,11 +1081,11 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   let corrected = false;
   if (!audit.ok || !style.ok || argument.ok === false) {
     try {
-      const fixed = await phase("c", () => callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: 32e3 }), charge, (reply) => {
+      const fixed = await phase("c", () => callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: MAX_TOKENS_REPORT }), charge, (reply) => {
         const r = normalizeReferences(withoutDedication(parseJSON(reply)));
         assertComplete(r);
         return r;
-      });
+      }, note);
       const fixedAudit = auditReport(fixed, payload);
       if (fixedAudit.ok || !audit.ok) {
         report = fixed;
@@ -1280,6 +1289,7 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
     ref: useCode ? job.codeKind === "license" ? job.order ? "order:" + job.order : null : job.code : null,
     usd: +spent.usd.toFixed(4),
     phases: spent.phases || {},
+    calls: spent.calls || [],
     corrected: !!(result && result.corrected),
     outcome,
     quota_unsettled: unsettled || void 0,
