@@ -27,6 +27,8 @@ ul { padding-left: 20px; }
 a { color: var(--accent); }
 section[lang] { display: none; }
 section[lang].on { display: block; }
+[data-mode][hidden] { display: none !important; }
+.todo { background: #f3e7cf; color: #6b4b10; }
 </style>
 </head>
 <body>
@@ -38,7 +40,8 @@ section[lang].on { display: block; }
     <p class="date">Actualizado el 4 de noviembre de 2026</p>
 
     <h2>Quién es responsable</h2>
-    <p>AsterOrbis es un proyecto personal de Bárbara Gutiérrez, Buenos Aires, Argentina. Contacto: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="pilot">AsterOrbis es un proyecto personal de Bárbara Gutiérrez, Buenos Aires, Argentina. En esta etapa piloto, los informes se piden con códigos de acceso. Contacto: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="paid">AsterOrbis es un proyecto de Bárbara Gutiérrez, Buenos Aires, Argentina, que vende informes digitales personalizados. Datos de quien vende: <span class="todo">[pendiente: completar antes de activar las ventas]</span>. Contacto: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
 
     <h2>El cálculo de la carta</h2>
     <p>La carta se calcula en tu dispositivo. La página descarga una vez el programa de cálculo, las efemérides y la lista de ciudades. El nombre, la fecha, la hora y el lugar no viajan a ningún servidor para calcular la carta. Solo si pedís el informe se envían los datos que se detallan más abajo.</p>
@@ -64,6 +67,8 @@ section[lang].on { display: block; }
     <h2>Verificación anti-robots</h2>
     <p>Si la página muestra una verificación de Cloudflare Turnstile, Cloudflare procesa datos técnicos de tu navegador y tu dirección IP para distinguir personas de programas automáticos. Más información en el <a href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noopener">anexo de privacidad de Turnstile</a>.</p>
 
+    <h2>Si comprás el informe</h2>
+    <p>El pago se hace en la plataforma elegida, que recibe tus datos de pago; AsterOrbis no los ve. Tu correo se usa solo para enviarte el enlace privado del informe, por medio de Resend (Resend, Inc., Estados Unidos). El servicio conserva durante 7 días la carta, el correo y el informe, para que puedas abrirlo desde ese enlace, y luego los borra. Quien tenga el enlace puede leer el informe. El registro de la compra, sin carta ni correo, se conserva por motivos contables.</p>
     <h2>Copia del informe durante 48 horas</h2>
     <p>Cuando generás un informe con un código, el servicio guarda una copia durante 48 horas, junto con ese código, un identificador aleatorio del pedido y una huella criptográfica de los datos del pedido, para que puedas recuperarlo si se perdió antes de llegar a tu pantalla (por ejemplo, si bloqueaste el teléfono). Pasado ese plazo, la copia se borra sola. La copia incluye el texto del informe, que puede llevar tu nombre de pila y posiciones de tu carta. No se revisan los informes como parte del funcionamiento habitual; quien administra AsterOrbis tiene acceso técnico al servicio y solo lo usaría para resolver un problema o un reclamo.</p>
 
@@ -71,7 +76,7 @@ section[lang].on { display: block; }
     <p>Si dejás un comentario al final del informe, se guarda en el servicio (Cloudflare) junto con tu código de acceso, la fecha y el título del informe, que puede incluir tu nombre de pila, para que quien administra AsterOrbis pueda leerlo. El comentario no se publica y se conserva hasta que pidas borrarlo, escribiendo a la dirección de contacto.</p>
 
     <h2>Tus derechos</h2>
-    <p>Podés pedir información sobre tus datos, corregirlos o solicitar que se borren escribiendo al contacto indicado arriba. Los pedidos y las copias de los informes se borran solos a las 48 horas, y los registros técnicos a los 90 días. Si vivís en la Unión Europea, también podés presentar una reclamación ante la autoridad de protección de datos de tu país.</p>
+    <p>Podés pedir información sobre tus datos, corregirlos o solicitar que se borren escribiendo al contacto indicado arriba. Los pedidos con código y las copias de los informes se borran solos a las 48 horas, los pedidos pagos a los 7 días, y los registros técnicos a los 90 días. Si vivís en la Unión Europea, también podés presentar una reclamación ante la autoridad de protección de datos de tu país.</p>
 
     <h2>Alcance del informe</h2>
     <p>Informe digital personalizado de astrología psicológica, generado automáticamente a partir de la carta calculada. Es una obra interpretativa de carácter artístico y simbólico, pensada para la reflexión y el entretenimiento; no es una consulta personal. La astrología que usa es no predictiva: el informe no hace predicciones. No es un diagnóstico ni una evaluación psicológica, no brinda asesoramiento médico, financiero, legal ni profesional, y no reemplaza la atención psicológica o médica.</p>
@@ -82,7 +87,8 @@ section[lang].on { display: block; }
     <p class="date">Aktualisiert am 4. November 2026</p>
 
     <h2>Verantwortlich</h2>
-    <p>AsterOrbis ist ein privates Projekt von Bárbara Gutiérrez, Buenos Aires, Argentinien. Kontakt: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="pilot">AsterOrbis ist ein privates Projekt von Bárbara Gutiérrez, Buenos Aires, Argentinien. In dieser Pilotphase werden die Berichte mit Zugangscodes angefordert. Kontakt: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="paid">AsterOrbis ist ein Projekt von Bárbara Gutiérrez, Buenos Aires, Argentinien, das personalisierte digitale Berichte verkauft. Angaben zur Verkäuferin: <span class="todo">[ausstehend: vor Aktivierung des Verkaufs ergänzen]</span>. Kontakt: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
 
     <h2>Berechnung des Horoskops</h2>
     <p>Das Horoskop wird auf deinem Gerät berechnet. Die Seite lädt einmalig das Berechnungsprogramm, die Ephemeriden und die Ortsliste. Name, Datum, Uhrzeit und Ort werden für die Berechnung an keinen Server übertragen. Nur wenn du den Bericht anforderst, werden die unten genannten Daten gesendet.</p>
@@ -108,6 +114,8 @@ section[lang].on { display: block; }
     <h2>Schutz vor automatisierten Zugriffen</h2>
     <p>Wenn die Seite eine Prüfung mit Cloudflare Turnstile anzeigt, verarbeitet Cloudflare technische Daten deines Browsers und deine IP-Adresse, um Menschen von automatisierten Programmen zu unterscheiden. Mehr dazu im <a href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noopener">Turnstile-Datenschutzanhang</a>.</p>
 
+    <h2>Wenn du den Bericht kaufst</h2>
+    <p>Die Zahlung erfolgt auf der gewählten Plattform, die deine Zahlungsdaten erhält; AsterOrbis sieht sie nicht. Deine E-Mail-Adresse wird nur verwendet, um dir den privaten Link zum Bericht über Resend (Resend, Inc., USA) zu senden. Der Dienst bewahrt Horoskop, E-Mail-Adresse und Bericht 7 Tage auf, damit du den Bericht über diesen Link öffnen kannst, und löscht sie danach. Wer den Link hat, kann den Bericht lesen. Der Kaufbeleg ohne Horoskop und E-Mail-Adresse wird aus buchhalterischen Gründen aufbewahrt.</p>
     <h2>Kopie des Berichts für 48 Stunden</h2>
     <p>Wenn du einen Bericht mit einem Code erstellst, speichert der Dienst 48 Stunden lang eine Kopie zusammen mit diesem Code, einer zufälligen Auftragskennung und einem kryptografischen Fingerabdruck der Auftragsdaten, damit du ihn wiederherstellen kannst, falls er vor der Anzeige verloren ging (zum Beispiel, wenn du das Telefon gesperrt hast). Danach wird die Kopie automatisch gelöscht. Sie enthält den Text des Berichts, der deinen Vornamen und Positionen deines Horoskops enthalten kann. Berichte werden im normalen Betrieb nicht gelesen; wer AsterOrbis betreibt, hat technischen Zugang zum Dienst und würde ihn nur zur Lösung eines Problems oder einer Beschwerde nutzen.</p>
 
@@ -115,7 +123,7 @@ section[lang].on { display: block; }
     <p>Wenn du am Ende des Berichts einen Kommentar hinterlässt, wird er im Dienst (Cloudflare) zusammen mit deinem Zugangscode, dem Datum und dem Titel des Berichts gespeichert, der deinen Vornamen enthalten kann, damit die Betreiberin von AsterOrbis ihn lesen kann. Der Kommentar wird nicht veröffentlicht und bleibt gespeichert, bis du seine Löschung über die Kontaktadresse verlangst.</p>
 
     <h2>Deine Rechte</h2>
-    <p>Du kannst Auskunft über deine Daten verlangen, sie berichtigen oder ihre Löschung beantragen, indem du an die oben genannte Kontaktadresse schreibst. Aufträge und Berichtskopien werden nach 48 Stunden automatisch gelöscht, technische Protokolle nach 90 Tagen. Wenn du in der Europäischen Union lebst, kannst du dich auch bei der Datenschutzbehörde deines Landes beschweren.</p>
+    <p>Du kannst Auskunft über deine Daten verlangen, sie berichtigen oder ihre Löschung beantragen, indem du an die oben genannte Kontaktadresse schreibst. Aufträge mit Code und Berichtskopien werden nach 48 Stunden automatisch gelöscht, bezahlte Aufträge nach 7 Tagen, technische Protokolle nach 90 Tagen. Wenn du in der Europäischen Union lebst, kannst du dich auch bei der Datenschutzbehörde deines Landes beschweren.</p>
 
     <h2>Charakter des Berichts</h2>
     <p>Personalisierter digitaler Bericht der psychologischen Astrologie, automatisch aus dem berechneten Horoskop erstellt. Er ist ein interpretierendes Werk mit künstlerischem und symbolischem Charakter, gedacht zur Reflexion und Unterhaltung; er ist keine persönliche Beratung. Die verwendete Astrologie ist nicht vorhersagend: Der Bericht macht keine Vorhersagen. Er ist keine Diagnose und keine psychologische Begutachtung, bietet keine medizinische, finanzielle, rechtliche oder sonstige fachliche Beratung und ersetzt keine psychologische oder ärztliche Behandlung.</p>
@@ -126,7 +134,8 @@ section[lang].on { display: block; }
     <p class="date">Updated 4 November 2026</p>
 
     <h2>Who is responsible</h2>
-    <p>AsterOrbis is a personal project by Bárbara Gutiérrez, Buenos Aires, Argentina. Contact: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="pilot">AsterOrbis is a personal project by Bárbara Gutiérrez, Buenos Aires, Argentina. During this pilot phase, reports are requested with access codes. Contact: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
+    <p data-mode="paid">AsterOrbis is a project by Bárbara Gutiérrez, Buenos Aires, Argentina, that sells personalised digital reports. Seller details: <span class="todo">[pending: complete before sales are enabled]</span>. Contact: <a href="mailto:gutierrez.barbarita@gmail.com">gutierrez.barbarita@gmail.com</a>.</p>
 
     <h2>Calculating the chart</h2>
     <p>The chart is calculated on your device. The page downloads the calculation program, the ephemerides and the list of places once. Your name, date, time and place do not travel to any server to calculate the chart. The data detailed below are sent only if you request the report.</p>
@@ -152,6 +161,8 @@ section[lang].on { display: block; }
     <h2>Anti-bot check</h2>
     <p>If the page shows a Cloudflare Turnstile check, Cloudflare processes technical data from your browser and your IP address to tell people apart from automated programs. See the <a href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noopener">Turnstile privacy addendum</a>.</p>
 
+    <h2>If you buy the report</h2>
+    <p>Payment takes place on the platform you choose, which receives your payment details; AsterOrbis does not see them. Your email is used only to send you the private link to the report, through Resend (Resend, Inc., United States). The service keeps the chart, the email and the report for 7 days so you can open it from that link, and then deletes them. Anyone who has the link can read the report. The purchase record, without the chart or the email, is kept for accounting purposes.</p>
     <h2>Copy of the report for 48 hours</h2>
     <p>When you generate a report with a code, the service keeps a copy for 48 hours, together with that code, a random request identifier and a cryptographic fingerprint of the request data, so you can recover it if it was lost before reaching your screen (for example, if you locked your phone). After that, the copy deletes itself. It contains the text of the report, which may include your first name and positions from your chart. Reports are not reviewed as part of normal operation; the person who runs AsterOrbis has technical access to the service and would use it only to solve a problem or a complaint.</p>
 
@@ -159,12 +170,18 @@ section[lang].on { display: block; }
     <p>If you leave a comment at the end of the report, it is stored in the service (Cloudflare) with your access code, the date and the report title, which may include your first name, so that the person who runs AsterOrbis can read it. The comment is not published and is kept until you ask for it to be deleted by writing to the contact address.</p>
 
     <h2>Your rights</h2>
-    <p>You can ask for information about your data, correct it or request its deletion by writing to the contact above. Requests and report copies delete themselves after 48 hours, and technical records after 90 days. If you live in the European Union, you can also complain to your country's data protection authority.</p>
+    <p>You can ask for information about your data, correct it or request its deletion by writing to the contact above. Code requests and report copies delete themselves after 48 hours, paid orders after 7 days, and technical records after 90 days. If you live in the European Union, you can also complain to your country's data protection authority.</p>
 
     <h2>What the report is</h2>
     <p>Personalised digital report in psychological astrology, generated automatically from the calculated chart. It is an interpretive work of an artistic and symbolic nature, intended for reflection and entertainment; it is not a personal consultation. The astrology it uses is non-predictive: the report makes no predictions. It is not a diagnosis or a psychological assessment, does not provide medical, financial, legal or other professional advice, and does not replace psychological or medical care.</p>
   </section>
 </div>
+<script type="module">
+// textos que dependen del modo de la app (config.js: "pilot", "paid" o "disabled"); "disabled" usa los del piloto
+import { CONFIG } from "./config.js";
+const mode = CONFIG.mode === "paid" ? "paid" : "pilot";
+document.querySelectorAll("[data-mode]").forEach((el) => { el.hidden = el.dataset.mode !== mode; });
+</script>
 <script>
 (function () {
   var langs = ["es", "de", "en"];

@@ -92,12 +92,12 @@ function auditReport(report, payload) {
         issues.push({ ref: r, problems: [{ field: "angle", note: "Hora desconocida: no hay \xE1ngulos." }] });
         continue;
       }
-      const base = { ASC: houses.asc, DSC: houses.asc + 180, MC: houses.mc, IC: houses.mc + 180 }[r.angle];
-      if (base == null) {
+      const base2 = { ASC: houses.asc, DSC: houses.asc + 180, MC: houses.mc, IC: houses.mc + 180 }[r.angle];
+      if (base2 == null) {
         issues.push({ ref: r, problems: [{ field: "angle", note: "\xC1ngulo desconocido." }] });
         continue;
       }
-      const c = lonToSignMin(base);
+      const c = lonToSignMin(base2);
       if (r.deg) {
         const m = toMin(r.deg);
         if (m != null) declaredMinutes.add(m);
@@ -537,9 +537,9 @@ function normConfig(c) {
     return { type, apex: oneOf(c.apex, POINT_IDS, "configuration.apex"), opposition };
   }
   if (type === "YOD") {
-    const base = ids(c.base, POINT_IDS, 2, "configuration.base");
-    if (base.length !== 2) fail("configuration.base");
-    return { type, apex: oneOf(c.apex, POINT_IDS, "configuration.apex"), base };
+    const base2 = ids(c.base, POINT_IDS, 2, "configuration.base");
+    if (base2.length !== 2) fail("configuration.base");
+    return { type, apex: oneOf(c.apex, POINT_IDS, "configuration.apex"), base: base2 };
   }
   const bodies = ids(c.bodies, POINT_IDS, 4, "configuration.bodies");
   if (bodies.length !== (type === "GRAND_TRINE" ? 3 : 4)) fail("configuration.bodies");
@@ -749,20 +749,949 @@ var CodeLedger = class {
 };
 function ledger(env, code) {
   const stub = env.CODE_LEDGER.get(env.CODE_LEDGER.idFromName("code:" + code));
-  const call = async (op, body = {}) => {
+  const call2 = async (op, body = {}) => {
     const r = await stub.fetch("https://ledger/" + op, { method: "POST", body: JSON.stringify({ code, ...body }) });
     return { status: r.status, ...await r.json() };
   };
   return {
-    get: () => call("get"),
-    reserve: (request_id, limit) => call("reserve", { request_id, limit }),
-    consume: (token) => call("consume", { token }),
-    release: (token) => call("release", { token })
+    get: () => call2("get"),
+    reserve: (request_id, limit) => call2("reserve", { request_id, limit }),
+    consume: (token) => call2("consume", { token }),
+    release: (token) => call2("release", { token })
   };
 }
 
+// src/payments/sim.js
+var SIM_SIGNATURE_HEADER = "x-sim-signature";
+async function simSign(secret, raw) {
+  return toHex(await hmac(new TextEncoder().encode(secret), raw));
+}
+var simProvider = {
+  name: "sim",
+  enabled: (env) => env.PAYMENTS_SIM === "true" && !!env.SIM_WEBHOOK_SECRET,
+  async createCheckout(env, order, urls) {
+    return { url: `${urls.serviceOrigin}/sim/checkout/${encodeURIComponent(order.id)}`, externalCheckoutId: "simck_" + order.id };
+  },
+  async verifyWebhook(env, request, raw) {
+    const sig = request.headers.get(SIM_SIGNATURE_HEADER) || "";
+    if (!safeEqual(sig, await simSign(env.SIM_WEBHOOK_SECRET, raw))) return { ok: false };
+    let ev;
+    try {
+      ev = JSON.parse(raw);
+    } catch (e) {
+      return { ok: false };
+    }
+    if (!ev || !ev.event_id || !ev.payment) return { ok: false };
+    return { ok: true, eventId: String(ev.event_id), externalId: String(ev.payment.id), kind: "payment", hint: ev.payment };
+  },
+  async getTransaction(env, externalId, hint) {
+    const p = hint || {};
+    return normalized({ status: p.status, orderId: p.order_id, externalId, amountMinor: p.amount_minor, currency: p.currency, productRef: p.product });
+  },
+  async refund() {
+    return { ok: true, status: "refunded" };
+  }
+};
+function simCheckoutPage(orderId, amountText) {
+  const id = String(orderId).replace(/[^A-Za-z0-9-]/g, "");
+  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Checkout simulado</title><body style="font:16px system-ui;max-width:420px;margin:40px auto;padding:0 16px">
+<h1>Checkout simulado</h1><p>Pedido <code>${id}</code> \xB7 ${amountText}</p>
+<p>Esto no cobra nada: env\xEDa un aviso de pago firmado al servicio, como har\xEDa un proveedor real.</p>
+<form method="post" action="/sim/pay/${id}"><button name="result" value="paid">Pagar</button> <button name="result" value="failed">Rechazar</button></form>`;
+}
+
+// src/payments/catalog.js
+var PRODUCT_ID = "informe_completo";
+function expectedPrice(env, provider, product = PRODUCT_ID) {
+  if (product !== PRODUCT_ID) return null;
+  if (provider === "mercadopago") {
+    const a = toMinor(env.PRICE_ARS);
+    return a ? { amountMinor: a, currency: "ARS", productRef: PRODUCT_ID } : null;
+  }
+  if (provider === "dodo") {
+    const a = toMinor(env.PRICE_USD);
+    return a && env.DODO_PRODUCT_ID ? { amountMinor: a, currency: "USD", productRef: env.DODO_PRODUCT_ID } : null;
+  }
+  if (provider === "sim") {
+    const a = toMinor(env.PRICE_USD || "15.00");
+    return { amountMinor: a, currency: "USD", productRef: PRODUCT_ID };
+  }
+  return null;
+}
+var PRODUCT_TITLE = {
+  es: "AsterOrbis \u2014 informe digital personalizado de astrolog\xEDa psicol\xF3gica",
+  de: "AsterOrbis \u2014 personalisierter digitaler Bericht der psychologischen Astrologie",
+  en: "AsterOrbis \u2014 personalised digital report in psychological astrology"
+};
+
+// src/payments/mercadopago.js
+var API = "https://api.mercadopago.com";
+var MP_STATUS = {
+  approved: "paid",
+  authorized: "pending",
+  in_process: "pending",
+  in_mediation: "pending",
+  pending: "pending",
+  rejected: "failed",
+  cancelled: "cancelled",
+  refunded: "refunded",
+  charged_back: "refunded"
+};
+async function mp(env, path, init = {}) {
+  const r = await fetch(API + path, { ...init, headers: { "content-type": "application/json", authorization: "Bearer " + env.MP_ACCESS_TOKEN, ...init.headers || {} } });
+  const body = await r.json().catch(() => null);
+  if (!r.ok) {
+    const e = new Error("mercadopago");
+    e.status = r.status;
+    e.detail = body && (body.message || body.error);
+    throw e;
+  }
+  return body;
+}
+async function mpManifestSignature(secret, dataId, requestId, ts) {
+  const id = /^[a-z0-9]+$/i.test(dataId) ? String(dataId).toLowerCase() : String(dataId);
+  return toHex(await hmac(new TextEncoder().encode(secret), `id:${id};request-id:${requestId};ts:${ts};`));
+}
+var mercadoPagoProvider = {
+  name: "mercadopago",
+  enabled: (env) => !!(env.MP_ACCESS_TOKEN && env.MP_WEBHOOK_SECRET),
+  async createCheckout(env, order, urls) {
+    const back = (r) => `${urls.appOrigin}/?pedido=${encodeURIComponent(order.id)}&resultado=${r}`;
+    const pref = await mp(env, "/checkout/preferences", { method: "POST", headers: { "x-idempotency-key": order.id }, body: JSON.stringify({
+      items: [{ id: order.product, title: PRODUCT_TITLE[order.lang] || PRODUCT_TITLE.es, quantity: 1, currency_id: order.currency, unit_price: order.amountMinor / 100 }],
+      external_reference: order.id,
+      // el enlace vence antes que la carta guardada: no se puede pagar un pedido que ya no se puede generar
+      expires: true,
+      expiration_date_to: new Date(Date.now() + 48 * 3600 * 1e3).toISOString(),
+      metadata: { order_id: order.id },
+      back_urls: { success: back("ok"), pending: back("pendiente"), failure: back("error") },
+      auto_return: "approved",
+      notification_url: `${urls.serviceOrigin}/webhooks/mercadopago`,
+      statement_descriptor: "ASTERORBIS"
+    }) });
+    const url = env.MP_USE_SANDBOX_POINT === "true" ? pref.sandbox_init_point : pref.init_point;
+    return { url, externalCheckoutId: pref.id };
+  },
+  async verifyWebhook(env, request, raw) {
+    const u = new URL(request.url);
+    let body = null;
+    try {
+      body = raw ? JSON.parse(raw) : null;
+    } catch (e) {
+    }
+    const type = u.searchParams.get("type") || u.searchParams.get("topic") || body && body.type || "";
+    const dataId = u.searchParams.get("data.id") || body && body.data && body.data.id || "";
+    const reqId = request.headers.get("x-request-id") || "";
+    const parts = Object.fromEntries((request.headers.get("x-signature") || "").split(",").map((kv) => kv.trim().split("=")));
+    if (!dataId || !reqId || !parts.ts || !parts.v1) return { ok: false };
+    if (!safeEqual(parts.v1, await mpManifestSignature(env.MP_WEBHOOK_SECRET, dataId, reqId, parts.ts))) return { ok: false };
+    return { ok: true, eventId: `mp:${type}:${dataId}:${body && body.action || ""}:${body && body.id || reqId}`, externalId: String(dataId), kind: type === "payment" ? "payment" : "ignore" };
+  },
+  async getTransaction(env, externalId) {
+    const p = await mp(env, "/v1/payments/" + encodeURIComponent(externalId));
+    const item = p.additional_info && p.additional_info.items && p.additional_info.items[0];
+    return normalized({
+      status: MP_STATUS[p.status] || "pending",
+      orderId: p.external_reference,
+      externalId: p.id,
+      amountMinor: toMinor(p.transaction_amount),
+      currency: p.currency_id,
+      productRef: item ? item.id : null
+    });
+  },
+  /** Conciliación: busca el pago por identificador del pedido, por si el aviso se perdió. */
+  async findPayment(env, orderId) {
+    const r = await mp(env, "/v1/payments/search?sort=date_created&criteria=desc&external_reference=" + encodeURIComponent(orderId));
+    const p = (r.results || []).find((x) => x.status === "approved") || (r.results || [])[0];
+    return p ? this.getTransaction(env, p.id) : null;
+  },
+  async refund(env, order) {
+    const r = await mp(env, `/v1/payments/${encodeURIComponent(order.externalId)}/refunds`, { method: "POST", headers: { "x-idempotency-key": "refund-" + order.id }, body: "{}" });
+    return { ok: true, status: r && r.status === "approved" ? "refunded" : "pending" };
+  }
+};
+
+// src/payments/dodo.js
+var base = (env) => env.DODO_ENV === "live" ? "https://live.dodopayments.com" : "https://test.dodopayments.com";
+var TOLERANCE_S = 300;
+var DODO_STATUS = {
+  succeeded: "paid",
+  processing: "pending",
+  requires_customer_action: "pending",
+  requires_merchant_action: "pending",
+  requires_payment_method: "pending",
+  requires_confirmation: "pending",
+  requires_capture: "pending",
+  partially_captured: "pending",
+  failed: "failed",
+  cancelled: "cancelled"
+};
+async function dodo(env, path, init = {}) {
+  const r = await fetch(base(env) + path, { ...init, headers: { "content-type": "application/json", authorization: "Bearer " + env.DODO_API_KEY, ...init.headers || {} } });
+  const body = await r.json().catch(() => null);
+  if (!r.ok) {
+    const e = new Error("dodo");
+    e.status = r.status;
+    e.detail = body && (body.message || body.code);
+    throw e;
+  }
+  return body;
+}
+async function standardWebhookSignature(secret, id, ts, raw) {
+  const key = fromB64(String(secret).replace(/^whsec_/, ""));
+  return toB64(await hmac(key, `${id}.${ts}.${raw}`));
+}
+var dodoProvider = {
+  name: "dodo",
+  enabled: (env) => !!(env.DODO_API_KEY && env.DODO_WEBHOOK_SECRET && env.DODO_PRODUCT_ID),
+  async createCheckout(env, order, urls) {
+    const s = await dodo(env, "/checkouts", { method: "POST", body: JSON.stringify({
+      product_cart: [{ product_id: env.DODO_PRODUCT_ID, quantity: 1 }],
+      return_url: `${urls.appOrigin}/?pedido=${encodeURIComponent(order.id)}`,
+      metadata: { order_id: order.id }
+    }) });
+    return { url: s.checkout_url, externalCheckoutId: s.session_id };
+  },
+  async verifyWebhook(env, request, raw, now = Date.now()) {
+    const id = request.headers.get("webhook-id"), ts = request.headers.get("webhook-timestamp"), sigs = request.headers.get("webhook-signature") || "";
+    if (!id || !ts || !/^\d+$/.test(ts) || Math.abs(now / 1e3 - +ts) > TOLERANCE_S) return { ok: false };
+    const expected = await standardWebhookSignature(env.DODO_WEBHOOK_SECRET, id, ts, raw);
+    if (!sigs.split(" ").some((s) => s.startsWith("v1,") && safeEqual(s.slice(3), expected))) return { ok: false };
+    let ev;
+    try {
+      ev = JSON.parse(raw);
+    } catch (e) {
+      return { ok: false };
+    }
+    const type = String(ev.type || ""), data = ev.data || {};
+    const kind = (type.startsWith("payment.") || type.startsWith("refund.")) && data.payment_id ? "payment" : "ignore";
+    return { ok: true, eventId: "dodo:" + id, externalId: data.payment_id ? String(data.payment_id) : null, kind };
+  },
+  async getTransaction(env, externalId) {
+    const p = await dodo(env, "/payments/" + encodeURIComponent(externalId));
+    const refunded = Array.isArray(p.refunds) && p.refunds.some((r) => r.status === "succeeded");
+    const item = Array.isArray(p.product_cart) ? p.product_cart[0] : null;
+    const net = Number.isInteger(p.total_amount) ? p.total_amount - (Number.isInteger(p.tax) ? p.tax : 0) : null;
+    return normalized({
+      status: refunded ? "refunded" : DODO_STATUS[p.status] || "pending",
+      orderId: p.metadata && p.metadata.order_id,
+      externalId: p.payment_id || externalId,
+      amountMinor: net,
+      currency: p.currency,
+      productRef: item ? item.product_id : null
+    });
+  },
+  async refund(env, order) {
+    const r = await dodo(env, "/refunds", { method: "POST", body: JSON.stringify({ payment_id: order.externalId, reason: "AsterOrbis: informe no entregado" }) });
+    return { ok: true, status: r && r.status === "succeeded" ? "refunded" : "pending" };
+  }
+};
+
+// src/payments/provider.js
+var PAYMENT_STATUSES = ["paid", "pending", "failed", "refunded", "cancelled"];
+var PROVIDERS = { sim: simProvider, mercadopago: mercadoPagoProvider, dodo: dodoProvider };
+function getProvider(env, name) {
+  const p = PROVIDERS[name];
+  return p && p.enabled(env) ? p : null;
+}
+var providerNames = () => Object.keys(PROVIDERS);
+function toMinor(x) {
+  if (x == null || x === "") return null;
+  const s = String(x).trim().replace(",", ".");
+  if (!/^\d+(\.\d{1,2})?$/.test(s)) return null;
+  const [i, d = ""] = s.split(".");
+  return +i * 100 + +(d + "00").slice(0, 2);
+}
+function normalized({ status, orderId, externalId, amountMinor, currency, productRef }) {
+  return {
+    status: PAYMENT_STATUSES.includes(status) ? status : "pending",
+    orderId: orderId ? String(orderId) : null,
+    externalId: externalId != null ? String(externalId) : null,
+    amountMinor: Number.isInteger(amountMinor) ? amountMinor : null,
+    currency: currency ? String(currency).toUpperCase() : null,
+    productRef: productRef != null ? String(productRef) : null
+  };
+}
+async function hmac(keyBytes, data, hash = "SHA-256") {
+  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash }, false, ["sign"]);
+  return new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data)));
+}
+var toHex = (b) => [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+var toB64 = (b) => btoa(String.fromCharCode(...b));
+var fromB64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+function safeEqual(a, b) {
+  a = String(a);
+  b = String(b);
+  let d = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) d |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return d === 0;
+}
+
+// src/order.js
+var PENDING_TTL_MS = 7 * 24 * 3600 * 1e3;
+var START_WATCH_MS = 10 * 60 * 1e3;
+var RUN_WATCH_MS = 75 * 60 * 1e3;
+var RETAIN_MS = 7 * 24 * 3600 * 1e3;
+var MAX_MAIL_TRIES = 5;
+async function flag(env, id, reason) {
+  if (env && env.ASTRO_KV) await env.ASTRO_KV.put("exc:" + id, JSON.stringify({ order_id: id, reason, at: (/* @__PURE__ */ new Date()).toISOString() })).catch(() => {
+  });
+}
+var EVENTS_KEEP = 50;
+var ok2 = (obj2, status = 200) => new Response(JSON.stringify(obj2), { status, headers: { "content-type": "application/json; charset=utf-8" } });
+async function sha256Hex(s) {
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
+  return [...h].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function publicView(o) {
+  return {
+    order_id: o.id,
+    product: o.product,
+    provider: o.provider,
+    amount: o.amountMinor / 100,
+    currency: o.currency,
+    payment_status: o.payment.status,
+    generation_status: o.generation.status,
+    created_at: o.createdAt,
+    updated_at: o.updatedAt
+  };
+}
+var OrderDO = class {
+  constructor(state, env) {
+    this.state = state;
+    this.storage = state.storage;
+    this.env = env;
+    this.queue = Promise.resolve();
+  }
+  serial(fn) {
+    const run = this.queue.then(fn, fn);
+    this.queue = run.catch(() => {
+    });
+    return run;
+  }
+  async save(o) {
+    o.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    await this.storage.put("o", o);
+  }
+  async fetch(request) {
+    const path = new URL(request.url).pathname;
+    const b = await request.json().catch(() => ({}));
+    return this.serial(async () => {
+      if (path === "/claim") {
+        const c = await this.storage.get("claim");
+        if (c) return ok2({ ...c, first: false });
+        await this.storage.put("claim", { id: b.id, token: b.token, url: null });
+        await this.storage.setAlarm(Date.now() + PENDING_TTL_MS);
+        return ok2({ id: b.id, token: b.token, url: null, first: true });
+      }
+      if (path === "/claim-url") {
+        const c = await this.storage.get("claim");
+        if (c) {
+          c.url = b.url;
+          await this.storage.put("claim", c);
+        }
+        return ok2({});
+      }
+      if (path === "/claim-release") {
+        await this.storage.delete("claim");
+        return ok2({});
+      }
+      let o = await this.storage.get("o");
+      if (path === "/create") {
+        if (o) return ok2({ existed: true, order: publicView(o) });
+        o = {
+          ...b.order,
+          payment: { status: "created", externalId: null, externalCheckoutId: null, events: [], paidAt: null, mismatch: null },
+          generation: { status: "none", jobId: null, attempts: 0, startedAt: null, deliveredAt: null, lastOutcome: null },
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        await this.save(o);
+        await this.storage.put("payload", b.payload);
+        if (b.email) await this.storage.put("email", b.email);
+        await this.storage.setAlarm(Date.now() + PENDING_TTL_MS);
+        return ok2({ existed: false, order: publicView(o) });
+      }
+      if (!o) return ok2({ error: "not_found" }, 404);
+      if (path === "/view") {
+        const hash = b.token ? await sha256Hex(b.token) : null;
+        if (!hash || hash !== o.tokenHash && hash !== (o.mail && o.mail.tokenHash)) return ok2({ error: "forbidden" }, 403);
+        const open = o.generation.status === "delivered" && o.payment.status !== "refunded";
+        return ok2({ order: publicView(o), jobId: open ? o.generation.jobId : null, chart: open ? await this.storage.get("payload") || null : null });
+      }
+      if (path === "/checkout") {
+        o.payment.externalCheckoutId = b.externalCheckoutId || null;
+        await this.save(o);
+        return ok2({ order: publicView(o) });
+      }
+      if (path === "/payment") {
+        const tx = b.tx || {};
+        if (b.eventId && o.payment.events.includes(b.eventId)) return ok2({ action: "none", duplicate: true, order: publicView(o) });
+        if (b.eventId) o.payment.events = [...o.payment.events, b.eventId].slice(-EVENTS_KEEP);
+        if (tx.orderId !== o.id || b.provider && b.provider !== o.provider) {
+          await this.save(o);
+          return ok2({ action: "none", ignored: "other_order", order: publicView(o) });
+        }
+        if (o.payment.externalId && tx.externalId && tx.externalId !== o.payment.externalId && ["paid", "refunded"].includes(tx.status)) {
+          await this.save(o);
+          return ok2({ action: "none", exception: tx.status === "paid" ? "duplicate_payment" : "refund_other_payment", order: publicView(o) });
+        }
+        let action = "none", exception = null;
+        if (tx.status === "paid") {
+          const wrong = [];
+          if (tx.amountMinor !== o.amountMinor) wrong.push("amount");
+          if (tx.currency !== o.currency) wrong.push("currency");
+          if (o.productRef && tx.productRef !== o.productRef) wrong.push("product");
+          if (o.payment.status === "refunded" || o.payment.status === "mismatch") {
+          } else if (wrong.length) {
+            o.payment.status = "mismatch";
+            o.payment.mismatch = { fields: wrong, amountMinor: tx.amountMinor, currency: tx.currency, productRef: tx.productRef };
+            exception = "payment_mismatch";
+          } else {
+            if (o.payment.status !== "paid") {
+              o.payment.status = "paid";
+              o.payment.paidAt = (/* @__PURE__ */ new Date()).toISOString();
+              o.payment.externalId = o.payment.externalId || tx.externalId;
+            }
+            if (o.generation.status === "none") {
+              o.generation.status = "starting";
+              o.generation.attempts = 1;
+              o.generation.jobId = o.id;
+              o.generation.startedAt = (/* @__PURE__ */ new Date()).toISOString();
+              action = "start";
+            }
+          }
+        } else if (tx.status === "refunded") {
+          o.payment.status = "refunded";
+          if (o.generation.status !== "delivered") await this.storage.delete("payload");
+        } else if (["failed", "cancelled"].includes(tx.status)) {
+          if (!["paid", "refunded", "mismatch"].includes(o.payment.status)) o.payment.status = tx.status;
+        } else if (tx.status === "pending" && o.payment.status === "created") {
+          o.payment.status = "pending";
+        }
+        await this.save(o);
+        if (action === "start") await this.storage.setAlarm(Date.now() + START_WATCH_MS);
+        const payload = action === "start" ? await this.storage.get("payload") : void 0;
+        if (action === "start" && !payload) {
+          o.generation.status = "failed";
+          o.generation.lastOutcome = "payload_missing";
+          await this.save(o);
+          return ok2({ action: "none", exception: "payload_missing", order: publicView(o) });
+        }
+        return ok2({ action, exception, jobId: o.generation.jobId, payload, order: publicView(o), internal: { externalId: o.payment.externalId, provider: o.provider } });
+      }
+      if (path === "/started") {
+        if (b.jobId === o.generation.jobId && o.generation.status === "starting") {
+          o.generation.status = "running";
+          await this.save(o);
+          await this.storage.setAlarm(Date.now() + RUN_WATCH_MS);
+        }
+        return ok2({ order: publicView(o) });
+      }
+      if (path === "/generation") {
+        const ownJob = typeof b.jobId === "string" && (b.jobId === o.id || b.jobId.startsWith(o.id + "-r"));
+        if (!ownJob || b.jobId !== o.generation.jobId && b.outcome !== "delivered") return ok2({ ignored: true, order: publicView(o) });
+        if (b.outcome === "delivered") {
+          o.generation.jobId = b.jobId;
+          o.generation.status = "delivered";
+          o.generation.deliveredAt = (/* @__PURE__ */ new Date()).toISOString();
+          o.generation.lastOutcome = "delivered";
+          o.retainUntil = Date.now() + RETAIN_MS;
+          await this.storage.setAlarm(o.retainUntil);
+        } else if (o.generation.status !== "delivered") {
+          o.generation.status = "failed";
+          o.generation.lastOutcome = b.outcome || "error";
+        }
+        await this.save(o);
+        return ok2({ order: publicView(o), exception: o.generation.status === "failed" ? "generation_failed" : null });
+      }
+      if (path === "/retry") {
+        if (o.payment.status !== "paid" || o.generation.status !== "failed") return ok2({ error: "not_retryable", order: publicView(o) }, 409);
+        const payload = await this.storage.get("payload");
+        if (!payload) return ok2({ error: "payload_missing", order: publicView(o) }, 409);
+        o.generation.attempts += 1;
+        o.generation.jobId = `${o.id}-r${o.generation.attempts - 1}`;
+        o.generation.status = "starting";
+        o.generation.startedAt = (/* @__PURE__ */ new Date()).toISOString();
+        await this.save(o);
+        return ok2({ action: "start", jobId: o.generation.jobId, payload, order: publicView(o) });
+      }
+      if (path === "/mail-prepare") {
+        o.mail = o.mail || { status: "none", tries: 0, tokenHash: null, sentAt: null };
+        if (o.generation.status !== "delivered" || o.payment.status === "refunded" || o.mail.status === "sent" || o.mail.tries >= MAX_MAIL_TRIES) return ok2({ skip: true, mail: o.mail });
+        const email = await this.storage.get("email");
+        if (!email) return ok2({ skip: true, mail: o.mail });
+        const token = [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, "0")).join("");
+        o.mail.tries += 1;
+        o.mail.status = "sending";
+        o.mail.tokenHash = await sha256Hex(token);
+        await this.save(o);
+        return ok2({ email, token, lang: o.lang, tries: o.mail.tries });
+      }
+      if (path === "/mail-result") {
+        if (o.mail) {
+          o.mail.status = b.ok ? "sent" : "failed";
+          if (b.ok) o.mail.sentAt = (/* @__PURE__ */ new Date()).toISOString();
+          await this.save(o);
+        }
+        return ok2({ mail: o.mail || null });
+      }
+      if (path === "/check") return ok2({ order: publicView(o), attempts: o.generation.attempts, mail: o.mail ? { status: o.mail.status, tries: o.mail.tries } : null, createdAt: o.createdAt, provider: o.provider, paidAt: o.payment.paidAt });
+      if (path === "/refund") {
+        return ok2({ order: publicView(o), internal: { externalId: o.payment.externalId, provider: o.provider }, refundable: o.payment.status === "paid" });
+      }
+      return ok2({ error: "bad_request" }, 400);
+    });
+  }
+  /**
+   * Alarma del pedido:
+   *  - vigilancia de la generación: si quedó en «starting» o «running» más de lo previsto (el Worker se cortó, el
+   *    trabajo no arrancó), pasa a «failed» y entra en la cola de excepciones para reintentar o reembolsar;
+   *  - vencimiento: a los 7 días, un pedido sin pagar pierde la carta y queda cancelado; un pedido pagado que no se
+   *    entregó también pierde la carta (queda en excepciones para reembolso).
+   */
+  async alarm() {
+    return this.serial(async () => {
+      const o = await this.storage.get("o");
+      if (!o) {
+        await this.storage.deleteAll();
+        return;
+      }
+      const now = Date.now(), started = o.generation.startedAt ? Date.parse(o.generation.startedAt) : 0;
+      if (o.generation.status === "starting" || o.generation.status === "running") {
+        const limit = o.generation.status === "starting" ? START_WATCH_MS : RUN_WATCH_MS;
+        if (now - started >= limit) {
+          o.generation.lastOutcome = o.generation.status === "starting" ? "start_lost" : "timeout";
+          o.generation.status = "failed";
+          await this.save(o);
+          await flag(this.env, o.id, "generation_stuck");
+        } else {
+          await this.storage.setAlarm(started + limit);
+          return;
+        }
+      }
+      const created = Date.parse(o.createdAt), until = Math.max(created + PENDING_TTL_MS, o.retainUntil || 0);
+      if (now < until) {
+        await this.storage.setAlarm(until);
+        return;
+      }
+      if (o.generation.status !== "delivered" && await this.storage.get("payload") && o.payment.status === "paid") await flag(this.env, o.id, "payload_expired");
+      await this.storage.delete(["payload", "email"]);
+      if (o.mail) o.mail.tokenHash = null;
+      if (!["paid", "refunded", "mismatch"].includes(o.payment.status)) {
+        o.payment.status = "cancelled";
+        o.generation.lastOutcome = o.generation.lastOutcome || "expired_unpaid";
+      }
+      await this.save(o);
+    });
+  }
+};
+
+// src/mail.js
+var mailEnabled = (env) => !!(env.MAIL_API_KEY && env.MAIL_FROM);
+async function sendMail(env, { to, subject, text, key }) {
+  if (!mailEnabled(env) || !to) return false;
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer " + env.MAIL_API_KEY, ...key ? { "idempotency-key": key } : {} },
+      body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject, text, ...env.ADMIN_EMAIL ? { reply_to: env.ADMIN_EMAIL } : {} })
+    });
+    if (!r.ok) console.log(JSON.stringify({ event: "mail_rejected", status: r.status }));
+    return r.ok;
+  } catch (e) {
+    console.log(JSON.stringify({ event: "mail_error" }));
+    return false;
+  }
+}
+var TEXTS = {
+  es: { subject: "Tu informe de AsterOrbis est\xE1 listo", body: (u, d) => `Tu informe est\xE1 listo.
+
+Abrilo desde este enlace privado:
+${u}
+
+El enlace funciona durante ${d} d\xEDas. Desde ah\xED pod\xE9s guardar el PDF. Despu\xE9s de ese plazo, el informe y tu carta se borran.
+
+No compartas este enlace: quien lo tenga puede leer el informe. Si algo no funciona, respond\xE9 este correo.
+
+B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis` },
+  de: { subject: "Dein AsterOrbis-Bericht ist fertig", body: (u, d) => `Dein Bericht ist fertig.
+
+\xD6ffne ihn \xFCber diesen privaten Link:
+${u}
+
+Der Link gilt ${d} Tage. Dort kannst du das PDF speichern. Nach Ablauf dieser Frist werden Bericht und Horoskop gel\xF6scht.
+
+Teile diesen Link nicht: Wer ihn hat, kann den Bericht lesen. Wenn etwas nicht funktioniert, antworte auf diese E-Mail.
+
+B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis` },
+  en: { subject: "Your AsterOrbis report is ready", body: (u, d) => `Your report is ready.
+
+Open it from this private link:
+${u}
+
+The link works for ${d} days. You can save the PDF from there. After that, the report and your chart are deleted.
+
+Do not share this link: anyone who has it can read the report. If something does not work, reply to this email.
+
+B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis` }
+};
+function reportMail(lang, url, days) {
+  const t = TEXTS[lang] || TEXTS.es;
+  return { subject: t.subject, text: t.body(url, days) };
+}
+var validEmail = (x) => typeof x === "string" && x.length <= 254 && /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;".]{2,}$/.test(x.trim());
+
+// src/orders.js
+var ORDER_CODE_PREFIX = "ORDER:";
+var TERMS_VERSIONS = ["2026-11-04", "2026-11-05"];
+var MAX_ORDER_BODY = 12e4;
+var MAX_GENERATIONS = 3;
+var OPEN_TTL = 9 * 86400;
+var HOUR = 3600 * 1e3;
+var json = (obj2, status, headers = {}) => new Response(JSON.stringify(obj2), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers } });
+var randHex = (n) => {
+  const a = new Uint8Array(n);
+  crypto.getRandomValues(a);
+  return [...a].map((b) => b.toString(16).padStart(2, "0")).join("");
+};
+var orderStub = (env, id) => env.ORDERS.get(env.ORDERS.idFromName(id));
+async function call(stub, op, body) {
+  const r = await stub.fetch("https://order/" + op, { method: "POST", body: JSON.stringify(body || {}) });
+  return { status: r.status, ...await r.json() };
+}
+var ORDER_ID_RE = /^ord-[0-9a-f]{32}$/;
+async function flagException(env, orderId, reason) {
+  if (env.ASTRO_KV) await env.ASTRO_KV.put("exc:" + orderId, JSON.stringify({ order_id: orderId, reason, at: (/* @__PURE__ */ new Date()).toISOString() })).catch(() => {
+  });
+}
+async function clearException(env, orderId) {
+  if (env.ASTRO_KV) await env.ASTRO_KV.delete("exc:" + orderId).catch(() => {
+  });
+}
+async function startOrderJob(env, orderId, jobId, payload, providerRef) {
+  const code = ORDER_CODE_PREFIX + orderId;
+  const res = await ledger(env, code).reserve(jobId, 1);
+  if (res.error) {
+    await call(orderStub(env, orderId), "generation", { jobId, outcome: "start_" + res.error });
+    await flagException(env, orderId, "start_" + res.error);
+    return { started: false, reason: res.error };
+  }
+  const job = {
+    payload,
+    fp: await payloadFingerprint(payload),
+    token: res.token,
+    codeKind: "order",
+    orderId,
+    order: providerRef || null,
+    requestId: jobId,
+    useCode: true,
+    code,
+    limit: 1,
+    retainMs: RETAIN_MS,
+    mk: monthKey(),
+    vKey: null,
+    vUsed: 0,
+    dKey: null,
+    dUsed: 0
+  };
+  const stub = env.REPORT_JOB.get(env.REPORT_JOB.idFromName(jobId));
+  await stub.fetch("https://job/start", { method: "POST", body: JSON.stringify(job) });
+  await call(orderStub(env, orderId), "started", { jobId });
+  return { started: true };
+}
+async function notifyOrderGeneration(env, orderId, jobId, outcome) {
+  if (!env.ORDERS || !orderId) return;
+  const r = await call(orderStub(env, orderId), "generation", { jobId, outcome });
+  if (r.exception) await flagException(env, orderId, r.exception);
+  else if (outcome === "delivered") {
+    await clearException(env, orderId);
+    await deliverMail(env, orderId);
+  }
+}
+async function deliverMail(env, orderId) {
+  const stub = orderStub(env, orderId), p = await call(stub, "mail-prepare", {});
+  if (p.skip || !p.email) return false;
+  const url = `${(env.APP_URL || "https://asterorbis.com").replace(/\/$/, "")}/?pedido=${orderId}#k=${p.token}`;
+  const m = reportMail(p.lang, url, Math.round(RETAIN_MS / (24 * HOUR)));
+  const sent = await sendMail(env, { to: p.email, subject: m.subject, text: m.text, key: `${orderId}-${p.tries}` });
+  await call(stub, "mail-result", { ok: sent });
+  return sent;
+}
+async function alertAdmin(env, orderId, reason) {
+  if (!env.ADMIN_EMAIL || !env.ASTRO_KV) return;
+  const key = `alerted:${orderId}:${reason}`;
+  if (await env.ASTRO_KV.get(key)) return;
+  const ok4 = await sendMail(env, { to: env.ADMIN_EMAIL, subject: `AsterOrbis: revisar pedido (${reason})`, text: `Pedido: ${orderId}
+Motivo: ${reason}
+
+Ver /admin/exceptions.`, key });
+  if (ok4) await env.ASTRO_KV.put(key, "1", { expirationTtl: 86400 });
+}
+async function reconcile(env, id, st) {
+  const provider = getProvider(env, st.provider);
+  if (!provider || !provider.findPayment) return;
+  let tx;
+  try {
+    tx = await provider.findPayment(env, id);
+  } catch (e) {
+    return;
+  }
+  if (!tx || tx.orderId !== id || tx.status !== "paid") return;
+  await applyPayment(env, "recon:" + tx.externalId, tx, st.provider);
+}
+async function runControls(env, now = Date.now()) {
+  if (serviceMode(env) !== "paid" || !env.ORDERS || !env.ASTRO_KV) return { skipped: true };
+  const list = await env.ASTRO_KV.list({ prefix: "open:" }), out = { checked: 0, retried: 0, mailed: 0, alerts: 0 };
+  for (const { name } of list.keys) {
+    const id = name.slice(5);
+    if (!ORDER_ID_RE.test(id)) continue;
+    let st = await call(orderStub(env, id), "check", {});
+    if (st.status === 404) {
+      await env.ASTRO_KV.delete(name);
+      continue;
+    }
+    out.checked++;
+    if (["created", "pending"].includes(st.order.payment_status)) {
+      await reconcile(env, id, st);
+      st = await call(orderStub(env, id), "check", {});
+    }
+    const pay = st.order.payment_status, gen = st.order.generation_status;
+    if (["cancelled", "failed", "refunded", "mismatch"].includes(pay)) {
+      if (pay === "mismatch") {
+        await alertAdmin(env, id, "payment_mismatch");
+        out.alerts++;
+      }
+      await env.ASTRO_KV.delete(name);
+      continue;
+    }
+    if (pay !== "paid") continue;
+    if (gen === "failed") {
+      if (st.attempts < MAX_GENERATIONS) {
+        const r = await call(orderStub(env, id), "retry", {});
+        if (r.status === 200) {
+          await startOrderJob(env, id, r.jobId, r.payload, null);
+          await clearException(env, id);
+          out.retried++;
+        }
+      } else {
+        await alertAdmin(env, id, "generation_failed");
+        out.alerts++;
+      }
+    } else if (gen === "delivered") {
+      if (st.mail && st.mail.status === "sent") {
+        await env.ASTRO_KV.delete(name);
+        continue;
+      }
+      if (mailEnabled(env) && (!st.mail || st.mail.tries < MAX_MAIL_TRIES)) {
+        if (await deliverMail(env, id)) {
+          out.mailed++;
+          await env.ASTRO_KV.delete(name);
+        }
+      } else {
+        await alertAdmin(env, id, "mail_failed");
+        out.alerts++;
+      }
+    } else if (st.paidAt && now - Date.parse(st.paidAt) > 3 * HOUR) {
+      await alertAdmin(env, id, "paid_without_report");
+      out.alerts++;
+    }
+  }
+  await dailySummary(env, now, list.keys.length);
+  return out;
+}
+async function dailySummary(env, now, open) {
+  const d = new Date(now), day = d.toISOString().slice(0, 10), key = "summary:" + day;
+  if (!env.ADMIN_EMAIL || d.getUTCHours() < 12 || await env.ASTRO_KV.get(key)) return;
+  const month = await kvGetJSON(env.ASTRO_KV, monthKey(d), { reports: 0, usd: 0, failed: 0 });
+  const exc = await env.ASTRO_KV.list({ prefix: "exc:" });
+  const saleKeys = (await env.ASTRO_KV.list({ prefix: "sale:" })).keys, sales = [];
+  for (const k of saleKeys) {
+    const s = await kvGetJSON(env.ASTRO_KV, k.name, null);
+    if (s) sales.push(`${s.at.slice(0, 10)} \xB7 ${s.currency} ${(s.minor / 100).toFixed(2)} \xB7 ${s.provider} \xB7 pago ${s.external}`);
+  }
+  const salesText = sales.length ? `
+
+Ventas para facturar (${sales.length}):
+${sales.sort().join("\n")}` : "\n\nVentas para facturar: ninguna";
+  const ok4 = await sendMail(env, { to: env.ADMIN_EMAIL, subject: `AsterOrbis: resumen ${day}`, text: `Pedidos abiertos: ${open}
+Pedidos para revisar: ${exc.keys.length}
+Mes: ${month.reports} informes, ${month.failed} fallidos, US$ ${month.usd}${salesText}`, key });
+  if (ok4) {
+    await env.ASTRO_KV.put(key, "1", { expirationTtl: 3 * 86400 });
+    for (const k of saleKeys) await env.ASTRO_KV.delete(k.name);
+  }
+}
+async function createOrder(request, env, cors) {
+  if (serviceMode(env) !== "paid") return json({ error: serviceMode(env) === "disabled" ? "disabled" : "not_available" }, serviceMode(env) === "disabled" ? 503 : 404, cors);
+  if (!env.ORDERS || !env.REPORT_JOB || !env.CODE_LEDGER) return json({ error: "not_configured" }, 503, cors);
+  const raw = await request.text();
+  if (raw.length > MAX_ORDER_BODY) return json({ error: "bad_request" }, 413, cors);
+  let b;
+  try {
+    b = JSON.parse(raw);
+  } catch (e) {
+    return json({ error: "bad_request" }, 400, cors);
+  }
+  const providerName = String(b && b.provider || "");
+  const provider = getProvider(env, providerName);
+  if (!provider) return json({ error: "provider_unavailable" }, 400, cors);
+  const product = String(b.product || PRODUCT_ID);
+  const price = expectedPrice(env, providerName, product);
+  if (!price) return json({ error: "price_not_configured" }, 503, cors);
+  const c = b.consent || {};
+  if (c.accepted !== true || !TERMS_VERSIONS.includes(c.terms_version)) return json({ error: "consent_required" }, 400, cors);
+  if (!validEmail(b.email)) return json({ error: "email_invalid" }, 400, cors);
+  if (!mailEnabled(env) || !await generationAvailable(env)) return json({ error: "unavailable" }, 503, cors);
+  const idem = normalizeRequestId(b.idempotency_key);
+  if (!idem) return json({ error: "bad_request" }, 400, cors);
+  const norm = normalizePayload(b.payload);
+  if (!norm.ok) return json({ error: norm.error }, 400, cors);
+  const claimStub = env.ORDERS.get(env.ORDERS.idFromName("idem:" + idem));
+  const claim = await call(claimStub, "claim", { id: "ord-" + randHex(16), token: randHex(24) });
+  const id = claim.id, token = claim.token;
+  if (!claim.first) {
+    const v = await call(orderStub(env, id), "view", { token });
+    if (v.order && v.order.payment_status === "paid") return json({ order_id: id, token, already_paid: true, existed: true }, 200, cors);
+    if (claim.url) return json({ order_id: id, token, checkout_url: claim.url, existed: true }, 200, cors);
+    return json({ error: "order_in_progress" }, 409, cors);
+  }
+  const order = {
+    id,
+    product,
+    provider: providerName,
+    amountMinor: price.amountMinor,
+    currency: price.currency,
+    productRef: price.productRef,
+    lang: norm.payload.request.report_language,
+    tokenHash: await sha256Hex(token),
+    idemKey: idem,
+    consent: { terms_version: c.terms_version, disclaimer_version: String(c.disclaimer_version || ""), at: (/* @__PURE__ */ new Date()).toISOString() }
+  };
+  await call(orderStub(env, id), "create", { order, payload: norm.payload, email: b.email.trim() });
+  if (env.ASTRO_KV) await env.ASTRO_KV.put("open:" + id, "1", { expirationTtl: OPEN_TTL });
+  return checkout(id, token, 201);
+  async function checkout(oid, tok, okStatus = 200) {
+    const appOrigin = request.headers.get("origin");
+    const serviceOrigin = new URL(request.url).origin;
+    let ck;
+    try {
+      ck = await provider.createCheckout(env, { id: oid, product, amountMinor: price.amountMinor, currency: price.currency, lang: norm.payload.request.report_language }, { appOrigin, serviceOrigin });
+    } catch (e) {
+      console.log(JSON.stringify({ event: "checkout_error", provider: providerName, status: e.status || null }));
+      await call(claimStub, "claim-release", {});
+      return json({ error: "checkout_unavailable", order_id: oid }, 502, cors);
+    }
+    await call(orderStub(env, oid), "checkout", { externalCheckoutId: ck.externalCheckoutId });
+    await call(claimStub, "claim-url", { url: ck.url });
+    return json({ order_id: oid, token: tok, checkout_url: ck.url, ...okStatus === 200 ? { existed: true } : {} }, okStatus, cors);
+  }
+}
+async function getOrder(request, env, cors, id) {
+  if (!ORDER_ID_RE.test(id) || !env.ORDERS) return json({ error: "not_found" }, 404, cors);
+  const v = await call(orderStub(env, id), "view", { token: request.headers.get("x-order-token") || "" });
+  if (v.status !== 200) return json({ error: v.error }, v.status, cors);
+  const out = { ...v.order, chart: v.chart || void 0 };
+  if (out.generation_status === "delivered" && v.jobId) {
+    const r = await env.REPORT_JOB.get(env.REPORT_JOB.idFromName(v.jobId)).fetch("https://job/status", { method: "POST", body: JSON.stringify({ code: ORDER_CODE_PREFIX + id }) });
+    const body = await r.json().catch(() => ({}));
+    if (body.report) out.report = body.report;
+    else out.report_expired = true;
+  }
+  return json(out, 200, cors);
+}
+async function handleWebhook(request, env, name, rawOverride) {
+  const provider = getProvider(env, name);
+  if (!provider || !env.ORDERS) return json({ error: "not_found" }, 404);
+  const raw = rawOverride != null ? rawOverride : await request.text();
+  const v = await provider.verifyWebhook(env, request, raw);
+  if (!v.ok) return json({ error: "bad_signature" }, 401);
+  if (v.kind !== "payment" || !v.externalId) return json({ ok: true, ignored: true }, 200);
+  let tx;
+  try {
+    tx = await provider.getTransaction(env, v.externalId, v.hint);
+  } catch (e) {
+    return json({ error: "provider_unavailable" }, 502);
+  }
+  if (!tx.orderId || !ORDER_ID_RE.test(tx.orderId)) return json({ ok: true, ignored: "no_order" }, 200);
+  const r = await applyPayment(env, v.eventId, tx, name);
+  if (r.status === 404) return json({ ok: true, ignored: "unknown_order" }, 200);
+  return json({ ok: true, duplicate: !!r.duplicate }, 200);
+}
+async function applyPayment(env, eventId, tx, name) {
+  const r = await call(orderStub(env, tx.orderId), "payment", { eventId, tx, provider: name });
+  if (r.status === 404) return r;
+  if (r.exception) await flagException(env, tx.orderId, r.exception);
+  if (r.action === "start") {
+    if (env.ASTRO_KV) await env.ASTRO_KV.put("sale:" + tx.orderId, JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), minor: tx.amountMinor, currency: tx.currency, provider: name, external: tx.externalId }), { expirationTtl: 60 * 86400 }).catch(() => {
+    });
+    try {
+      await startOrderJob(env, tx.orderId, r.jobId, r.payload, r.internal && r.internal.externalId);
+    } catch (e) {
+      await call(orderStub(env, tx.orderId), "generation", { jobId: r.jobId, outcome: "start_error" });
+      await flagException(env, tx.orderId, "generation_failed");
+    }
+  }
+  return r;
+}
+async function simRoute(request, env, url) {
+  if (!simProvider.enabled(env)) return json({ error: "not_found" }, 404);
+  const m = url.pathname.match(/^\/sim\/(checkout|pay)\/(ord-[0-9a-f]{32})$/);
+  if (!m) return json({ error: "not_found" }, 404);
+  const id = m[2];
+  const price = expectedPrice(env, "sim");
+  if (m[1] === "checkout" && request.method === "GET")
+    return new Response(simCheckoutPage(id, `${(price.amountMinor / 100).toFixed(2)} ${price.currency}`), { headers: { "content-type": "text/html; charset=utf-8" } });
+  if (m[1] === "pay" && request.method === "POST") {
+    const form = await request.formData().catch(() => null);
+    const result = form && form.get("result") === "paid" ? "paid" : "failed";
+    const raw = JSON.stringify({ event_id: "simev_" + randHex(8), payment: { id: "simpay_" + id, order_id: id, status: result, amount_minor: price.amountMinor, currency: price.currency, product: PRODUCT_ID } });
+    const req = new Request(url.origin + "/webhooks/sim", { method: "POST", headers: { [SIM_SIGNATURE_HEADER]: await simSign(env.SIM_WEBHOOK_SECRET, raw) } });
+    await handleWebhook(req, env, "sim", raw);
+    return new Response(`<!doctype html><meta charset="utf-8"><p>Pago simulado: ${result}. Volv\xE9 a AsterOrbis.</p>`, { headers: { "content-type": "text/html; charset=utf-8" } });
+  }
+  return json({ error: "not_found" }, 404);
+}
+async function adminRoute(request, env, url) {
+  const auth = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!env.ADMIN_TOKEN || !auth || !safeEqual(auth, env.ADMIN_TOKEN)) return json({ error: "forbidden" }, 403);
+  if (request.method === "GET" && url.pathname === "/admin/exceptions") {
+    const list = env.ASTRO_KV && env.ASTRO_KV.list ? await env.ASTRO_KV.list({ prefix: "exc:" }) : { keys: [] };
+    const items = [];
+    for (const k of list.keys) items.push(await kvGetJSON(env.ASTRO_KV, k.name, null));
+    return json({ exceptions: items.filter(Boolean) }, 200);
+  }
+  const m = url.pathname.match(/^\/admin\/orders\/(ord-[0-9a-f]{32})\/(retry|refund)$/);
+  if (!m || request.method !== "POST") return json({ error: "not_found" }, 404);
+  const [, id, op] = m;
+  if (op === "retry") {
+    const r2 = await call(orderStub(env, id), "retry", {});
+    if (r2.status !== 200) return json({ error: r2.error, order: r2.order }, r2.status);
+    const s = await startOrderJob(env, id, r2.jobId, r2.payload, null);
+    return json({ ok: s.started, reason: s.reason || null, order: r2.order }, 200);
+  }
+  const r = await call(orderStub(env, id), "refund", {});
+  if (!r.refundable) return json({ error: "not_refundable", order: r.order }, 409);
+  const provider = getProvider(env, r.internal.provider);
+  if (!provider) return json({ error: "provider_unavailable" }, 503);
+  const rr = await provider.refund(env, { id, externalId: r.internal.externalId });
+  return json({ ok: rr.ok, status: rr.status, order: r.order }, 200);
+}
+async function routePayments(request, env, cors, url) {
+  if (url.pathname.startsWith("/webhooks/") && request.method === "POST") return handleWebhook(request, env, url.pathname.slice("/webhooks/".length));
+  if (url.pathname.startsWith("/sim/")) return simRoute(request, env, url);
+  if (url.pathname.startsWith("/admin/")) return adminRoute(request, env, url);
+  return null;
+}
+async function routeOrders(request, env, cors, url) {
+  if (url.pathname === "/orders" && request.method === "POST") return createOrder(request, env, cors);
+  const m = url.pathname.match(/^\/orders\/([^/]+)$/);
+  if (m && request.method === "GET") return getOrder(request, env, cors, m[1]);
+  return null;
+}
+
 // src/worker.js
-var SERVICE_VERSION = "1.9.4";
+var SERVICE_VERSION = "2.1";
 var DEFAULT_MODEL = "claude-opus-5-5";
 var DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
 var PRICES = {
@@ -772,12 +1701,12 @@ var PRICES = {
 };
 var MAX_BODY = 2e5;
 var KEEPALIVE_MS = 1e4;
-var json = (obj2, status = 200, headers = {}) => new Response(JSON.stringify(obj2), { status, headers: { "content-type": "application/json; charset=utf-8", ...headers } });
+var json2 = (obj2, status = 200, headers = {}) => new Response(JSON.stringify(obj2), { status, headers: { "content-type": "application/json; charset=utf-8", ...headers } });
 function corsHeaders(request, env) {
   const origin = request.headers.get("origin") || "";
   const allowed = (env.ALLOWED_ORIGINS || DEFAULT_ORIGINS).split(",").map((s) => s.trim()).filter(Boolean);
-  const ok3 = allowed.includes("*") || allowed.includes(origin);
-  return ok3 ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code, x-turnstile-token", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
+  const ok4 = allowed.includes("*") || allowed.includes(origin);
+  return ok4 ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code, x-turnstile-token, x-order-token", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
 }
 async function allCodes(env) {
   const extra = env.ASTRO_KV ? parseCodes(await env.ASTRO_KV.get("codes").catch(() => null)) : {};
@@ -819,7 +1748,7 @@ async function verifyLicense(env, key) {
   return { limit: info.quantity * Math.max(1, +(env.REPORTS_PER_LICENSE || 1)), kind: "license", order: info.order };
 }
 async function resolveCode(env, code) {
-  if (!code) return null;
+  if (!code || code.startsWith("ORDER:")) return null;
   const codes = await allCodes(env);
   if (code in codes) return { limit: codes[code], kind: "code" };
   if (env.GUMROAD_PRODUCT_ID && LICENSE_RE.test(code)) return verifyLicense(env, code);
@@ -1027,11 +1956,11 @@ function assertComplete(report) {
   if (sections.map((s) => s.body_markdown).join(" ").trim().split(/\s+/).length < REPORT_MIN_WORDS) throw malformed("short");
   if (!sections.some((s) => s.id === "myth")) throw malformed("no_myth");
 }
-async function phase(name, call, charge, parse, note = () => {
+async function phase(name, call2, charge, parse, note = () => {
 }) {
   for (let i = 1; ; i++) {
     const t0 = Date.now();
-    const reply = await call();
+    const reply = await call2();
     charge(name, reply.usage);
     const entry = { phase: name, stop: reply.stop || null, output_tokens: reply.usage && reply.usage.output_tokens || 0, seconds: Math.round((Date.now() - t0) / 1e3) };
     note(entry);
@@ -1118,33 +2047,33 @@ var FEEDBACK_MIN = 200;
 var FEEDBACK_MAX = 5e3;
 var FEEDBACK_PER_CODE = 3;
 async function handleFeedback(request, env, cors, requireCode) {
-  if (!env.ASTRO_KV) return json({ error: "not_configured" }, 503, cors);
+  if (!env.ASTRO_KV) return json2({ error: "not_configured" }, 503, cors);
   const raw = await request.text();
-  if (raw.length > FEEDBACK_MAX * 4) return json({ error: "bad_request" }, 413, cors);
+  if (raw.length > FEEDBACK_MAX * 4) return json2({ error: "bad_request" }, 413, cors);
   let body;
   try {
     body = JSON.parse(raw);
   } catch (e) {
-    return json({ error: "bad_request" }, 400, cors);
+    return json2({ error: "bad_request" }, 400, cors);
   }
   const text = String(body && body.text || "").replace(/\s+\n/g, "\n").trim();
-  if (text.length < FEEDBACK_MIN) return json({ error: "feedback_short", min: FEEDBACK_MIN }, 400, cors);
-  if (text.length > FEEDBACK_MAX) return json({ error: "feedback_long", max: FEEDBACK_MAX }, 400, cors);
+  if (text.length < FEEDBACK_MIN) return json2({ error: "feedback_short", min: FEEDBACK_MIN }, 400, cors);
+  if (text.length > FEEDBACK_MAX) return json2({ error: "feedback_long", max: FEEDBACK_MAX }, 400, cors);
   let code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
   if (code) {
     const info = await resolveCode(env, code);
-    if (!info || info.error) return json({ error: info && info.error || "code_invalid" }, info && info.status || 403, cors);
+    if (!info || info.error) return json2({ error: info && info.error || "code_invalid" }, info && info.status || 403, cors);
   }
-  if (!code && requireCode) return json({ error: "code_required" }, 401, cors);
+  if (!code && requireCode) return json2({ error: "code_required" }, 401, cors);
   if (!code) code = "PUBLICO";
   const kv = env.ASTRO_KV, ck = "fbcount:" + code;
   const n = +await kv.get(ck) || 0;
-  if (n >= FEEDBACK_PER_CODE) return json({ error: "feedback_limit" }, 429, cors);
+  if (n >= FEEDBACK_PER_CODE) return json2({ error: "feedback_limit" }, 429, cors);
   const at = (/* @__PURE__ */ new Date()).toISOString();
   const title = String(body && body.report_title || "").slice(0, 200);
   await kv.put(`fb:${at}:${code}`, JSON.stringify({ code, at, report_title: title, text }));
   await kv.put(ck, String(n + 1));
-  return json({ ok: true }, 200, cors);
+  return json2({ ok: true }, 200, cors);
 }
 async function kvGetJSON(kv, key, fallback) {
   try {
@@ -1169,15 +2098,15 @@ var savedReport = (s) => s && s.report ? s.report : s && s.schema ? s : null;
 var CONSUME_TRIES = 3;
 var GEN_TTL = 90 * 86400;
 async function loadProtocol(env) {
-  const base = env.PROTOCOL || (env.ASTRO_KV ? await env.ASTRO_KV.get("protocol") : null);
-  if (!base) return null;
+  const base2 = env.PROTOCOL || (env.ASTRO_KV ? await env.ASTRO_KV.get("protocol") : null);
+  if (!base2) return null;
   const style = env.ASTRO_KV ? await env.ASTRO_KV.get("style") : null;
-  return style ? `${base}
+  return style ? `${base2}
 
-${style}` : base;
+${style}` : base2;
 }
 async function admit(request, env, cors, { requireCode, cap, incoming }) {
-  const json400 = (error, status = 400) => ({ response: json({ error }, status, cors) });
+  const json400 = (error, status = 400) => ({ response: json2({ error }, status, cors) });
   const norm = normalizePayload(incoming);
   if (!norm.ok) return json400(norm.error);
   const payload = norm.payload;
@@ -1202,15 +2131,15 @@ async function admit(request, env, cors, { requireCode, cap, incoming }) {
     const saved = await kvGetJSON(kv, "rep:" + code, null);
     if (requestId && saved && saved.request_id === requestId && savedReport(saved)) {
       used = (await book.get()).used;
-      return { response: json({ report: savedReport(saved), remaining: Math.max(0, limit - used), recovered: true }, 200, cors) };
+      return { response: json2({ report: savedReport(saved), remaining: Math.max(0, limit - used), recovered: true }, 200, cors) };
     }
     const res = await book.reserve(requestId, limit);
-    if (res.error === "in_progress") return { response: json({ error: "in_progress", same_request: !!res.same_request }, 409, cors) };
+    if (res.error === "in_progress") return { response: json2({ error: "in_progress", same_request: !!res.same_request }, 409, cors) };
     used = res.used;
     token = res.token || null;
     if (res.error === "quota_exhausted") {
-      if (savedReport(saved) && (saved.fp == null || saved.fp === fp)) return { response: json({ report: savedReport(saved), remaining: 0, recovered: true }, 200, cors) };
-      return { response: json({ error: "quota_exhausted", remaining: 0 }, 403, cors) };
+      if (savedReport(saved) && (saved.fp == null || saved.fp === fp)) return { response: json2({ report: savedReport(saved), remaining: 0, recovered: true }, 200, cors) };
+      return { response: json2({ error: "quota_exhausted", remaining: 0 }, 403, cors) };
     }
   }
   const mk = monthKey();
@@ -1286,7 +2215,7 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
     mode: extra.mode || "stream",
     access: useCode ? job.codeKind || "code" : "public",
     // referencia para conciliar reclamos: número de orden de la compra (licencias) o el código (códigos de regalo)
-    ref: useCode ? job.codeKind === "license" ? job.order ? "order:" + job.order : null : job.code : null,
+    ref: useCode ? job.codeKind === "license" ? job.order ? "order:" + job.order : null : job.codeKind === "order" ? "order:" + job.orderId : job.code : null,
     usd: +spent.usd.toFixed(4),
     phases: spent.phases || {},
     calls: spent.calls || [],
@@ -1297,6 +2226,8 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
     attempts: extra.attempts || 1,
     lang: job.payload.request.report_language
   }), { expirationTtl: GEN_TTL }).catch(() => {
+  });
+  if (job.codeKind === "order") await notifyOrderGeneration(env, job.orderId, requestId, outcome).catch(() => {
   });
   return out;
 }
@@ -1312,14 +2243,18 @@ async function undoAdmission(env, job) {
 }
 async function readBody(request, cors) {
   const raw = await request.text();
-  if (raw.length > MAX_BODY) return { response: json({ error: "bad_request" }, 413, cors) };
+  if (raw.length > MAX_BODY) return { response: json2({ error: "bad_request" }, 413, cors) };
   try {
     return { incoming: JSON.parse(raw) };
   } catch (e) {
-    return { response: json({ error: "bad_request" }, 400, cors) };
+    return { response: json2({ error: "bad_request" }, 400, cors) };
   }
 }
 var JOB_PREFIX = "/jobs";
+function serviceMode(env) {
+  const m = String(env.SERVICE_MODE || "pilot").toLowerCase();
+  return ["pilot", "paid", "disabled"].includes(m) ? m : "pilot";
+}
 async function rateLimited(env, key) {
   if (!env.RATE_LIMITER) return false;
   try {
@@ -1329,7 +2264,16 @@ async function rateLimited(env, key) {
     return false;
   }
 }
+async function generationAvailable(env) {
+  if (!env.ANTHROPIC_API_KEY || !env.ASTRO_KV || !await loadProtocol(env)) return false;
+  const month = await kvGetJSON(env.ASTRO_KV, monthKey(), { usd: 0 });
+  return month.usd < +(env.MONTHLY_USD_LIMIT || 15);
+}
 var worker_default = {
+  // control periódico de pedidos pagos (Cron); no hace nada fuera del modo "paid"
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runControls(env, event.scheduledTime || Date.now()));
+  },
   async fetch(request, env, ctx) {
     const cors = corsHeaders(request, env);
     const url = new URL(request.url);
@@ -1341,7 +2285,7 @@ var worker_default = {
       const month = env.ASTRO_KV ? await kvGetJSON(env.ASTRO_KV, monthKey(), { usd: 0 }) : { usd: 0 };
       const day = env.ASTRO_KV ? +await env.ASTRO_KV.get(dayKey()) || 0 : 0;
       const configured = !!(env.ANTHROPIC_API_KEY && protocolOk && env.ASTRO_KV);
-      return json({
+      return json2({
         service: "astroinforme",
         version: SERVICE_VERSION,
         model: env.MODEL || DEFAULT_MODEL,
@@ -1349,59 +2293,70 @@ var worker_default = {
         turnstile: !!env.TURNSTILE_SECRET,
         // «jobs»: generación desacoplada de la conexión (servicio 1.6, Durable Object REPORT_JOB)
         jobs: !!env.REPORT_JOB,
+        mode: serviceMode(env),
+        // proveedores de pago configurados (solo los nombres; en modo "paid")
+        payments: serviceMode(env) === "paid" ? providerNames().filter((n) => getProvider(env, n)) : [],
         // «ledger»: cupo por código con reserva atómica (servicio 1.7, Durable Object CODE_LEDGER)
         ledger: !!env.CODE_LEDGER,
         // «available»: si hoy se puede pedir un informe (sin revelar el gasto)
-        available: configured && month.usd < cap && (requireCode || day < +(env.DAILY_LIMIT || 8)),
+        available: configured && serviceMode(env) !== "disabled" && month.usd < cap && (requireCode || day < +(env.DAILY_LIMIT || 8)),
         configured: { api_key: !!env.ANTHROPIC_API_KEY, protocol: protocolOk, style: !!(env.ASTRO_KV && await env.ASTRO_KV.get("style")), kv: !!env.ASTRO_KV, codes: Object.keys(await allCodes(env)).length > 0 }
       }, 200, cors);
     }
-    if (!cors["access-control-allow-origin"] || !request.headers.get("origin")) return json({ error: "forbidden_origin" }, 403, cors);
+    const pay = await routePayments(request, env, cors, url);
+    if (pay) return pay;
+    if (!cors["access-control-allow-origin"] || !request.headers.get("origin")) return json2({ error: "forbidden_origin" }, 403, cors);
     const code = (request.headers.get("x-astro-code") || "").trim().toUpperCase();
+    if (code.startsWith("ORDER:")) return json2({ error: "code_invalid" }, 403, cors);
     if (request.method === "POST" && await rateLimited(env, code ? "c:" + code : "ip:" + await visitorId(request.headers.get("cf-connecting-ip") || "", env.VISITOR_SALT || env.ANTHROPIC_API_KEY)))
-      return json({ error: "rate_limited" }, 429, cors);
-    if (request.method === "GET" && url.pathname.startsWith(JOB_PREFIX + "/")) {
-      if (!env.REPORT_JOB) return json({ error: "not_configured" }, 503, cors);
-      const id = normalizeRequestId(decodeURIComponent(url.pathname.slice(JOB_PREFIX.length + 1)));
-      if (!id) return json({ error: "bad_request" }, 400, cors);
-      const r = await env.REPORT_JOB.get(env.REPORT_JOB.idFromName(id)).fetch("https://job/status", { method: "POST", body: JSON.stringify({ code }) });
-      return json(await r.json(), r.status, { ...cors, "cache-control": "no-store" });
+      return json2({ error: "rate_limited" }, 429, cors);
+    if (url.pathname === "/orders" || url.pathname.startsWith("/orders/")) {
+      const r = await routeOrders(request, env, cors, url);
+      if (r) return r;
     }
-    if (request.method !== "POST") return json({ error: "bad_request" }, 405, cors);
+    if (request.method === "GET" && url.pathname.startsWith(JOB_PREFIX + "/")) {
+      if (!env.REPORT_JOB) return json2({ error: "not_configured" }, 503, cors);
+      const id = normalizeRequestId(decodeURIComponent(url.pathname.slice(JOB_PREFIX.length + 1)));
+      if (!id) return json2({ error: "bad_request" }, 400, cors);
+      const r = await env.REPORT_JOB.get(env.REPORT_JOB.idFromName(id)).fetch("https://job/status", { method: "POST", body: JSON.stringify({ code }) });
+      return json2(await r.json(), r.status, { ...cors, "cache-control": "no-store" });
+    }
+    if (request.method !== "POST") return json2({ error: "bad_request" }, 405, cors);
     if (url.pathname === "/feedback") return handleFeedback(request, env, cors, requireCode);
+    if (serviceMode(env) === "disabled") return json2({ error: "disabled" }, 503, cors);
     const protocol = await loadProtocol(env);
-    if (!env.ANTHROPIC_API_KEY || !protocol || !env.ASTRO_KV) return json({ error: "not_configured" }, 503, cors);
+    if (!env.ANTHROPIC_API_KEY || !protocol || !env.ASTRO_KV) return json2({ error: "not_configured" }, 503, cors);
     const body = await readBody(request, cors);
     if (body.response) return body.response;
     if (url.pathname === JOB_PREFIX) {
-      if (!env.REPORT_JOB) return json({ error: "not_configured" }, 503, cors);
+      if (!env.REPORT_JOB) return json2({ error: "not_configured" }, 503, cors);
       const id = normalizeRequestId(body.incoming && body.incoming.request_id);
-      if (!id) return json({ error: "bad_request" }, 400, cors);
+      if (!id) return json2({ error: "bad_request" }, 400, cors);
       if (code) {
         const info = await resolveCode(env, code);
-        if (!info || info.error) return json({ error: info && info.error || "code_invalid" }, info && info.status || 403, cors);
+        if (!info || info.error) return json2({ error: info && info.error || "code_invalid" }, info && info.status || 403, cors);
       }
-      if (requireCode && !code) return json({ error: "code_required" }, 401, cors);
+      if (requireCode && !code) return json2({ error: "code_required" }, 401, cors);
       const stub = env.REPORT_JOB.get(env.REPORT_JOB.idFromName(id));
       const prev = await stub.fetch("https://job/status", { method: "POST", body: JSON.stringify({ code }) });
       if (prev.status !== 404) {
         const pb = await prev.json();
         if (pb.status === "failed") pb.retry = true;
-        return json(pb, prev.status, { ...cors, "cache-control": "no-store" });
+        return json2(pb, prev.status, { ...cors, "cache-control": "no-store" });
       }
       const adm2 = await admit(request, env, cors, { requireCode, cap, incoming: body.incoming });
       if (adm2.response) return adm2.response;
       try {
         const r = await stub.fetch("https://job/start", { method: "POST", body: JSON.stringify(adm2.job) });
         if (!r.ok) throw new Error("job_start");
-        return json(await r.json(), 202, { ...cors, "cache-control": "no-store" });
+        return json2(await r.json(), 202, { ...cors, "cache-control": "no-store" });
       } catch (e) {
         console.log(JSON.stringify({ event: "job_start_failed", detail: String(e && e.message || e) }));
         await undoAdmission(env, adm2.job);
-        return json({ error: "upstream" }, 503, cors);
+        return json2({ error: "upstream" }, 503, cors);
       }
     }
-    if (env.LEGACY_STREAM !== "true") return json({ error: "app_outdated" }, 410, cors);
+    if (env.LEGACY_STREAM !== "true") return json2({ error: "app_outdated" }, 410, cors);
     const adm = await admit(request, env, cors, { requireCode, cap, incoming: body.incoming });
     if (adm.response) return adm.response;
     const job = adm.job;
@@ -1433,7 +2388,7 @@ var worker_default = {
 var MAX_ATTEMPTS = 3;
 var RETRY_DELAY_MS = 2e4;
 var TRANSIENT = (e) => e && e.message === "upstream" && (e.status == null || e.status === 429 || e.status >= 500);
-var ok2 = (obj2, status = 200) => new Response(JSON.stringify(obj2), { status, headers: { "content-type": "application/json; charset=utf-8" } });
+var ok3 = (obj2, status = 200) => new Response(JSON.stringify(obj2), { status, headers: { "content-type": "application/json; charset=utf-8" } });
 var ReportJob = class {
   constructor(state, env) {
     this.state = state;
@@ -1443,11 +2398,11 @@ var ReportJob = class {
   /** Vista pública del estado. Si el pedido se hizo con código, solo lo ve quien presenta el mismo código. */
   async view(code) {
     const meta = await this.storage.get("meta");
-    if (!meta) return ok2({ error: "not_found" }, 404);
-    if (meta.job.useCode && (code || "") !== meta.job.code) return ok2({ error: "forbidden" }, 403);
-    const base = { job_id: meta.job.requestId, status: meta.status };
-    if (meta.status === "done" || meta.status === "failed") return ok2({ ...base, ...await this.storage.get("out") });
-    return ok2(base);
+    if (!meta) return ok3({ error: "not_found" }, 404);
+    if (meta.job.useCode && (code || "") !== meta.job.code) return ok3({ error: "forbidden" }, 403);
+    const base2 = { job_id: meta.job.requestId, status: meta.status };
+    if (meta.status === "done" || meta.status === "failed") return ok3({ ...base2, ...await this.storage.get("out") });
+    return ok3(base2);
   }
   async fetch(request) {
     const path = new URL(request.url).pathname;
@@ -1457,9 +2412,9 @@ var ReportJob = class {
       if (await this.storage.get("meta")) return this.view(body.code);
       await this.storage.put("meta", { job: body, status: "queued", attempts: 0, created: Date.now() });
       await this.storage.setAlarm(Date.now());
-      return ok2({ job_id: body.requestId, status: "queued" });
+      return ok3({ job_id: body.requestId, status: "queued" });
     }
-    return ok2({ error: "bad_request" }, 400);
+    return ok3({ error: "bad_request" }, 400);
   }
   async alarm() {
     const meta = await this.storage.get("meta");
@@ -1510,7 +2465,7 @@ var ReportJob = class {
   /** Guarda el resultado, borra las fases intermedias y programa la limpieza a las 48 h. */
   async close(meta, out) {
     meta.status = out.error ? "failed" : "done";
-    meta.cleanupAt = Date.now() + REPORT_TTL * 1e3;
+    meta.cleanupAt = Date.now() + (meta.job.retainMs || REPORT_TTL * 1e3);
     await this.storage.put("out", out);
     await this.storage.delete(["phase:analisis", "phase:report_b"]);
     await this.storage.put("meta", meta);
@@ -1522,6 +2477,7 @@ var ReportJob = class {
 var entry_default = worker_default;
 export {
   CodeLedger,
+  OrderDO,
   ReportJob,
   entry_default as default
 };

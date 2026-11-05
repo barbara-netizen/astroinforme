@@ -373,6 +373,7 @@ function render(scroll = false) {
 }
 /** Línea de procedencia del cálculo, en el idioma activo (la usa también la descarga, en el idioma del informe). */
 function provText(f, opt, chart) {
+  if (f.restored) return "";
   return `${fmtOffset(opt.offsetMin)} · ${fmtUtc(opt.utcMs)} · ${state.place.lat.toFixed(4)}, ${state.place.lon.toFixed(4)}. ` + t("prov", {
     engine: chart.ephemeris.engine, flags: "SEFLG_SWIEPH|SEFLG_SPEED",
     sys: chart.houses ? chart.houses.system_effective : t("prov.noHouses"), pol: chart.aspect_policy, zone: f.zone,
@@ -381,6 +382,7 @@ function provText(f, opt, chart) {
 }
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 function humanBirth(f) {
+  if (f.restored) return ""; // en el pedido no están la fecha, la hora ni el lugar
   let date;
   try { date = new Intl.DateTimeFormat(LOCALE[L.getLang()], { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(Date.UTC(f.y, f.mo - 1, f.d)); }
   catch (e) { date = `${f.d} de ${MONTHS[f.mo - 1]} de ${f.y}`; }
@@ -476,8 +478,13 @@ function renderInterpretationChrome() {
   $("#code-label").dataset.i18n = publicAccess() ? "f.code.opt" : "f.code"; $("#code-label").textContent = t($("#code-label").dataset.i18n);
   $("#code-hint").dataset.i18n = publicAccess() ? "f.code.hintOpt" : "f.code.hint"; $("#code-hint").textContent = t($("#code-hint").dataset.i18n);
   const unavailable = !!(state.health && state.health.available === false);
-  $("#interp-unavail").hidden = !unavailable;
-  $("#btn-interp").disabled = unavailable && !($("#access-code").value || "").trim();
+  const paused = appMode() === "disabled" && !CONFIG.demo;
+  $("#interp-paused").hidden = !paused;
+  $("#interp-unavail").hidden = !unavailable || paused;
+  if (paused) $("#code-row").hidden = true;
+  $("#btn-interp").hidden = paused;
+  renderBuyBox(paused);
+  $("#btn-interp").disabled = paused || (unavailable && !($("#access-code").value || "").trim());
   if (CONFIG.demo) {
     const reports = state.demoReports || CONFIG.demoReports || [];
     const sig = reports.map((r) => r.file).join("|");
@@ -607,6 +614,110 @@ function showResumeNote() {
   const n = document.getElementById("resume-note");
   if (n) n.hidden = !(p && p.id && Date.now() - p.at < RESUME_MS);
 }
+/** Modo efectivo: "pilot" | "paid" | "disabled". El servicio puede pausar la generación aunque la app diga otra cosa. */
+function appMode() {
+  const m = ["pilot", "paid", "disabled"].includes(CONFIG.mode) ? CONFIG.mode : (CONFIG.pilot === false ? "paid" : "pilot");
+  return state.health && state.health.mode === "disabled" ? "disabled" : m;
+}
+const isPilot = () => appMode() === "pilot";
+// ---------- compra (modo "paid"): pedido interno → checkout del proveedor → confirmación por webhook → informe
+// La app nunca envía datos natales al proveedor: crea el pedido en el servicio de AsterOrbis con la carta calculada
+// (como un pedido con código) y abre el enlace de pago, que solo lleva el identificador opaco del pedido.
+const PURCHASE_KEY = "astroinforme.purchase", ORDER_KEY = "astroinforme.order", ORDER_MS = 7 * 24 * 3600 * 1000;
+const PROVIDER_LABEL = { mercadopago: "buy.mp", dodo: "buy.dodo", sim: "buy.sim" };
+function renderBuyBox(paused) {
+  const box = $("#buy-box"); if (!box) return;
+  const providers = (state.health && state.health.payments) || [];
+  const show = appMode() === "paid" && !paused && !CONFIG.demo && !!serviceUrl() && providers.length > 0;
+  box.hidden = !show;
+  $("#regret-link-wrap").hidden = appMode() !== "paid";
+  if (!show) return;
+  const terms = document.querySelector("#terms-box [data-i18n]"); // en la venta, la aceptación incluye edad, datos y arrepentimiento
+  if (terms && terms.dataset.i18n !== "buy.consent") { terms.dataset.i18n = "buy.consent"; terms.textContent = t("buy.consent"); }
+  const wrap = $("#buy-buttons"), sig = providers.join("|") + L.getLang();
+  if (wrap.dataset.sig !== sig) {
+    wrap.innerHTML = ""; wrap.dataset.sig = sig;
+    for (const p of providers) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "btn big"; b.textContent = t(PROVIDER_LABEL[p] || "buy.generic");
+      b.addEventListener("click", () => buyReport(p)); wrap.append(b);
+    }
+  }
+}
+function savedOrder() {
+  try { const o = JSON.parse(localStorage.getItem(ORDER_KEY) || "null"); return o && Date.now() - o.at < ORDER_MS ? o : null; } catch (e) { return null; }
+}
+/** Clave del intento de compra: la misma carta, correo y proveedor reusan el pedido durante 2 horas (doble toque, otra pestaña). */
+async function purchaseKey(provider, email, payload) {
+  const hash = await payloadHash(JSON.stringify([provider, email, payload]));
+  let k = null; try { k = JSON.parse(localStorage.getItem(PURCHASE_KEY) || "null"); } catch (e) { }
+  if (k && k.hash === hash && Date.now() - k.at < 2 * 3600 * 1000) return k.key;
+  const key = newRequestId();
+  try { localStorage.setItem(PURCHASE_KEY, JSON.stringify({ hash, key, at: Date.now() })); } catch (e) { }
+  return key;
+}
+const unlockBuy = () => $("#buy-buttons").querySelectorAll("button").forEach((b) => { b.disabled = false; });
+async function buyReport(provider) {
+  const status = $("#interp-status");
+  if (!acceptancesOk(status)) return;
+  status.hidden = true;
+  const email = ($("#buy-email").value || "").trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { status.hidden = false; status.textContent = t("i.err.email_invalid"); $("#buy-email").focus(); return; }
+  const payload = servicePayload(state.payload);
+  $("#buy-buttons").querySelectorAll("button").forEach((b) => { b.disabled = true; });
+  const body = { provider, product: "informe_completo", payload, email, idempotency_key: await purchaseKey(provider, email, payload),
+    consent: { accepted: true, terms_version: CONFIG.termsVersion || "2026-11-05", disclaimer_version: "2026-11-02" } };
+  let r, res = null;
+  try { r = await fetch(serviceUrl() + "orders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); res = await r.json(); }
+  catch (e) { unlockBuy(); status.hidden = false; status.textContent = t("i.fail", { msg: t("i.err.upstream") }); return; }
+  if (!r.ok || !res || !(res.checkout_url || res.already_paid) || !res.token) { unlockBuy(); const se = serviceError(r.status, res); status.hidden = false; status.textContent = t("i.fail", { msg: t(se.key, se.params) }); return; }
+  // se guarda en este navegador para retomar al volver del pago: el pedido, su clave y la carta (sin fecha, hora ni lugar)
+  try { localStorage.setItem(ORDER_KEY, JSON.stringify({ id: res.order_id, token: res.token, payload, at: Date.now() })); } catch (e) { }
+  // ese pedido ya se pagó: no se cobra otra vez, se espera el informe
+  if (res.already_paid) { const o = { id: res.order_id, token: res.token, payload }; unlockBuy(); return callInterpreter(() => pollOrder(o), payload); }
+  location.href = res.checkout_url;
+}
+/** Espera la confirmación del pago y la entrega del informe de un pedido (al volver del checkout). */
+async function pollOrder(o) {
+  const t0 = Date.now();
+  for (;;) {
+    let body = null;
+    try { const r = await fetch(serviceUrl() + "orders/" + encodeURIComponent(o.id), { headers: { "x-order-token": o.token }, cache: "no-store" }); body = await r.json(); if (r.status === 403 || r.status === 404) throw new ServiceError(o.payload ? "i.err.not_found" : "i.err.report_expired"); }
+    catch (e) { if (e instanceof ServiceError) throw e; }
+    if (body && body.report) { restoreFromOrder(body.chart); return { report: body.report }; }
+    if (body && body.report_expired) throw new ServiceError("i.err.report_expired");
+    if (body && ["failed", "cancelled"].includes(body.payment_status)) throw new ServiceError("i.err.payment_failed");
+    if (body && (body.payment_status === "mismatch" || body.payment_status === "refunded" || body.generation_status === "failed")) throw new ServiceError("i.err.order_problem");
+    if (Date.now() - t0 > JOB_MAX_MS) throw new ServiceError("i.err.timeout");
+    await new Promise((res) => setTimeout(res, JOB_POLL_MS));
+  }
+}
+/** Rearma la carta desde el pedido: al volver del pago o al abrir el enlace del correo en otro aparato no hay carta en memoria. */
+function restoreFromOrder(p) {
+  if (!p || !p.chart) return;
+  const c = p.chart, chart = {
+    bodies: c.bodies.map((b) => ({ ...b, lon: b.longitude, deg: b.position })), south_node: c.south_node,
+    houses: c.houses ? { ...c.houses, system_effective: c.houses.system, cusps: c.houses.cusps.map((x) => x.longitude) } : null,
+    aspects: c.aspects, derived: c.derived, sensitivity: c.sensitivity, ephemeris: { engine: "Swiss Ephemeris" }, aspect_policy: p.engine.aspect_policy,
+  };
+  state.chart = chart; state.payload = p;
+  state.last = { f: { first: p.person.first_name, lang: p.request.report_language, prec: p.birth.time_precision, restored: true }, opt: null, warnings: [] };
+  $("#rep-wheel-in").innerHTML = wheelSVG(chart);
+  $("#btn-to-chart").hidden = true;
+}
+function resumeOrderFromUrl() {
+  const q = new URLSearchParams(location.search);
+  const id = q.get("pedido"); if (!id) return;
+  // enlace del correo: la clave viene después del «#», que no se envía a ningún servidor
+  const key = (location.hash.match(/^#k=([0-9a-f]{48})$/) || [])[1];
+  let o = savedOrder();
+  if (key) {
+    o = { id, token: key, payload: null, at: Date.now() };
+    try { localStorage.setItem(ORDER_KEY, JSON.stringify(o)); } catch (e) { }
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  if (!o || o.id !== id) return;
+  callInterpreter(() => pollOrder(o), o.payload);
+}
 class ServiceError extends Error { constructor(key, params) { super(key); this.key = key; this.params = params; } }
 async function obtainReport() {
   if (CONFIG.demo) {
@@ -695,7 +806,7 @@ function initFeedback() {
   btn.addEventListener("click", sendFeedback);
 }
 function showFeedback() {
-  if (!CONFIG.pilot || !serviceUrl() || CONFIG.demo) return;
+  if (!isPilot() || !serviceUrl() || CONFIG.demo) return;
   // el servicio recibe comentarios desde la versión 1.3; con una versión anterior el recuadro no se muestra
   const v = String((state.health && state.health.version) || "0").split(".").map(Number);
   if (v[0] < 1 || (v[0] === 1 && (v[1] || 0) < 3)) return;
@@ -755,7 +866,7 @@ function openWait() {
   $("#wait").scrollTop = 0;
   $("#wait").hidden = false;
   document.documentElement.style.overflow = "hidden";
-  V.show($("#fig-reader"), CONFIG.pilot ? "pilot_rabbit" : "report_reader");
+  V.show($("#fig-reader"), isPilot() ? "pilot_rabbit" : "report_reader");
   keepAwake(true);
 }
 function closeWait() {
@@ -788,29 +899,36 @@ function finishProgress(ok) {
   document.addEventListener("visibilitychange", restore); restore();
 }
 
-async function callInterpreter() {
-  const btn = $("#btn-interp"), status = $("#interp-status");
+/** Aceptaciones previas a pedir o comprar un informe: términos y, sin hora, informe más general. */
+function acceptancesOk(status) {
   if (state.last && state.last.f && state.last.f.prec === "UNKNOWN" && !$("#no-time-ok").checked) {
-    status.hidden = false; status.textContent = t("i.noTime.required"); $("#no-time-ok").focus(); return;
+    status.hidden = false; status.textContent = t("i.noTime.required"); $("#no-time-ok").focus(); return false;
   }
   if (!$("#terms-ok").checked) {
-    status.hidden = false; status.textContent = t("terms.required"); $("#terms-ok").focus(); return;
+    status.hidden = false; status.textContent = t("terms.required"); $("#terms-ok").focus(); return false;
   }
+  return true;
+}
+async function callInterpreter(fetcher = obtainReport, auditPayload = null) {
+  const btn = $("#btn-interp"), status = $("#interp-status");
+  // al volver de una compra la aceptación ya se dio antes de pagar
+  if (fetcher === obtainReport && !acceptancesOk(status)) return;
   // los errores que se detectan antes de enviar se muestran sin abrir la espera
-  if (!CONFIG.demo && !publicAccess() && !($("#access-code").value || "").trim()) {
+  if (fetcher === obtainReport && !CONFIG.demo && !publicAccess() && !($("#access-code").value || "").trim()) {
     status.hidden = false; status.textContent = t("i.fail", { msg: t("i.err.code_required") }); $("#access-code").focus(); return;
   }
   btn.disabled = true;
   prepareNotice();
   status.hidden = true;
   openWait();
+  if (fetcher !== obtainReport) $("#wait-stay-text").textContent = t("buy.waitMail");
   if (CONFIG.demo) $("#wait-clock").textContent = "…"; else startProgress();
   let ok = false;
   try {
-    const { report: rep, remaining, recovered } = await obtainReport();
+    const { report: rep, remaining, recovered } = await fetcher();
     if (!rep || rep.schema !== "astroinforme.report/v1" || !Array.isArray(rep.sections)) throw new ServiceError("i.badContract");
     // la auditoría se rehace siempre aquí, aunque el servicio ya la haya hecho
-    const audit = auditReport(rep, state.payload);
+    const audit = auditReport(rep, auditPayload || state.payload);
     state.lastReport = rep; state.lastAudit = audit;
     clearInterval(notify.timer);
     renderReport(rep);
@@ -825,6 +943,8 @@ async function callInterpreter() {
     clearInterval(notify.timer);
     status.hidden = false;
     status.textContent = t("i.fail", { msg: e instanceof ServiceError ? t(e.key, e.params) : e.message });
+    // al abrir un enlace del correo no hay carta en pantalla: el aviso va en el formulario
+    if (!state.chart) setStatus($("#form-error"), "bad", esc(e instanceof ServiceError ? t(e.key, e.params) : e.message));
   }
   closeWait();
   if (!CONFIG.demo) finishProgress(ok);
@@ -915,7 +1035,7 @@ ${audit}
   const blob = new Blob([doc], { type: "text/html;charset=utf-8" });
   const a = document.createElement("a");
   const slug = (f.first || "carta").normalize("NFD").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "carta";
-  a.href = URL.createObjectURL(blob); a.download = `asterorbis-${slug}-${state.payload.birth.local_date}.html`;
+  a.href = URL.createObjectURL(blob); a.download = `asterorbis-${slug}-${state.payload.birth.local_date || "informe"}.html`;
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
@@ -944,7 +1064,7 @@ function applyLanguage(lang, { remember = true } = {}) {
 
 // ---------- eventos ----------
 function initVisuals() {
-  if (CONFIG.pilot) { $("#pilot").hidden = false; V.show($("#fig-pilot"), "pilot_rabbit"); }
+  if (isPilot()) { $("#pilot").hidden = false; V.show($("#fig-pilot"), "pilot_rabbit"); }
   // la portada animada se ve de entrada; con movimiento reducido, V.show muestra su fotograma fijo
   V.show($("#fig-hero"), "intro_embroidery");
   V.show($("#fig-offer"), "report_reader");
@@ -1047,7 +1167,7 @@ function init() {
   $("#prec").addEventListener("change", (e) => { $("#no-time").checked = e.target.value === "UNKNOWN"; syncTime(); });
   $("#birth-form").addEventListener("submit", (e) => { e.preventDefault(); $("#ambig").hidden = true; calculate(); });
   $("#btn-copy-json").addEventListener("click", (e) => copyText(JSON.stringify(state.payload, null, 2), e.currentTarget));
-  $("#btn-interp").addEventListener("click", callInterpreter);
+  $("#btn-interp").addEventListener("click", () => callInterpreter());
   $("#btn-print").addEventListener("click", savePdf);
   $("#btn-print-2").addEventListener("click", savePdf);
   $("#btn-print-3").addEventListener("click", savePdf);
@@ -1093,7 +1213,7 @@ if (!CONFIG.intro && !new URLSearchParams(location.search).has("intro")) { const
 document.querySelectorAll('.author-go a').forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); const h = document.getElementById("form-start"); if (h) h.scrollIntoView({ behavior: "smooth", block: "start" }); }));
 
 // «Quién hace AsterOrbis»: la frase sobre el pago aparece solo cuando el informe se cobra
-for (const el of document.querySelectorAll(".author-paid")) el.hidden = !CONFIG.paid;
+for (const el of document.querySelectorAll(".author-paid")) el.hidden = appMode() !== "paid";
 
 // informe de muestra («?muestra»): carta ficticia calculada aquí y un informe fijo generado por el servicio
 const SAMPLE = CONFIG.sample && CONFIG.sample.file ? CONFIG.sample : null;
@@ -1119,6 +1239,8 @@ async function loadSample() {
   setScreen("report");
 }
 if (SAMPLE && new URLSearchParams(location.search).has("muestra")) loadSample().catch(() => { });
+// regreso del checkout (modo "paid"): retoma la espera del pedido guardado en este navegador
+if (serviceUrl() && !CONFIG.demo) resumeOrderFromUrl();
 if (CONFIG.demo && CONFIG.demoCases) {
   const wrap = document.createElement("label"); wrap.className = "f demo-case";
   wrap.innerHTML = `<span>Carta de prueba</span><select id="demo-case">${CONFIG.demoCases.map((c, i) => `<option value="${i}">${esc(c.label)}</option>`).join("")}</select>`;

@@ -17,6 +17,8 @@ export class KV {
   async get(k) { if (this.exp.has(k) && this.exp.get(k) <= now) { this.m.delete(k); this.exp.delete(k); } return this.m.has(k) ? this.m.get(k) : null; }
   async put(k, v, o) { this.m.set(k, String(v)); if (o && o.expirationTtl) this.exp.set(k, now + o.expirationTtl * 1000); else this.exp.delete(k); }
   async delete(k) { this.m.delete(k); this.exp.delete(k); }
+  async list({ prefix = "" } = {}) { return { keys: [...this.m.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })) }; }
+  async list({ prefix = "" } = {}) { return { keys: [...this.m.keys()].filter((k) => k.startsWith(prefix)).sort().map((name) => ({ name })) }; }
 }
 /** Durable Objects simulados: almacenamiento en memoria; la alarma la dispara la prueba a mano. */
 export class FakeStorage {
@@ -51,6 +53,7 @@ export const state = { calls: [] };
 export function mockClaude(sequence, onCall) {
   state.calls = [];
   globalThis.fetch = async (url, init) => {
+    if (String(url).includes("api.resend.com")) return new Response("{}");
     const body = JSON.parse(init.body); state.calls.push(body);
     assert.equal(url, "https://api.anthropic.com/v1/messages");
     if (onCall) await onCall(state.calls.length);
