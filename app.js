@@ -685,6 +685,7 @@ async function pollOrder(o) {
     let body = null;
     try { const r = await fetch(serviceUrl() + "orders/" + encodeURIComponent(o.id), { headers: { "x-order-token": o.token }, cache: "no-store" }); body = await r.json(); if (r.status === 403 || r.status === 404) throw new ServiceError(o.payload ? "i.err.not_found" : "i.err.report_expired"); }
     catch (e) { if (e instanceof ServiceError) throw e; }
+    if (body && body.payment_status) showOrderWait(body.payment_status === "paid", body.generation_started_at);
     if (body && body.report) { restoreFromOrder(body.chart); return { report: body.report }; }
     if (body && body.report_expired) throw new ServiceError("i.err.report_expired");
     if (body && ["failed", "cancelled"].includes(body.payment_status)) throw new ServiceError("i.err.payment_failed");
@@ -838,8 +839,8 @@ function prepareNotice() {
   try { notify.audio = notify.audio || new (window.AudioContext || window.webkitAudioContext)(); notify.audio.resume(); } catch (e) { }
   try { if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => { }); } catch (e) { }
 }
-function startProgress() {
-  const t0 = Date.now(), clock = $("#wait-clock");
+function startProgress(from) {
+  const t0 = Math.min(from || Date.now(), Date.now()), clock = $("#wait-clock");
   const tick = () => {
     const s = Math.round((Date.now() - t0) / 1000), mm = Math.floor(s / 60), ss = String(s % 60).padStart(2, "0");
     clock.textContent = `${mm}:${ss}`;
@@ -847,12 +848,28 @@ function startProgress() {
   };
   tick(); notify.timer = setInterval(tick, 1000);
 }
+// en una compra, primero se espera el pago y el reloj no corre; cuenta recién desde que empieza la escritura
+let orderWriting = null;
+function showOrderWait(writing, startedAt) {
+  if (writing === orderWriting) return;
+  orderWriting = writing;
+  const f = state.last && state.last.f, usual = $("#wait-usual");
+  clearInterval(notify.timer); notify.timer = null;
+  usual.dataset.i18n = writing ? "wait.usual" : "buy.waitPayUsual"; usual.textContent = t(usual.dataset.i18n);
+  if (writing) {
+    $("#wait-who").textContent = f && f.first ? t("wait.who", { name: f.first }) : t("wait.whoAnon");
+    startProgress(Date.parse(startedAt) || Date.now());
+  } else {
+    $("#wait-who").textContent = t("buy.waitPay");
+    $("#wait-clock").textContent = "…";
+  }
+}
 // mientras se escribe el informe, la pantalla no se apaga (donde el navegador lo permite)
 const wake = { lock: null, want: false };
 async function keepAwake(on) {
   wake.want = on;
   try {
-    if (on && "wakeLock" in navigator && !wake.lock) { wake.lock = await navigator.wakeLock.request("screen"); wake.lock.addEventListener("release", () => { wake.lock = null; }); $("#wait-awake").hidden = false; }
+    if (on && "wakeLock" in navigator && !wake.lock) { wake.lock = await navigator.wakeLock.request("screen"); wake.lock.addEventListener("release", () => { wake.lock = null; }); $("#wait-awake").hidden = $("#wait-stay").dataset.i18n === "buy.waitLeave"; }
     if (!on && wake.lock) { await wake.lock.release(); wake.lock = null; }
   } catch (e) { wake.lock = null; }
 }
@@ -923,8 +940,11 @@ async function callInterpreter(fetcher = obtainReport, auditPayload = null) {
   prepareNotice();
   status.hidden = true;
   openWait();
-  if (fetcher !== obtainReport) $("#wait-stay-text").textContent = t("buy.waitMail");
-  if (CONFIG.demo) $("#wait-clock").textContent = "…"; else startProgress();
+  const order = fetcher !== obtainReport;
+  if (order) {
+    for (const [el, key] of [["#wait-stay", "buy.waitLeave"], ["#wait-stay-text", "buy.waitMail"]]) { $(el).dataset.i18n = key; $(el).textContent = t(key); }
+    orderWriting = null; showOrderWait(false);
+  } else if (CONFIG.demo) $("#wait-clock").textContent = "…"; else startProgress();
   let ok = false;
   try {
     const { report: rep, remaining, recovered } = await fetcher();
@@ -935,6 +955,7 @@ async function callInterpreter(fetcher = obtainReport, auditPayload = null) {
     clearInterval(notify.timer);
     renderReport(rep);
     renderAudit(audit);
+    for (const [el, key] of [["#savenow-text", "savenow.text"], ["#save-note", "save.note"]]) { $(el).dataset.i18n = order ? key + "Order" : key; $(el).textContent = t($(el).dataset.i18n); }
     $("#sample-note").hidden = true; $("#save-now").hidden = false; state.sample = false; state.pdfSaved = false;
     V.clear($("#fig-closure"));
     if (audit.ok) V.show($("#fig-closure"), "closure_serendipity");
