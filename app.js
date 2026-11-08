@@ -1240,7 +1240,8 @@ for (const el of document.querySelectorAll(".author-paid")) el.hidden = appMode(
 
 // informe de muestra («?muestra»): carta ficticia calculada aquí y un informe fijo generado por el servicio
 const SAMPLE = CONFIG.sample && CONFIG.sample.file ? CONFIG.sample : null;
-if (SAMPLE) $("#sample-link-row").hidden = false;
+// el informe de muestra se ofrece solo en la venta; en el piloto con códigos se oculta (8-nov, decisión de Bárbara)
+if (SAMPLE && !isPilot()) $("#sample-link-row").hidden = false;
 async function loadSample() {
   const s = SAMPLE;
   $("#fname").value = s.first; $("#bdate").value = s.date; setBirthTime(s.time); $("#prec").value = s.precision;
