@@ -29,6 +29,7 @@
 
 import { auditReport, refText } from "../../audit.js";
 import { argumentAudit } from "../../argument_audit.js";
+import { proseAudit, describeProse, fingerprint, repeatedMyth, PROSE_AUDIT_VERSION } from "../../prose_audit.js";
 import { styleCheck, describeStyle } from "./style.js";
 import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION } from "./prompts.js";
 import { normalizePayload, normalizeRequestId } from "./validate.js";
@@ -36,7 +37,7 @@ import { ledger } from "./ledger.js";
 import { routePayments, routeOrders, notifyOrderGeneration, runControls } from "./orders.js";
 import { getProvider, providerNames } from "./payments/provider.js";
 
-export const SERVICE_VERSION = "2.2.1";
+export const SERVICE_VERSION = "2.4";
 const DEFAULT_MODEL = "claude-opus-5-5";
 // la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
 const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
@@ -205,6 +206,28 @@ async function rememberMyth(env, analisis) {
   try { const l = await recentMyths(env); await env.ASTRO_KV.put(MYTHS_KEY, JSON.stringify([name, ...l.filter((x) => x !== name)].slice(0, MYTHS_KEEP))); } catch (e) { /* no detiene el informe */ }
 }
 
+// Huellas de frases de informes recientes (hashes de 32 bits, sin texto ni datos de personas): repetición entre informes.
+const PRINTS_KEY = "prints:recent", PRINTS_KEEP = 20;
+async function recentPrints(env) {
+  if (!env.ASTRO_KV) return [];
+  try { const l = JSON.parse((await env.ASTRO_KV.get(PRINTS_KEY)) || "[]"); return Array.isArray(l) ? l.filter(Array.isArray).slice(0, PRINTS_KEEP) : []; } catch (e) { return []; }
+}
+async function rememberPrint(env, report) {
+  if (!env.ASTRO_KV) return;
+  try { const l = await recentPrints(env); await env.ASTRO_KV.put(PRINTS_KEY, JSON.stringify([fingerprint(report), ...l].slice(0, PRINTS_KEEP))); } catch (e) { /* no detiene el informe */ }
+}
+/** Si el mito elegido en la fase A ya se usó hace poco, toma otro de los considerados que no se haya usado. Sin llamada extra. */
+export function avoidRepeatedMyth(analisis, recent) {
+  const m = analisis && analisis.mito;
+  if (!m || typeof m.nombre !== "string") return analisis;
+  const clash = repeatedMyth(m.nombre, recent);
+  if (!clash) return analisis;
+  const alt = (Array.isArray(analisis.mitos_considerados) ? analisis.mitos_considerados : []).find((x) => x && typeof x.nombre === "string" && !repeatedMyth(x.nombre, recent));
+  analisis.mito_descartado = { nombre: m.nombre, motivo: `coincide con un mito usado recientemente (${clash})` };
+  analisis.mito = alt ? { nombre: alt.nombre, por_que: alt.motivo || "" } : { nombre: "", por_que: "Elegí un mito clásico que no esté en la lista de mitos recientes." };
+  return analisis;
+}
+
 function describeIssues(audit) {
   return audit.issues.map((i) => {
     const probs = (i.problems || [i]).map((p) => ["sign", "deg", "house", "ruler", "count", "group"].includes(p.field) ? `${p.field}: informe ${p.report}, carta ${p.chart ?? (p.field === "house" ? "sin casas" : "sin dato")}` : p.field === "format" ? `formato de grado inválido: ${p.report}` : (p.note || p.kind));
@@ -326,7 +349,9 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   const tratamiento = TRATAMIENTO[payload.request.address_gender] || TRATAMIENTO.UNSPECIFIED;
   let analisis = await load("analisis");
   if (!analisis) {
-    analisis = await phase("a", async () => callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [...new Set([...(await recentMyths(env)), ...REFERENCE_MYTHS])]), maxTokens: MAX_TOKENS_ANALYSIS }), charge, parseJSON, note);
+    const evitar = [...new Set([...(await recentMyths(env)), ...REFERENCE_MYTHS])];
+    analisis = await phase("a", async () => callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, evitar), maxTokens: MAX_TOKENS_ANALYSIS }), charge, parseJSON, note);
+    avoidRepeatedMyth(analisis, evitar);
     await save("analisis", analisis);
     await rememberMyth(env, analisis);
   }
@@ -341,16 +366,22 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   let audit = auditReport(report, payload);
   let style = styleCheck(report);
   let argument = argumentAudit(report, payload);
+  const prints = await recentPrints(env);
+  let prose = proseAudit(report, payload, prints);
   let corrected = false;
-  // una sola corrección, que atiende a la vez los problemas técnicos y los de estilo
-  if (!audit.ok || !style.ok || argument.ok === false) {
+  // una sola corrección, que atiende a la vez los problemas técnicos, los de la prosa y los de estilo
+  if (!audit.ok || !style.ok || argument.ok === false || !prose.ok) {
     try {
-      const fixed = await phase("c", () => callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: MAX_TOKENS_REPORT }), charge, (reply) => {
+      const proseText = prose.ok ? "" : describeProse(prose);
+      const fixed = await phase("c", () => callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: [style.ok ? "" : describeStyle(style), proseText].filter(Boolean).join("\n"), informe: JSON.stringify(report), carta }), maxTokens: MAX_TOKENS_REPORT }), charge, (reply) => {
         const r = normalizeReferences(withoutDedication(parseJSON(reply))); assertComplete(r); return r;
       }, note);
       const fixedAudit = auditReport(fixed, payload);
       // si la corrección solo era de estilo y rompió la parte técnica, se conserva la versión anterior
-      if (fixedAudit.ok || !audit.ok) { report = fixed; audit = fixedAudit; style = styleCheck(fixed); argument = argumentAudit(fixed, payload); corrected = true; }
+      const fixedProse = proseAudit(fixed, payload, prints);
+      // se conserva la versión anterior si la corrección rompe la parte técnica o agrega datos falsos en la prosa
+      const prosaPeor = fixedProse.claims.errors.length > prose.claims.errors.length;
+      if ((fixedAudit.ok && !prosaPeor) || !audit.ok) { report = fixed; audit = fixedAudit; style = styleCheck(fixed); argument = argumentAudit(fixed, payload); prose = fixedProse; corrected = true; }
     } catch (e) {
       // un informe técnicamente correcto se entrega aunque falle su corrección de estilo
       if (!audit.ok) throw e;
@@ -359,6 +390,10 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   report.engine = { model, protocol_version: "ASTROINFORME", service: SERVICE_VERSION };
   // «all_references_present_in_chart» se conserva por compatibilidad: se refiere solo a las referencias declaradas
   report.argument_audit = { declared: argument.declared, ok: argument.ok, theses: argument.theses.map((t) => ({ id: t.id, central: t.central, status: t.status })) };
+  report.prose_audit = { version: PROSE_AUDIT_VERSION, checked: prose.claims.checked, claim_errors: prose.claims.errors.length, undeclared: prose.claims.undeclared.length,
+    biography: prose.biography.length, jargon_per_1000: prose.jargon.per1000, idioms: prose.idioms.length, enumerations: prose.enumerations.length,
+    repeated_phrases: prose.within.phrases.length, cross_shared: prose.cross.length, pending: prose.fix };
+  await rememberPrint(env, report);
   report.audit = { all_references_present_in_chart: audit.ok, scope: audit.scope, declared: audit.declared, verified: audit.verified, total: audit.total,
     unchecked: audit.unchecked.length, undeclared_degrees: audit.undeclared_degrees.length, corrected, style_issues: style.issues.map((i) => ({ kind: i.kind, count: i.count })) };
   return { report, audit, usd: spent.usd, corrected };
