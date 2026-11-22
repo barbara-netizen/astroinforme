@@ -328,12 +328,14 @@ export function proseAudit(report, payload, recentPrints = []) {
   const fix = [];
   if (claims.errors.length) fix.push("claims");
   if (biography.length) fix.push("biography");
-  if (jargon.per1000 > THRESHOLDS.jargonPer1000 || jargon.dense.length >= THRESHOLDS.densePara || jargon.techOpenings.length >= THRESHOLDS.techOpenings) fix.push("jargon");
+  // la jerga se registra pero no dispara la reescritura completa (decisión del 22-nov: tiempo y costo); la redacción ya la limita
+  const notes = [];
+  if (jargon.per1000 > THRESHOLDS.jargonPer1000 || jargon.dense.length >= THRESHOLDS.densePara || jargon.techOpenings.length >= THRESHOLDS.techOpenings) notes.push("jargon");
   if (idioms.length >= THRESHOLDS.idioms || idioms.filter((i) => i.idiom.startsWith("no solo")).length > THRESHOLDS.notOnly) fix.push("idioms");
   if (enumerations.length >= THRESHOLDS.enumerations) fix.push("enumerations");
   if (within.phrases.length >= THRESHOLDS.repeatedPhrases || within.openings.length >= THRESHOLDS.repeatedOpenings || within.overused.length) fix.push("repetition");
   if (cross.length >= THRESHOLDS.crossShared) fix.push("cross_repetition");
-  return { version: PROSE_AUDIT_VERSION, ok: fix.length === 0, claims, biography, jargon, idioms, enumerations, within, cross, fix };
+  return { version: PROSE_AUDIT_VERSION, ok: fix.length === 0, claims, biography, jargon, idioms, enumerations, within, cross, fix, notes };
 }
 
 /** Texto para la fase C: solo los motivos que superaron el umbral. */

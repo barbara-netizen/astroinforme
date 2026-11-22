@@ -40,7 +40,7 @@ import { ledger } from "./ledger.js";
 import { routePayments, routeOrders, notifyOrderGeneration, runControls } from "./orders.js";
 import { getProvider, providerNames } from "./payments/provider.js";
 
-export const SERVICE_VERSION = "2.6";
+export const SERVICE_VERSION = "2.6.1";
 const DEFAULT_MODEL = "claude-opus-5-5";
 // la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
 const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
@@ -396,7 +396,7 @@ export async function interpret(env, payload, protocol, spent = { usd: 0 }, hook
   report.argument_audit = { declared: argument.declared, ok: argument.ok, theses: argument.theses.map((t) => ({ id: t.id, central: t.central, status: t.status })) };
   report.prose_audit = { version: PROSE_AUDIT_VERSION, checked: prose.claims.checked, claim_errors: prose.claims.errors.length, undeclared: prose.claims.undeclared.length,
     biography: prose.biography.length, jargon_per_1000: prose.jargon.per1000, idioms: prose.idioms.length, enumerations: prose.enumerations.length,
-    repeated_phrases: prose.within.phrases.length, cross_shared: prose.cross.length, pending: prose.fix };
+    repeated_phrases: prose.within.phrases.length, cross_shared: prose.cross.length, pending: prose.fix, notes: prose.notes };
   await rememberPrint(env, report);
   report.audit = { all_references_present_in_chart: audit.ok, scope: audit.scope, declared: audit.declared, verified: audit.verified, total: audit.total,
     unchecked: audit.unchecked.length, undeclared_degrees: audit.undeclared_degrees.length, corrected, style_issues: style.issues.map((i) => ({ kind: i.kind, count: i.count })) };

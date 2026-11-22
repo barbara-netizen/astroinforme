@@ -42,7 +42,7 @@ assert.equal(a.biography.length, 0);
 
 // 6. jerga: un párrafo cargado de términos técnicos pide corrección
 a = proseAudit(rep("Sol en Cáncer en casa nueve en oposición a Saturno en Capricornio, con Luna en Aries y Marte junto al Descendente."), payload);
-assert.ok(a.jargon.per1000 > 20); assert.ok(a.fix.includes("jargon"));
+assert.ok(a.jargon.per1000 > 20); assert.ok(!a.fix.includes("jargon")); assert.ok(a.notes.includes("jargon"));
 
 // 7. modismos de texto genérico y «no solo… sino también»
 a = proseAudit(rep("No es casualidad que esto pase. En definitiva, de alguna manera es un delicado equilibrio. No solo pensás, sino también sentís."), payload);
