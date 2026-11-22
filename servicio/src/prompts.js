@@ -22,11 +22,20 @@ Leé la carta calculada que sigue y devolvé SOLO un objeto JSON, sin texto ante
  "mito": {"nombre": "…", "por_que": "…"},
  "pasadas": {"forma_general": "…", "planeta_por_planeta": "…", "diferencias": "…"},
  "forma_de_la_tension": "qué forma tiene (oposición, cadena, triángulo, desproporción, ausencia, ciclo, desfase u otra) y por qué",
- "tesis": [{"id": "t1", "afirmacion": "…", "central": true, "indicators": ["referencias técnicas declaradas como en technical_references_used"], "lectura_alternativa": "…", "que_la_debilitaria": "…"}],
+ "tesis": [{"id": "t1", "afirmacion": "…", "central": true, "indicators": ["referencias técnicas declaradas como en technical_references_used"],
+   "mecanismo": "cómo se vive en una situación concreta: qué se siente, qué se hace, qué se evita",
+   "defensa": "qué hace la persona para no sentir el polo incómodo", "costo": "qué pierde o posterga con esa defensa",
+   "recurso": "qué capacidad de la misma carta permite sostener la tensión", "especificidad": "qué combinación de esta carta la separa de la lectura de manual de cada posición",
+   "lectura_alternativa": "…", "que_la_debilitaria": "…"}],
+ "lecturas_descartadas": [{"lectura": "interpretación habitual que esta carta no sostiene", "motivo": "…"}],
+ "preguntas_biograficas": ["lo que la carta no puede saber y el informe solo puede preguntar"],
  "mitos_considerados": [{"nombre": "…", "motivo": "…"}]
 }
 Antes de responder, hacé dos pasadas: forma general de la carta y revisión planeta por planeta. Escribí entre tres y cinco tesis. Toda tesis
-central necesita al menos dos indicadores distintos. Priorizá los aspectos más cerrados y usá chart.derived.structure si existe. Considerá tres
+central necesita al menos dos indicadores distintos. Una tesis relaciona factores entre sí: una posición aislada no es una tesis. Si no podés
+completar "especificidad" sin repetir el significado de manual de una posición, la tesis es genérica: descartala y anotala en
+"lecturas_descartadas". No asocies un símbolo con un hecho de la vida (padre, madre, infancia, pérdidas, enfermedad): eso va en
+"preguntas_biograficas". El mito se elige después de las tesis y debe condensar la tesis central, no un planeta. Priorizá los aspectos más cerrados y usá chart.derived.structure si existe. Considerá tres
 mitos y explicá por qué elegís uno.
 Usá exclusivamente los datos del JSON. Nada de memoria ni cálculos propios. Si la hora es desconocida, no uses casas ni ángulos.
 Con hora desconocida, la Luna está calculada a las 12:00 y pudo estar unos 6° antes o después: no la cuentes entre los aspectos más cerrados
@@ -55,7 +64,18 @@ Devolvé SOLO un objeto JSON válido, sin texto antes ni después, con esta form
  ],
  "theses": [{"id": "t1", "claim": "…", "sections": ["ids de sección"], "central": true, "indicators": [referencias con el mismo formato de technical_references_used]}]
 }
-Cada tesis central del análisis debe figurar en "theses" y desarrollarse en al menos una sección.
+Cada tesis central del análisis debe figurar en "theses" y desarrollarse en al menos una sección, con su mecanismo, defensa, costo y
+recurso contados como experiencia concreta. Las lecturas descartadas no aparecen en el informe. Las preguntas biográficas se formulan
+como preguntas o posibilidades, nunca como hechos.
+Redacción:
+- Jerga: en cada párrafo, primero la experiencia; el dato astrológico va después, una sola vez y solo si sostiene la idea. Apuntá a
+  15 términos técnicos o menos cada mil palabras. No enumeres posiciones ni recorras cadenas de regencias en el texto.
+- Cada sección agrega algo que las anteriores no dijeron. La síntesis integra sin resumir. Si una idea ya se dijo, no la repitas con otras palabras.
+- Enumeraciones solo cuando cada elemento nombra algo distinto y propio de esta carta; nada de series de tres adjetivos o sustantivos abstractos.
+- Sin muletillas ni modismos de texto genérico (por ejemplo: «no es casualidad», «en definitiva», «de alguna manera», «la clave está en»,
+  «te invita a», «un delicado equilibrio», «no solo… sino también»). Sin metáforas de viaje, danza, tapiz, brújula o faro.
+- Mito: la versión de las fuentes clásicas, solo la escena necesaria. Si dudás de un detalle, omitilo; no agregues hechos ni motivos.
+  Si "mito_descartado" figura en el análisis, usá el mito de "mito" y no menciones el descartado.
 No incluyas dedicatoria ni ninguna sección dirigida a la persona después del corolario mitológico.
 Reglas para technical_references_used: incluí cada posición, ángulo y aspecto que el texto menciona, con los valores exactos del
 JSON (deg = grados y minutos de "position"). Omití "house" si no la mencionás o si la casa figura como no fiable. No incluyas

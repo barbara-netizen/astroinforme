@@ -307,7 +307,7 @@ function render(scroll = false) {
   $("#r-meta").textContent = humanBirth(f);
   $("#review-data").textContent = humanBirth(f);
   // sin hora el informe se puede pedir solo después de aceptar que será más general
-  $("#interp-no-time").hidden = f.prec !== "UNKNOWN"; $("#no-time-ok").checked = false; $("#terms-ok").checked = false;
+  $("#interp-no-time").hidden = f.prec !== "UNKNOWN"; $("#no-time-ok").checked = false; $("#terms-ok").checked = false; $("#bank-ok").checked = false;
   const ascSign = chart.houses ? term(E.SIGNS[Math.floor(chart.houses.asc / 30)]) : t("r.noTime");
   $("#r-big3").innerHTML = [
     [term("SUN"), term(by.SUN.sign), chart.houses ? `${H} ${by.SUN.house}` : by.SUN.deg.replace(/\d\d"$/, ""), by.SUN.reliable],
@@ -572,6 +572,7 @@ function renderReport(rep) {
       li.append(a); list.append(li);
     }
   });
+  if (rep.bank_id) { const b = document.createElement("p"); b.className = "small muted rep-bank"; b.textContent = t("bank.num", { id: rep.bank_id }); out.append(b); }
   $("#rep-index-sum").textContent = t("rep.index", { n: list.children.length });
 }
 
@@ -579,7 +580,9 @@ function renderReport(rep) {
 // campos, pero la carta contiene posiciones exactas de las que pueden deducirse (lo declara privacidad.html).
 function servicePayload(p) {
   return {
-    schema: p.schema, engine: p.engine, person: { first_name: p.person.first_name }, request: p.request,
+    schema: p.schema, engine: p.engine, person: { first_name: p.person.first_name },
+    // permiso para el banco de informes: solo si la persona marcó la casilla (desmarcada por defecto)
+    request: { ...p.request, bank_consent: !!(document.getElementById("bank-ok") && document.getElementById("bank-ok").checked) },
     birth: { time_precision: p.birth.time_precision, time_precision_label: p.birth.time_precision_label },
     chart: { ...p.chart, jd_ut: undefined },
     warnings: p.warnings.map((w) => ({ code: w.code })),
@@ -823,7 +826,7 @@ async function sendFeedback() {
   btn.disabled = true; st.hidden = false; st.textContent = t("fb.sending");
   try {
     const r = await fetch(serviceUrl() + "feedback", { method: "POST", headers: { "content-type": "application/json", ...(code ? { "x-astro-code": code } : {}) },
-      body: JSON.stringify({ text, report_title: (state.lastReport && state.lastReport.title) || "" }) });
+      body: JSON.stringify({ text, report_title: (state.lastReport && state.lastReport.title) || "", bank_id: (state.lastReport && state.lastReport.bank_id) || undefined }) });
     const body = await r.json().catch(() => null);
     if (r.ok && body && body.ok) { st.textContent = t("fb.thanks"); ta.value = ""; ta.disabled = true; $("#fb-count").textContent = ""; return; }
     const err = body && body.error;
