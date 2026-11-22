@@ -475,13 +475,14 @@ function renderInterpretationChrome() {
   $("#demo-note").hidden = !CONFIG.demo;
   $("#demo-which-row").hidden = !CONFIG.demo;
   $("#code-row").hidden = !serviceUrl() || !!CONFIG.demo;
+  $("#notify-row").hidden = $("#code-row").hidden;
   $("#code-label").dataset.i18n = publicAccess() ? "f.code.opt" : "f.code"; $("#code-label").textContent = t($("#code-label").dataset.i18n);
   $("#code-hint").dataset.i18n = publicAccess() ? "f.code.hintOpt" : "f.code.hint"; $("#code-hint").textContent = t($("#code-hint").dataset.i18n);
   const unavailable = !!(state.health && state.health.available === false);
   const paused = appMode() === "disabled" && !CONFIG.demo;
   $("#interp-paused").hidden = !paused;
   $("#interp-unavail").hidden = !unavailable || paused;
-  if (paused) $("#code-row").hidden = true;
+  if (paused) { $("#code-row").hidden = true; $("#notify-row").hidden = true; }
   $("#btn-interp").hidden = paused;
   renderBuyBox(paused);
   $("#btn-interp").disabled = paused || (unavailable && !($("#access-code").value || "").trim());
@@ -710,6 +711,27 @@ function restoreFromOrder(p) {
   $("#rep-wheel-in").innerHTML = wheelSVG(chart);
   $("#btn-to-chart").hidden = true;
 }
+/** Correo opcional para recibir el informe completo (solo en el pedido con código; las compras usan el suyo). */
+function notifyEmail() {
+  const row = $("#notify-row"); if (!row || row.hidden) return "";
+  const v = ($("#notify-email").value || "").trim();
+  return /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;".]{2,}$/.test(v) ? v : "";
+}
+/** Enlace del correo del informe: ?informe=<id>#k=<clave>. La clave va después del «#» y no llega a ningún servidor. */
+function resumeLinkFromUrl() {
+  const id = new URLSearchParams(location.search).get("informe"); if (!id) return;
+  const key = (location.hash.match(/^#k=([0-9a-f]{48})$/) || [])[1];
+  history.replaceState(null, "", location.pathname);
+  if (!/^[0-9a-f]{16}$/.test(id) || !key) return;
+  callInterpreter(async () => {
+    let r, body = null;
+    try { r = await fetch(serviceUrl() + "links/" + id, { headers: { "x-link-key": key }, cache: "no-store" }); body = await r.json(); }
+    catch (e) { throw new ServiceError("i.err.upstream"); }
+    if (!r.ok || !body || !body.report) throw new ServiceError("i.err.link_expired");
+    restoreFromOrder(body.chart);
+    return { report: body.report };
+  }, null);
+}
 function resumeOrderFromUrl() {
   const q = new URLSearchParams(location.search);
   const id = q.get("pedido"); if (!id) return;
@@ -775,7 +797,8 @@ function waitForNextPoll() {
 }
 async function obtainReportJob(headers, chartBody, request_id, code, retried = false) {
   let r, body = null;
-  try { r = await fetch(serviceUrl() + "jobs", { method: "POST", headers, body: JSON.stringify({ ...JSON.parse(chartBody), request_id }) }); }
+  const notify_email = notifyEmail() || undefined;
+  try { r = await fetch(serviceUrl() + "jobs", { method: "POST", headers, body: JSON.stringify({ ...JSON.parse(chartBody), request_id, notify_email }) }); }
   catch (e) { resetTurnstile(); throw new ServiceError("i.err.upstream"); }
   resetTurnstile();
   try { body = await r.json(); } catch (e) { }
@@ -786,7 +809,7 @@ async function obtainReportJob(headers, chartBody, request_id, code, retried = f
   }
   const t0 = Date.now();
   for (;;) {
-    if (body && body.report) { clearPending(); return { report: body.report, remaining: body.remaining, recovered: !!body.recovered }; }
+    if (body && body.report) { clearPending(); return { report: body.report, remaining: body.remaining, recovered: !!body.recovered, mailed: !!body.mailed }; }
     // un pedido fallido no descontó cupo; el próximo intento usa un identificador nuevo
     if (body && body.status === "failed") { clearPending(); throw serviceError(r.status, body); }
     if (!body || (body.error && !body.status)) {
@@ -957,6 +980,9 @@ async function callInterpreter(fetcher = obtainReport, auditPayload = null) {
   // al volver de una compra la aceptación ya se dio antes de pagar
   if (fetcher === obtainReport && !acceptancesOk(status)) return;
   // los errores que se detectan antes de enviar se muestran sin abrir la espera
+  if (fetcher === obtainReport && !$("#notify-row").hidden && ($("#notify-email").value || "").trim() && !notifyEmail()) {
+    status.hidden = false; status.textContent = t("notify.bad"); $("#notify-email").focus(); return;
+  }
   if (fetcher === obtainReport && !CONFIG.demo && !publicAccess() && !($("#access-code").value || "").trim()) {
     status.hidden = false; status.textContent = t("i.fail", { msg: t("i.err.code_required") }); $("#access-code").focus(); return;
   }
@@ -969,9 +995,13 @@ async function callInterpreter(fetcher = obtainReport, auditPayload = null) {
     for (const [el, key] of [["#wait-stay", "buy.waitLeave"], ["#wait-stay-text", "buy.waitMail"]]) { $(el).dataset.i18n = key; $(el).textContent = t(key); }
     orderWriting = null; showOrderWait(false);
   } else if (CONFIG.demo) $("#wait-clock").textContent = "…"; else startProgress();
+  if (!order && fetcher === obtainReport && notifyEmail()) {
+    $("#wait-stay").dataset.i18n = "wait.mailTitle"; $("#wait-stay").textContent = t("wait.mailTitle");
+    delete $("#wait-stay-text").dataset.i18n; $("#wait-stay-text").textContent = t("wait.mailText", { email: notifyEmail() });
+  }
   let ok = false;
   try {
-    const { report: rep, remaining, recovered } = await fetcher();
+    const { report: rep, remaining, recovered, mailed } = await fetcher();
     if (!rep || rep.schema !== "astroinforme.report/v1" || !Array.isArray(rep.sections)) throw new ServiceError("i.badContract");
     // la auditoría se rehace siempre aquí, aunque el servicio ya la haya hecho
     const audit = auditReport(rep, auditPayload || state.payload);
@@ -984,7 +1014,7 @@ async function callInterpreter(fetcher = obtainReport, auditPayload = null) {
     V.clear($("#fig-closure"));
     if (audit.ok) V.show($("#fig-closure"), "closure_serendipity");
     const rs = $("#report-status");
-    rs.textContent = recovered ? t("i.recovered") : (remaining != null ? t("i.remaining", { n: remaining }) : ""); rs.hidden = !rs.textContent;
+    rs.textContent = [recovered ? t("i.recovered") : (remaining != null ? t("i.remaining", { n: remaining }) : ""), mailed ? t("i.mailed") : ""].filter(Boolean).join(" "); rs.hidden = !rs.textContent;
     ok = true;
   } catch (e) {
     clearInterval(notify.timer);
@@ -1295,7 +1325,7 @@ async function loadSample() {
 }
 if (SAMPLE && new URLSearchParams(location.search).has("muestra")) loadSample().catch(() => { });
 // regreso del checkout (modo "paid"): retoma la espera del pedido guardado en este navegador
-if (serviceUrl() && !CONFIG.demo) resumeOrderFromUrl();
+if (serviceUrl() && !CONFIG.demo) { resumeOrderFromUrl(); resumeLinkFromUrl(); }
 if (CONFIG.demo && CONFIG.demoCases) {
   const wrap = document.createElement("label"); wrap.className = "f demo-case";
   wrap.innerHTML = `<span>Carta de prueba</span><select id="demo-case">${CONFIG.demoCases.map((c, i) => `<option value="${i}">${esc(c.label)}</option>`).join("")}</select>`;
