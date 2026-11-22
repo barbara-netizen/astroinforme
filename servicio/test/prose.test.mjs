@@ -76,4 +76,26 @@ an = { mito: { nombre: "Prometeo", por_que: "x" }, mitos_considerados: [{ nombre
 avoidRepeatedMyth(an, ["Prometeo"]);
 assert.equal(an.mito.nombre, ""); assert.match(an.mito.por_que, /no esté en la lista/);
 
-console.log("OK — auditoría de la prosa 2.4: 11 grupos");
+// 12. recuentos por modalidad o elemento (2.6.1): falso «casi todo en fijos», cierto «solo un cardinal»
+{
+  const d = { modalities: { FIXED: ["SUN", "MARS", "SATURN", "NEPTUNE", "ASC", "MC"], MUTABLE: ["MOON", "VENUS", "JUPITER", "URANUS", "PLUTO"], CARDINAL: ["MERCURY"] },
+    elements: { AIR: ["SUN", "SATURN"], WATER: ["MOON", "JUPITER", "NEPTUNE", "ASC"], FIRE: ["VENUS", "MARS", "MC"], EARTH: ["MERCURY", "URANUS", "PLUTO"] } };
+  const p2 = { chart: { bodies: [], aspects: [], derived: d } };
+  let b = proseAudit(rep("Casi todo en tu mapa está en signos de constancia."), p2);
+  assert.equal(b.claims.errors[0].kind, "count"); assert.ok(b.fix.includes("claims"));
+  b = proseAudit(rep("Solo un factor está en signos cardinales, el del pensamiento."), p2);
+  assert.equal(b.claims.errors.length, 0);
+  b = proseAudit(rep("Hay muy poco aire y muy poca tierra."), p2); // dos familias: no se juzga
+  assert.equal(b.claims.errors.length, 0);
+}
+
+// 13. plantilla visible: demasiadas preguntas, «otra lectura», «la defensa», «el costo» y cierres técnicos
+{
+  const many = Array.from({ length: 4 }, (_, i) => `Párrafo ${i}. La defensa más probable es callar. El costo es alto. Otra lectura posible es la contraria. Saturno sostiene esta lectura. ¿Te pasa?`);
+  const b = proseAudit(rep(...many), payload);
+  assert.ok(b.fix.includes("template")); assert.deepEqual(b.template.over.sort(), ["alternatives", "closers", "costs", "defenses", "questions"]);
+  assert.match(describeProse(b), /plantilla/);
+  assert.ok(!proseAudit(rep("Una sola pregunta. ¿Te pasa?"), payload).fix.includes("template"));
+}
+
+console.log("OK — auditoría de la prosa 2.6.1: 13 grupos");
