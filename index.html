@@ -204,6 +204,13 @@ textarea#payload-view { font-family: var(--f-data); font-size: 0.75rem; min-heig
 .offer details { border-top: 1px solid #2c3340; }
 .offer details > summary::after { color: #98a0ad; }
 .offer #interp-status { color: var(--ink); }
+/* casillas de consentimiento: legibles sobre el fondo oscuro, casilla grande */
+.offer .consent { background: #f4efe3; color: #1c2230; border: 2px solid #d6a752; border-radius: 8px; padding: 14px 16px; }
+.offer .consent p, .offer .consent span { color: #1c2230; }
+.offer .consent a { color: #1f3a5f; text-decoration: underline; }
+.offer .consent .check { color: #1c2230; font-size: 1rem; line-height: 1.4; align-items: flex-start; gap: 12px; cursor: pointer; }
+.offer .consent .check input { width: 26px; height: 26px; margin-top: 1px; accent-color: #1f3a5f; cursor: pointer; }
+.offer .consent.need { border-color: #c0392b; box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.35); }
 @media (min-width: 900px) {
   .offer .wrap { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding-left: var(--gut); padding-right: var(--gut); }
   .offer .art { position: relative; min-height: 400px; overflow: hidden; }
@@ -524,8 +531,8 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
           <div id="ts-box" hidden></div>
           <p id="demo-note" class="note warn" hidden data-i18n-html="demo.note"></p>
           <div class="fld" id="demo-which-row" hidden><label for="demo-which" data-i18n="demo.which">Informe a cargar</label><select id="demo-which"></select></div>
-          <div class="note warn no-print" id="terms-box"><p style="margin:0 0 8px;color:inherit"><span data-i18n="terms.text">AsterOrbis es una app homenaje y experimental, hecha por una sola humana: yo, Bárbara Gutiérrez. El informe se genera a medida y se entrega de inmediato: una vez entregado, no admite devolución por arrepentimiento ni por no coincidir con tus expectativas. Si no llega, llega incompleto o se generó con un error de la app, te lo vuelvo a generar o te devuelvo el dinero.</span> <a href="terminos.html" id="terms-link-2" target="_blank" rel="noopener" style="color:inherit" data-i18n="terms.link">Términos de compra</a></p><label class="check" style="color:inherit;align-items:flex-start"><input type="checkbox" id="terms-ok"> <span data-i18n="terms.ok">Quiero recibir el informe de inmediato y acepto que, una vez entregado, no podré pedir la devolución por arrepentimiento.</span></label></div>
-          <div class="note no-print" id="bank-box"><label class="check" style="align-items:flex-start"><input type="checkbox" id="bank-ok"> <span><span data-i18n="bank.ok">Opcional: autorizo que se guarde una copia anónima de mi informe (sin mi nombre ni datos de contacto) para mejorar AsterOrbis.</span> <a href="privacidad.html#banco" target="_blank" rel="noopener" data-i18n="bank.link">Cómo se usa</a></span></label></div>
+          <div class="note consent no-print" id="terms-box"><p style="margin:0 0 8px;color:inherit"><span data-i18n="terms.text">AsterOrbis es una app homenaje y experimental, hecha por una sola humana: yo, Bárbara Gutiérrez. El informe se genera a medida y se entrega de inmediato: una vez entregado, no admite devolución por arrepentimiento ni por no coincidir con tus expectativas. Si no llega, llega incompleto o se generó con un error de la app, te lo vuelvo a generar o te devuelvo el dinero.</span> <a href="terminos.html" id="terms-link-2" target="_blank" rel="noopener" style="color:inherit" data-i18n="terms.link">Términos de compra</a></p><label class="check" style="color:inherit;align-items:flex-start"><input type="checkbox" id="terms-ok"> <span data-i18n="terms.ok">Quiero recibir el informe de inmediato y acepto que, una vez entregado, no podré pedir la devolución por arrepentimiento.</span></label></div>
+          <div class="note consent no-print" id="bank-box"><label class="check" style="align-items:flex-start"><input type="checkbox" id="bank-ok"> <span><span data-i18n="bank.ok">Opcional: autorizo que se guarde una copia anónima de mi informe (sin mi nombre ni datos de contacto) para mejorar AsterOrbis.</span> <a href="privacidad.html#banco" target="_blank" rel="noopener" data-i18n="bank.link">Cómo se usa</a></span></label></div>
           <div class="review-birth no-print" id="review-birth"><p data-i18n="review.h">Revisá tus datos antes de pedir el informe:</p><p class="review-data" id="review-data"></p><button type="button" class="linkbtn" id="btn-review-edit" data-i18n="review.edit">Corregir datos</button></div>
           <button type="button" class="btn big" id="btn-interp" data-i18n="btn.interp">Pedir mi informe</button>
           <p id="interp-status" class="note warn" hidden role="status"></p>

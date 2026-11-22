@@ -307,7 +307,7 @@ function render(scroll = false) {
   $("#r-meta").textContent = humanBirth(f);
   $("#review-data").textContent = humanBirth(f);
   // sin hora el informe se puede pedir solo después de aceptar que será más general
-  $("#interp-no-time").hidden = f.prec !== "UNKNOWN"; $("#no-time-ok").checked = false; $("#terms-ok").checked = false; $("#bank-ok").checked = false;
+  $("#interp-no-time").hidden = f.prec !== "UNKNOWN"; $("#no-time-ok").checked = false; $("#terms-ok").checked = false; $("#terms-box").classList.remove("need"); $("#bank-ok").checked = false;
   const ascSign = chart.houses ? term(E.SIGNS[Math.floor(chart.houses.asc / 30)]) : t("r.noTime");
   $("#r-big3").innerHTML = [
     [term("SUN"), term(by.SUN.sign), chart.houses ? `${H} ${by.SUN.house}` : by.SUN.deg.replace(/\d\d"$/, ""), by.SUN.reliable],
@@ -945,7 +945,10 @@ function acceptancesOk(status) {
     status.hidden = false; status.textContent = t("i.noTime.required"); $("#no-time-ok").focus(); return false;
   }
   if (!$("#terms-ok").checked) {
-    status.hidden = false; status.textContent = t("terms.required"); $("#terms-ok").focus(); return false;
+    status.hidden = false; status.textContent = t("terms.required");
+    // la casilla obligatoria se marca en rojo y se lleva a la vista, para que no pase desapercibida en el celular
+    const box = $("#terms-box"); box.classList.add("need"); box.scrollIntoView({ behavior: "smooth", block: "center" }); $("#terms-ok").focus({ preventScroll: true });
+    return false;
   }
   return true;
 }
@@ -1206,6 +1209,7 @@ function init() {
   $("#tz").addEventListener("change", () => { if (state.place) state.place.zone = $("#tz").value; });
   $("#use-manual-offset").addEventListener("change", (e) => { $("#manual-offset-row").hidden = !e.target.checked; });
   const syncTime = () => { const unk = $("#no-time").checked; setTimeDisabled(unk); };
+  $("#terms-ok").addEventListener("change", (e) => { if (e.target.checked) $("#terms-box").classList.remove("need"); });
   $("#wait-listen").addEventListener("click", () => {
     const audio = $("#wait-audio"), btn = $("#wait-listen");
     if (audio.paused) { audio.play().then(() => { btn.setAttribute("aria-pressed", "true"); $("#wait-listen-label").textContent = t("wait.pause"); }).catch(() => { btn.hidden = true; }); }
