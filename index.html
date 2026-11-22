@@ -606,6 +606,8 @@ footer .wrap { font-size: 0.82rem; color: var(--muted); display: grid; gap: 6px;
     <p id="wait-who"></p>
     <div id="wait-clock" aria-live="off">0:00</div>
     <p id="wait-usual" style="color:#98a0ad" data-i18n="wait.usual">suele tardar entre cinco y siete minutos</p>
+    <button type="button" class="wait-read" id="wait-listen" hidden aria-pressed="false"><span id="wait-listen-label" data-i18n="wait.listen">Escuchar a Bárbara</span> <span aria-hidden="true">♪</span></button>
+    <audio id="wait-audio" preload="none"></audio>
     <button type="button" class="wait-read" id="wait-read"><span data-i18n="wait.read">Leer mientras esperás</span> <span aria-hidden="true">↓</span></button>
     <p class="wait-steps" data-i18n="wait.steps"></p>
     <div class="wait-alert"><strong id="wait-stay" data-i18n="wait.stay">Quedate en esta pantalla</strong><p id="wait-stay-text" data-i18n="wait.stayText"></p><p id="wait-awake" hidden data-i18n="wait.awake"></p></div>

@@ -890,8 +890,26 @@ function openWait() {
   document.documentElement.style.overflow = "hidden";
   V.show($("#fig-reader"), isPilot() ? "pilot_rabbit" : "report_reader");
   keepAwake(true);
+  setupWaitAudio();
+}
+// Texto de espera leído por Bárbara (archivo de audio grabado por ella). Solo aparece si existe el archivo del idioma de
+// la interfaz; empieza únicamente al tocar el botón y se detiene al cerrar la espera.
+const WAIT_AUDIO = { es: "assets/espera-es.mp3" };
+function setupWaitAudio() {
+  const btn = $("#wait-listen"), audio = $("#wait-audio"), src = WAIT_AUDIO[L.getLang()];
+  audio.pause(); btn.setAttribute("aria-pressed", "false"); $("#wait-listen-label").textContent = t("wait.listen");
+  btn.hidden = true;
+  if (!src) return;
+  if (!audio.src.endsWith(src)) audio.src = src;
+  // se muestra solo si el archivo está publicado (HEAD liviano, sin descargar el audio)
+  fetch(src, { method: "HEAD" }).then((r) => { btn.hidden = !r.ok; }).catch(() => { btn.hidden = true; });
+}
+function stopWaitAudio() {
+  const audio = $("#wait-audio"); audio.pause(); audio.currentTime = 0;
+  $("#wait-listen").setAttribute("aria-pressed", "false"); $("#wait-listen-label").textContent = t("wait.listen");
 }
 function closeWait() {
+  stopWaitAudio();
   $("#wait").hidden = true;
   document.documentElement.style.overflow = "";
   V.clear($("#fig-reader"));
@@ -1188,6 +1206,12 @@ function init() {
   $("#tz").addEventListener("change", () => { if (state.place) state.place.zone = $("#tz").value; });
   $("#use-manual-offset").addEventListener("change", (e) => { $("#manual-offset-row").hidden = !e.target.checked; });
   const syncTime = () => { const unk = $("#no-time").checked; setTimeDisabled(unk); };
+  $("#wait-listen").addEventListener("click", () => {
+    const audio = $("#wait-audio"), btn = $("#wait-listen");
+    if (audio.paused) { audio.play().then(() => { btn.setAttribute("aria-pressed", "true"); $("#wait-listen-label").textContent = t("wait.pause"); }).catch(() => { btn.hidden = true; }); }
+    else { audio.pause(); btn.setAttribute("aria-pressed", "false"); $("#wait-listen-label").textContent = t("wait.listen"); }
+  });
+  $("#wait-audio").addEventListener("ended", () => { $("#wait-listen").setAttribute("aria-pressed", "false"); $("#wait-listen-label").textContent = t("wait.listen"); });
   $("#wait-read").addEventListener("click", () => $("#about-report").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }));
   $("#no-time").addEventListener("change", (e) => { if (e.target.checked) $("#prec").value = "UNKNOWN"; else if ($("#prec").value === "UNKNOWN") $("#prec").value = "EXACT"; syncTime(); });
   $("#prec").addEventListener("change", (e) => { $("#no-time").checked = e.target.value === "UNKNOWN"; syncTime(); });
