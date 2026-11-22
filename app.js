@@ -582,7 +582,7 @@ function renderReport(rep) {
 function servicePayload(p) {
   return {
     schema: p.schema, engine: p.engine, person: { first_name: p.person.first_name },
-    // permiso para el banco de informes: solo si la persona marcó la casilla (desmarcada por defecto)
+    // permiso para el archivo de informes: solo si la persona marcó la casilla (desmarcada por defecto)
     request: { ...p.request, bank_consent: !!(document.getElementById("bank-ok") && document.getElementById("bank-ok").checked) },
     birth: { time_precision: p.birth.time_precision, time_precision_label: p.birth.time_precision_label },
     chart: { ...p.chart, jd_ut: undefined },
