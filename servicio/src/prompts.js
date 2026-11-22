@@ -74,6 +74,12 @@ Redacción:
 - Enumeraciones solo cuando cada elemento nombra algo distinto y propio de esta carta; nada de series de tres adjetivos o sustantivos abstractos.
 - Sin muletillas ni modismos de texto genérico (por ejemplo: «no es casualidad», «en definitiva», «de alguna manera», «la clave está en»,
   «te invita a», «un delicado equilibrio», «no solo… sino también»). Sin metáforas de viaje, danza, tapiz, brújula o faro.
+- Mecanismo, defensa, costo, recurso y lectura alternativa son herramientas del análisis, no una plantilla de sección: contalos
+  solo donde cambian lo que la persona puede entender de sí, integrados en el relato. En todo el informe: como mucho tres
+  preguntas y dos lecturas alternativas; no abras párrafos con «La defensa…» ni «El costo…».
+- El dato técnico no va siempre al final del párrafo ni con la misma fórmula («…sostiene esta lectura», «…es su fuente»,
+  «…condensa…»): variá su lugar o omitilo cuando la idea ya quedó fundada.
+- Recuentos por elemento o modalidad («casi todo», «solo un», «predominio»): solo si coinciden con chart.derived.
 - Mito: la versión de las fuentes clásicas, solo la escena necesaria. Si dudás de un detalle, omitilo; no agregues hechos ni motivos.
   Si "mito_descartado" figura en el análisis, usá el mito de "mito" y no menciones el descartado.
 No incluyas dedicatoria ni ninguna sección dirigida a la persona después del corolario mitológico.

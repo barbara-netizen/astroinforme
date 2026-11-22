@@ -308,6 +308,77 @@ export function repeatedMyth(name, recent) {
 }
 
 // ------------------------------------------------------------------ resultado
+// ------------------------------------------------------------------ 6. recuentos por elemento y modalidad (2.6.1)
+// «casi todo en signos fijos», «solo un factor cardinal», «predominio del fuego»: se comparan con chart.derived.
+// Se acepta la afirmación si es cierta contando solo planetas o planetas y ángulos.
+const GROUP_TERMS = [
+  ["MODALITY", "FIXED", /\bsignos? (?:fij[oa]s?|de (?:la )?constancia|de (?:la )?estabilidad)\b|\b(?:lo|la modalidad) fij[oa]\b/],
+  ["MODALITY", "CARDINAL", /\bsignos? (?:cardinal(?:es)?|de (?:la )?iniciativa|que inician|de inicio)\b|\b(?:lo|la modalidad) cardinal\b/],
+  ["MODALITY", "MUTABLE", /\bsignos? (?:mutables?|de (?:la )?adaptacion)\b|\b(?:lo|la modalidad) mutable\b/],
+  ["ELEMENT", "FIRE", /\b(?:signos? de |el |del |poco |mucho |muy poco )fuego\b/],
+  ["ELEMENT", "EARTH", /\b(?:signos? de |la |de la |poca |mucha |muy poca )tierra\b/],
+  ["ELEMENT", "AIR", /\b(?:signos? de |el |del |poco |mucho |muy poco )aire\b/],
+  ["ELEMENT", "WATER", /\b(?:signos? de |el |del |poca |mucha |muy poca )agua\b/],
+];
+const Q_MOST = /\b(casi tod[oa]s?|la mayoria|la mayor parte|predomin\w*|abunda\w*|domina\w*)\b/;
+const Q_ONE = /\b(solo (?:un|una|uno)|un unico|una unica|uno solo|una sola|unico factor|unico planeta)\b/;
+const Q_NONE = /\b(ningun\w*|no hay (?:planetas?|factores?|nada) en)\b/;
+const Q_FEW = /\b(muy poc[oa]s?|escas[oa]s?|casi no hay|casi nada de)\b/;
+const ANGLE_IDS = new Set(["ASC", "MC", "DSC", "IC"]);
+function countClaims(report, payload) {
+  const d = (payload.chart && payload.chart.derived) || {};
+  const errors = [];
+  let checked = 0;
+  const counts = (group, key) => {
+    const src = group === "ELEMENT" ? d.elements : d.modalities;
+    if (!src) return null;
+    const all = Object.fromEntries(Object.entries(src).map(([k, v]) => [k, v.length]));
+    const pl = Object.fromEntries(Object.entries(src).map(([k, v]) => [k, v.filter((x) => !ANGLE_IDS.has(x)).length]));
+    return [all, pl];
+  };
+  for (const { section, text } of paragraphsOf(report)) {
+    if (section === "myth") continue;
+    for (const sent of sentencesOf(text)) {
+      const p = strip(sent);
+      const hits = GROUP_TERMS.filter(([, , re]) => re.test(p));
+      if (hits.length !== 1) continue; // varias familias en la misma oración: ambiguo, no se juzga
+      const [group, key] = hits[0];
+      const c = counts(group, key); if (!c) continue;
+      const kind = Q_ONE.test(p) ? "one" : Q_NONE.test(p) ? "none" : Q_MOST.test(p) ? "most" : Q_FEW.test(p) ? "few" : null;
+      if (!kind) continue;
+      checked++;
+      const ok = c.some((m) => {
+        const n = m[key] || 0, total = Object.values(m).reduce((a, b) => a + b, 0), max = Math.max(...Object.values(m));
+        return kind === "one" ? n === 1 : kind === "none" ? n === 0 : kind === "few" ? n <= 2 : n > total / 2 || (/predomin|domina/.test(p) && n === max);
+      });
+      if (!ok) errors.push({ section, kind: "count", detail: `recuento: ${group === "ELEMENT" ? "elemento" : "modalidad"} ${key} = ${c[1][key] || 0} planetas (${c[0][key] || 0} con ángulos)`, excerpt: short(sent) });
+    }
+  }
+  return { checked, errors };
+}
+
+// ------------------------------------------------------------------ 7. plantilla visible (2.6.1)
+// El análisis previo pide mecanismo, defensa, costo, recurso y lectura alternativa; contarlos en cada sección deja la
+// estructura a la vista. Se cuentan las marcas de esa plantilla en todo el informe (sin el mito).
+const TEMPLATE = {
+  questions: { max: 3, re: null },
+  alternatives: { max: 2, re: /\b(otra lectura|admite (?:otra|una) lectura|lectura alternativa|lectura mas amable|tambien puede leerse|otra forma de leer)\b/g },
+  defenses: { max: 2, re: /\bla defensa (?:mas )?(?:probable|tipica|natural|habitual|frecuente)\b/g },
+  costs: { max: 2, re: /\bel costo (?:es|son|posible|puede|de esa|de esta)\b|\bsu costo\b/g },
+  closers: { max: 2, re: /\b(?:sostiene (?:esta|esa) lectura|sostiene ese lado|es su fuente|condensa (?:esa|la|este|ese) \w+|une esas dos ideas|lo indica|lo sugiere(?:n)?)\b/g },
+};
+function templateCheck(report) {
+  const out = { questions: 0, alternatives: 0, defenses: 0, costs: 0, closers: 0 };
+  for (const { section, text } of paragraphsOf(report)) {
+    if (section === "myth") continue;
+    out.questions += (text.match(/\?/g) || []).length;
+    const p = strip(text);
+    for (const k of ["alternatives", "defenses", "costs", "closers"]) out[k] += (p.match(TEMPLATE[k].re) || []).length;
+  }
+  out.over = Object.keys(out).filter((k) => TEMPLATE[k] && out[k] > TEMPLATE[k].max);
+  return out;
+}
+
 export const THRESHOLDS = {
   termsPerParagraph: 5, // un párrafo con cinco o más términos técnicos es denso
   jargonPer1000: 20, // por encima, se pide bajar la jerga (la guía v4 dio 11,5 a 17,8)
@@ -325,15 +396,21 @@ export function proseAudit(report, payload, recentPrints = []) {
   const enumerations = enumerationCheck(report);
   const within = repetitionWithin(report);
   const cross = crossRepetition(report, recentPrints);
+  const counts = countClaims(report, payload);
+  if (counts.errors.length) { claims.errors.push(...counts.errors); claims.checked += counts.checked; } else claims.checked += counts.checked;
+  const template = templateCheck(report);
   const fix = [];
   if (claims.errors.length) fix.push("claims");
   if (biography.length) fix.push("biography");
-  if (jargon.per1000 > THRESHOLDS.jargonPer1000 || jargon.dense.length >= THRESHOLDS.densePara || jargon.techOpenings.length >= THRESHOLDS.techOpenings) fix.push("jargon");
+  // la jerga se registra pero no dispara la reescritura completa (decisión del 22-nov: tiempo y costo); la redacción ya la limita
+  const notes = [];
+  if (jargon.per1000 > THRESHOLDS.jargonPer1000 || jargon.dense.length >= THRESHOLDS.densePara || jargon.techOpenings.length >= THRESHOLDS.techOpenings) notes.push("jargon");
   if (idioms.length >= THRESHOLDS.idioms || idioms.filter((i) => i.idiom.startsWith("no solo")).length > THRESHOLDS.notOnly) fix.push("idioms");
   if (enumerations.length >= THRESHOLDS.enumerations) fix.push("enumerations");
   if (within.phrases.length >= THRESHOLDS.repeatedPhrases || within.openings.length >= THRESHOLDS.repeatedOpenings || within.overused.length) fix.push("repetition");
   if (cross.length >= THRESHOLDS.crossShared) fix.push("cross_repetition");
-  return { version: PROSE_AUDIT_VERSION, ok: fix.length === 0, claims, biography, jargon, idioms, enumerations, within, cross, fix };
+  if (template.over.length) fix.push("template");
+  return { version: PROSE_AUDIT_VERSION, ok: fix.length === 0, claims, biography, jargon, idioms, enumerations, within, cross, template, fix, notes };
 }
 
 /** Texto para la fase C: solo los motivos que superaron el umbral. */
@@ -350,6 +427,15 @@ export function describeProse(r) {
     if (r.within.phrases.length) parts.push(`frases repetidas: ${r.within.phrases.slice(0, 5).map((p) => `«${p.phrase}»`).join(", ")}`);
     if (r.within.openings.length) parts.push(`párrafos que empiezan igual: ${r.within.openings.map((o) => `«${o.opening}…» (${o.count})`).join(", ")}`);
     out.push(`- Repeticiones dentro del informe: ${parts.join("; ")}. Variá sin buscar sinónimos de adorno: si una idea ya se dijo, no la repitas.`);
+  }
+  if (r.fix.includes("template")) {
+    const T = r.template, parts = [];
+    if (T.questions > 3) parts.push(`${T.questions} preguntas (máximo 3 en todo el informe)`);
+    if (T.alternatives > 2) parts.push(`${T.alternatives} «otra lectura» o equivalentes (máximo 2)`);
+    if (T.defenses > 2) parts.push(`${T.defenses} «la defensa más probable/típica» (máximo 2)`);
+    if (T.costs > 2) parts.push(`${T.costs} «el costo» (máximo 2)`);
+    if (T.closers > 2) parts.push(`${T.closers} cierres del tipo «…sostiene esta lectura», «…es su fuente», «…condensa…» (máximo 2)`);
+    out.push(`- La estructura del análisis quedó a la vista como plantilla: ${parts.join("; ")}. Integrá defensa, costo y alternativas en el relato solo donde importan, quitá preguntas hasta dejar las más necesarias y variá cómo nombrás el dato técnico (no siempre al final del párrafo).`);
   }
   if (r.fix.includes("cross_repetition")) out.push(`- Estas frases ya aparecieron en otros informes recientes. Reescribilas desde esta carta:\n${ex(r.cross, (c) => c.phrase, 8)}`);
   return out.join("\n");
