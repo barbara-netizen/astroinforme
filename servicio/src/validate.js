@@ -218,6 +218,8 @@ export function normalizePayload(p) {
         kind: oneOf(p.request.kind ?? "NATAL_FULL_REPORT", ["NATAL_FULL_REPORT"], "request.kind"), report_language: lang, address: LANGS[lang],
         address_gender: p.request.address_gender == null ? "UNSPECIFIED" : oneOf(p.request.address_gender, GENDERS, "request.address_gender"),
         include_myth: true,
+        // permiso para guardar una copia anónima en el banco de informes (casilla desmarcada por defecto)
+        bank_consent: p.request.bank_consent === true,
       },
       birth: { time_precision: precision, time_precision_label: PRECISIONS[precision] },
       chart: { bodies, south_node, houses, aspects, derived: normDerived(c.derived, timeKnown), sensitivity: normSensitivity(c.sensitivity) },

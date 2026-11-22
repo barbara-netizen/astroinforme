@@ -29,6 +29,7 @@
 
 import { auditReport, refText } from "../../audit.js";
 import { argumentAudit } from "../../argument_audit.js";
+import { bankEnabled, bankId, bankEntry, deposit, depositComment, purgeOld, validBankId } from "./bank.js";
 import { proseAudit, describeProse, fingerprint, repeatedMyth, PROSE_AUDIT_VERSION } from "../../prose_audit.js";
 import { styleCheck, describeStyle } from "./style.js";
 import { IDIOMA, TRATAMIENTO, PROMPT_ANALISIS, PROMPT_INFORME, PROMPT_CORRECCION } from "./prompts.js";
@@ -37,7 +38,7 @@ import { ledger } from "./ledger.js";
 import { routePayments, routeOrders, notifyOrderGeneration, runControls } from "./orders.js";
 import { getProvider, providerNames } from "./payments/provider.js";
 
-export const SERVICE_VERSION = "2.4";
+export const SERVICE_VERSION = "2.5";
 const DEFAULT_MODEL = "claude-opus-5-5";
 // la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
 const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
@@ -185,7 +186,8 @@ export function chartForModel(p) {
   if (!n.ok) throw new Error("bad_request");
   // al modelo solo llega la política de aspectos: engine.version es texto elegido por el cliente y no le hace falta
   const { person, engine, ...rest } = n.payload;
-  return { ...rest, engine: { aspect_policy: engine.aspect_policy } };
+  const { bank_consent, ...request } = rest.request; // el permiso del banco no le hace falta al modelo
+  return { ...rest, request, engine: { aspect_policy: engine.aspect_policy } };
 }
 
 function describeArgument(argument) {
@@ -422,6 +424,8 @@ export async function handleFeedback(request, env, cors, requireCode) {
   const at = new Date().toISOString();
   const title = String((body && body.report_title) || "").slice(0, 200);
   await kv.put(`fb:${at}:${code}`, JSON.stringify({ code, at, report_title: title, text }));
+  // si el informe está en el banco (con permiso), el comentario se suma con el mismo número
+  if (validBankId(body && body.bank_id)) await depositComment(env, body.bank_id, text, at);
   await kv.put(ck, String(n + 1));
   return json({ ok: true }, 200, cors);
 }
@@ -538,6 +542,12 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
       await addToMonth(kv, mk, { usd: spent.usd, failed: 1 }).catch((e) => console.log(JSON.stringify({ event: "month_failed", detail: String((e && e.message) || e) })));
       out = { error: "audit_failed" }; outcome = "audit_failed";
     } else {
+      // banco de informes: solo con permiso explícito; un fallo acá no frena la entrega y no se muestra un número que no existe
+      if (job.payload.request.bank_consent && bankEnabled(env)) {
+        const id = await bankId(result.report);
+        const entry = bankEntry({ id, report: result.report, payload: job.payload, chart: chartForModel(job.payload), usd: spent.usd, service: SERVICE_VERSION, model: env.MODEL || DEFAULT_MODEL });
+        if (await deposit(env, entry)) result.report.bank_id = id;
+      }
       let used = null;
       if (useCode) {
         // consumo idempotente: si el cierre del mismo pedido se repite (misma ficha de reserva), no descuenta dos veces
@@ -622,7 +632,7 @@ export async function generationAvailable(env) {
 
 export default {
   // control periódico de pedidos pagos (Cron); no hace nada fuera del modo "paid"
-  async scheduled(event, env, ctx) { ctx.waitUntil(runControls(env, event.scheduledTime || Date.now())); },
+  async scheduled(event, env, ctx) { const t = event.scheduledTime || Date.now(); ctx.waitUntil(runControls(env, t)); ctx.waitUntil(purgeOld(env, t)); },
   async fetch(request, env, ctx) {
     const cors = corsHeaders(request, env);
     const url = new URL(request.url);
