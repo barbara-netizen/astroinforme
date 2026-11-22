@@ -29,6 +29,8 @@
 
 import { auditReport, refText } from "../../audit.js";
 import { argumentAudit } from "../../argument_audit.js";
+import { sendMail as sendMailLink, fullReportMail, mailEnabled as mailOn, validEmail as emailOk } from "./mail.js";
+import { sha256Hex as sha256OfText } from "./order.js";
 import { bankEnabled, bankId, bankEntry, deposit, depositComment, purgeOld, validBankId } from "./bank.js";
 import { proseAudit, describeProse, fingerprint, repeatedMyth, PROSE_AUDIT_VERSION } from "../../prose_audit.js";
 import { styleCheck, describeStyle } from "./style.js";
@@ -38,7 +40,7 @@ import { ledger } from "./ledger.js";
 import { routePayments, routeOrders, notifyOrderGeneration, runControls } from "./orders.js";
 import { getProvider, providerNames } from "./payments/provider.js";
 
-export const SERVICE_VERSION = "2.5";
+export const SERVICE_VERSION = "2.6";
 const DEFAULT_MODEL = "claude-opus-5-5";
 // la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
 const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
@@ -58,7 +60,7 @@ export function corsHeaders(request, env) {
   const origin = request.headers.get("origin") || "";
   const allowed = (env.ALLOWED_ORIGINS || DEFAULT_ORIGINS).split(",").map((s) => s.trim()).filter(Boolean);
   const ok = allowed.includes("*") || allowed.includes(origin);
-  return ok ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code, x-turnstile-token, x-order-token", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
+  return ok ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code, x-turnstile-token, x-order-token, x-link-key", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
 }
 
 /**
@@ -524,7 +526,10 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
     await kv.put(vKey, String(vUsed + 1), { expirationTtl: 172800 });
     await kv.put(dKey, String(dUsed + 1), { expirationTtl: 172800 });
   }
-  return { job: { payload, fp, token, codeKind, order, requestId, useCode, code: useCode ? code : null, limit, mk, vKey, vUsed, dKey, dUsed } };
+  // correo opcional para recibir el informe completo al terminar (2.6). Las compras ya tienen su propio correo.
+  const ne = incoming && typeof incoming.notify_email === "string" ? incoming.notify_email.trim() : "";
+  const notifyEmail = ne && emailOk(ne) && codeKind !== "order" && mailOn(env) ? ne : null;
+  return { job: { payload, fp, token, codeKind, order, requestId, useCode, code: useCode ? code : null, limit, mk, vKey, vUsed, dKey, dUsed, notifyEmail } };
 }
 
 /**
@@ -563,6 +568,8 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
       }
       await addToMonth(kv, mk, { usd: spent.usd, reports: 1 }).catch((e) => console.log(JSON.stringify({ event: "month_failed", detail: String((e && e.message) || e) })));
       out = { report: result.report, remaining: useCode && used != null ? Math.max(0, limit - used) : null }; outcome = "delivered";
+      // informe completo por correo, si la persona dio uno: no depende de que la app siga abierta
+      if (job.notifyEmail) out.mailed = await mailReportLink(env, job, result.report).catch(() => false);
     }
   } else {
     out = { error: "upstream" }; outcome = "upstream";
@@ -587,6 +594,27 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
   // pedido pago: el pedido registra cómo terminó la generación (entregado o fallido, para la cola de excepciones)
   if (job.codeKind === "order") await notifyOrderGeneration(env, job.orderId, requestId, outcome).catch(() => { });
   return out;
+}
+
+// ---------------------------------------------------------------- enlace privado del informe (2.6)
+export const LINK_TTL = 7 * 86400, LINK_DAYS = 7;
+const linkHex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
+/** Guarda una copia del informe por 7 días bajo un enlace privado y manda el correo. El correo no se guarda. */
+export async function mailReportLink(env, job, report) {
+  if (!env.ASTRO_KV || !job.notifyEmail) return false;
+  const id = linkHex(8), key = linkHex(24);
+  const payload = { ...job.payload, person: { first_name: null } }; // la carta para rearmar la rueda; sin el nombre
+  await env.ASTRO_KV.put("lnk:" + id, JSON.stringify({ keyHash: await sha256OfText(key), report, payload, at: new Date().toISOString() }), { expirationTtl: LINK_TTL });
+  const url = `${(env.APP_URL || "https://asterorbis.com").replace(/\/$/, "")}/?informe=${id}#k=${key}`;
+  const m = fullReportMail(job.payload.request.report_language, report, url, LINK_DAYS);
+  return sendMailLink(env, { to: job.notifyEmail, subject: m.subject, text: m.text, html: m.html, key: `lnk-${job.requestId || id}` });
+}
+/** GET /links/<id> con la clave en «x-link-key»: devuelve el informe guardado. */
+async function handleLink(env, id, keyHeader, cors) {
+  if (!/^[0-9a-f]{16}$/.test(id) || !/^[0-9a-f]{48}$/.test(keyHeader || "")) return json({ error: "not_found" }, 404, cors);
+  const saved = await kvGetJSON(env.ASTRO_KV, "lnk:" + id, null);
+  if (!saved || saved.keyHash !== (await sha256OfText(keyHeader))) return json({ error: "not_found" }, 404, cors);
+  return json({ report: saved.report, chart: saved.payload }, 200, { ...cors, "cache-control": "no-store" });
 }
 
 /** Deshace la reserva de un pedido admitido que no llegó a arrancar. */
@@ -677,6 +705,11 @@ export default {
       if (r) return r;
     }
 
+    // informe guardado detrás de un enlace privado del correo: GET /links/<id>
+    if (request.method === "GET" && url.pathname.startsWith("/links/")) {
+      if (!env.ASTRO_KV) return json({ error: "not_configured" }, 503, cors);
+      return handleLink(env, url.pathname.slice(7), request.headers.get("x-link-key"), cors);
+    }
     // estado de un trabajo desacoplado: GET /jobs/<request_id>
     if (request.method === "GET" && url.pathname.startsWith(JOB_PREFIX + "/")) {
       if (!env.REPORT_JOB) return json({ error: "not_configured" }, 503, cors);

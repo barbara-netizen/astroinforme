@@ -86,6 +86,7 @@ export class ReportJob {
   /** Guarda el resultado, borra las fases intermedias y programa la limpieza a las 48 h. */
   async close(meta, out) {
     meta.status = out.error ? "failed" : "done";
+    if (meta.job) delete meta.job.notifyEmail; // el correo se usa una vez y no queda guardado
     meta.cleanupAt = Date.now() + (meta.job.retainMs || REPORT_TTL * 1000);
     await this.storage.put("out", out);
     await this.storage.delete(["phase:analisis", "phase:report_b"]);
