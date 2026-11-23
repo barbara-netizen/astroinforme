@@ -53,7 +53,7 @@ function auditReport(report, payload) {
   const unrel = chart.sensitivity && chart.sensitivity.unreliable || [];
   const signUnrel = (id) => unrel.some((u) => u.item === id && u.field === "sign");
   const houseUnrel = (id) => unrel.some((u) => u.item === id && u.field === "house");
-  const findAspect = (a, b, type) => chart.aspects.find((x) => (!type || x.aspect === type) && (x.a === a && x.b === b || x.a === b && x.b === a));
+  const findAspect2 = (a, b, type) => chart.aspects.find((x) => (!type || x.aspect === type) && (x.a === a && x.b === b || x.a === b && x.b === a));
   const refs = Array.isArray(report.technical_references_used) ? report.technical_references_used : [];
   const declaredMinutes = /* @__PURE__ */ new Set();
   for (const r of refs) {
@@ -110,7 +110,7 @@ function auditReport(report, payload) {
       if (r.sign && signUnrel(axis)) probs.push({ field: "reliability", note: "Signo del \xE1ngulo sensible a la precisi\xF3n horaria." });
       probs.length ? issues.push({ ref: r, problems: probs }) : checked.push(r);
     } else if (r.type === "aspect") {
-      const a = findAspect(r.a, r.b, r.aspect);
+      const a = findAspect2(r.a, r.b, r.aspect);
       if (!a) issues.push({ ref: r, problems: [{ field: "aspect", note: `No figura en la carta calculada con la pol\xEDtica ${payload.engine.aspect_policy}.` }] });
       else if (a.reliable === false) issues.push({ ref: r, problems: [{ field: "reliability", note: "Aspecto sensible a la precisi\xF3n horaria." }] });
       else checked.push({ ...r, orb: a.orb });
@@ -123,7 +123,7 @@ function auditReport(report, payload) {
       }
       const m = membersOf(found), weak = [];
       for (let i = 0; i < m.length; i++) for (let j = i + 1; j < m.length; j++) {
-        const a = findAspect(m[i], m[j]);
+        const a = findAspect2(m[i], m[j]);
         if (a && a.reliable === false) weak.push(a);
       }
       weak.length ? issues.push({ ref: r, problems: [{ field: "reliability", note: "Alguno de sus aspectos es sensible a la precisi\xF3n horaria." }] }) : checked.push(r);
@@ -241,6 +241,983 @@ function argumentAudit(report, payload) {
   return { declared: true, theses: out, ok: out.every((t) => !t.central || t.status === "supported") };
 }
 
+// src/mail.js
+var mailEnabled = (env) => !!(env.MAIL_API_KEY && env.MAIL_FROM);
+async function sendMailResult(env, { to, subject, text, html, key }) {
+  if (!mailEnabled(env) || !to) return { ok: false, status: null, skipped: true };
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer " + env.MAIL_API_KEY, ...key ? { "idempotency-key": key } : {} },
+      body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject, text, ...html ? { html } : {}, ...env.ADMIN_EMAIL ? { reply_to: env.ADMIN_EMAIL } : {} })
+    });
+    if (!r.ok) console.log(JSON.stringify({ event: "mail_rejected", status: r.status }));
+    return { ok: r.ok, status: r.status };
+  } catch (e) {
+    console.log(JSON.stringify({ event: "mail_error" }));
+    return { ok: false, status: null };
+  }
+}
+async function sendMail(env, msg) {
+  return (await sendMailResult(env, msg)).ok;
+}
+var mailRetryable = (status) => status == null || status === 429 || status === 409 || status >= 500;
+var TEXTS = {
+  es: { subject: "Tu informe de AsterOrbis est\xE1 listo", body: (u, d) => `Tu informe est\xE1 listo.
+
+Abrilo desde este enlace privado:
+${u}
+
+El enlace funciona durante ${d} d\xEDas. Desde ah\xED pod\xE9s guardar el PDF. Despu\xE9s de ese plazo, el informe y tu carta se borran.
+
+No compartas este enlace: quien lo tenga puede leer el informe. Si algo no funciona, respond\xE9 este correo.
+
+B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis` },
+  de: { subject: "Dein AsterOrbis-Bericht ist fertig", body: (u, d) => `Dein Bericht ist fertig.
+
+\xD6ffne ihn \xFCber diesen privaten Link:
+${u}
+
+Der Link gilt ${d} Tage. Dort kannst du das PDF speichern. Nach Ablauf dieser Frist werden Bericht und Horoskop gel\xF6scht.
+
+Teile diesen Link nicht: Wer ihn hat, kann den Bericht lesen. Wenn etwas nicht funktioniert, antworte auf diese E-Mail.
+
+B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis` },
+  en: { subject: "Your AsterOrbis report is ready", body: (u, d) => `Your report is ready.
+
+Open it from this private link:
+${u}
+
+The link works for ${d} days. You can save the PDF from there. After that, the report and your chart are deleted.
+
+Do not share this link: anyone who has it can read the report. If something does not work, reply to this email.
+
+B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis` }
+};
+function reportMail(lang, url, days) {
+  const t = TEXTS[lang] || TEXTS.es;
+  return { subject: t.subject, text: t.body(url, days) };
+}
+var validEmail = (x) => typeof x === "string" && x.length <= 254 && /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;".]{2,}$/.test(x.trim());
+var esc = (x) => String(x == null ? "" : x).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+var FULL = {
+  es: { subject: (t) => `Tu informe de AsterOrbis: ${t}`, intro: "Este es tu informe completo. Tambi\xE9n pod\xE9s abrirlo en AsterOrbis, con las ilustraciones, y guardarlo en PDF desde este enlace privado:", button: "Abrir el informe y guardar el PDF", days: (d) => `El enlace funciona durante ${d} d\xEDas; despu\xE9s, la copia guardada se borra. Este correo queda en tu casilla.`, warn: "No compartas el enlace: quien lo tenga puede leer el informe.", sign: "B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis" },
+  de: { subject: (t) => `Dein AsterOrbis-Bericht: ${t}`, intro: "Hier ist dein vollst\xE4ndiger Bericht. \xDCber diesen privaten Link kannst du ihn mit den Illustrationen in AsterOrbis \xF6ffnen und als PDF speichern:", button: "Bericht \xF6ffnen und PDF speichern", days: (d) => `Der Link gilt ${d} Tage; danach wird die gespeicherte Kopie gel\xF6scht. Diese E-Mail bleibt in deinem Postfach.`, warn: "Teile den Link nicht: Wer ihn hat, kann den Bericht lesen.", sign: "B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis" },
+  en: { subject: (t) => `Your AsterOrbis report: ${t}`, intro: "Here is your full report. You can also open it in AsterOrbis, with the illustrations, and save it as a PDF from this private link:", button: "Open the report and save the PDF", days: (d) => `The link works for ${d} days; after that, the stored copy is deleted. This email stays in your inbox.`, warn: "Do not share the link: anyone who has it can read the report.", sign: "B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis" }
+};
+function fullReportMail(lang, report, url, days) {
+  const t = FULL[lang] || FULL.es, title = String(report.title || "").slice(0, 160);
+  const secs = (report.sections || []).filter((s) => s && s.body_markdown);
+  const paras = (b) => String(b).split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  const html = `<!doctype html><html lang="${esc(lang)}"><body style="margin:0;background:#f4efe3;">
+<div style="max-width:620px;margin:0 auto;padding:28px 22px;font-family:Georgia,'Times New Roman',serif;color:#1c2230;line-height:1.6;font-size:17px;">
+<p style="font-family:Arial,sans-serif;font-size:13px;letter-spacing:0.12em;color:#5d6573;margin:0 0 18px;">ASTERORBIS</p>
+<h1 style="font-weight:normal;font-size:28px;line-height:1.25;margin:0 0 18px;">${esc(title)}</h1>
+<p style="font-family:Arial,sans-serif;font-size:15px;color:#3a4150;">${esc(t.intro)}</p>
+<p style="margin:18px 0 28px;"><a href="${esc(url)}" style="display:inline-block;background:#1f3a5f;color:#ffffff;text-decoration:none;font-family:Arial,sans-serif;font-size:15px;padding:12px 20px;border-radius:999px;">${esc(t.button)}</a></p>
+${secs.map((s) => `<h2 style="font-weight:normal;font-size:21px;line-height:1.3;margin:32px 0 10px;color:#1f3a5f;">${esc(s.heading)}</h2>
+${paras(s.body_markdown).map((p) => `<p style="margin:0 0 14px;">${esc(p)}</p>`).join("\n")}`).join("\n")}
+<hr style="border:none;border-top:1px solid #c9cdc6;margin:32px 0 16px;">
+<p style="font-family:Arial,sans-serif;font-size:13px;color:#5d6573;">${esc(t.days(days))} ${esc(t.warn)}</p>
+<p style="font-family:Arial,sans-serif;font-size:13px;color:#5d6573;">${esc(t.sign)}</p>
+</div></body></html>`;
+  const text = `${title}
+
+${t.intro}
+${url}
+
+${secs.map((s) => `${String(s.heading || "").toUpperCase()}
+
+${paras(s.body_markdown).join("\n\n")}`).join("\n\n\n")}
+
+\u2014
+${t.days(days)} ${t.warn}
+${t.sign}`;
+  return { subject: t.subject(title), html, text };
+}
+
+// src/order.js
+var PENDING_TTL_MS = 7 * 24 * 3600 * 1e3;
+var START_WATCH_MS = 10 * 60 * 1e3;
+var RUN_WATCH_MS = 75 * 60 * 1e3;
+var RETAIN_MS = 7 * 24 * 3600 * 1e3;
+var MAX_MAIL_TRIES = 5;
+async function flag(env, id, reason) {
+  if (env && env.ASTRO_KV) await env.ASTRO_KV.put("exc:" + id, JSON.stringify({ order_id: id, reason, at: (/* @__PURE__ */ new Date()).toISOString() })).catch(() => {
+  });
+}
+var EVENTS_KEEP = 50;
+var ok = (obj2, status = 200) => new Response(JSON.stringify(obj2), { status, headers: { "content-type": "application/json; charset=utf-8" } });
+async function sha256Hex(s) {
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
+  return [...h].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function publicView(o) {
+  return {
+    order_id: o.id,
+    product: o.product,
+    provider: o.provider,
+    amount: o.amountMinor / 100,
+    currency: o.currency,
+    payment_status: o.payment.status,
+    generation_status: o.generation.status,
+    generation_started_at: o.generation.startedAt,
+    created_at: o.createdAt,
+    updated_at: o.updatedAt
+  };
+}
+var OrderDO = class {
+  constructor(state, env) {
+    this.state = state;
+    this.storage = state.storage;
+    this.env = env;
+    this.queue = Promise.resolve();
+  }
+  serial(fn) {
+    const run = this.queue.then(fn, fn);
+    this.queue = run.catch(() => {
+    });
+    return run;
+  }
+  async save(o) {
+    o.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    await this.storage.put("o", o);
+  }
+  async fetch(request) {
+    const path = new URL(request.url).pathname;
+    const b = await request.json().catch(() => ({}));
+    return this.serial(async () => {
+      if (path === "/claim") {
+        const c = await this.storage.get("claim");
+        if (c) return ok({ ...c, first: false });
+        await this.storage.put("claim", { id: b.id, token: b.token, url: null });
+        await this.storage.setAlarm(Date.now() + PENDING_TTL_MS);
+        return ok({ id: b.id, token: b.token, url: null, first: true });
+      }
+      if (path === "/claim-url") {
+        const c = await this.storage.get("claim");
+        if (c) {
+          c.url = b.url;
+          await this.storage.put("claim", c);
+        }
+        return ok({});
+      }
+      if (path === "/claim-release") {
+        await this.storage.delete("claim");
+        return ok({});
+      }
+      let o = await this.storage.get("o");
+      if (path === "/create") {
+        if (o) return ok({ existed: true, order: publicView(o) });
+        o = {
+          ...b.order,
+          payment: { status: "created", externalId: null, externalCheckoutId: null, events: [], paidAt: null, mismatch: null },
+          generation: { status: "none", jobId: null, attempts: 0, startedAt: null, deliveredAt: null, lastOutcome: null },
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        await this.save(o);
+        await this.storage.put("payload", b.payload);
+        if (b.email) await this.storage.put("email", b.email);
+        await this.storage.setAlarm(Date.now() + PENDING_TTL_MS);
+        return ok({ existed: false, order: publicView(o) });
+      }
+      if (!o) return ok({ error: "not_found" }, 404);
+      if (path === "/view") {
+        const hash = b.token ? await sha256Hex(b.token) : null;
+        if (!hash || hash !== o.tokenHash && hash !== (o.mail && o.mail.tokenHash)) return ok({ error: "forbidden" }, 403);
+        const open = o.generation.status === "delivered" && o.payment.status !== "refunded";
+        return ok({ order: publicView(o), jobId: open ? o.generation.jobId : null, chart: open ? await this.storage.get("payload") || null : null });
+      }
+      if (path === "/checkout") {
+        o.payment.externalCheckoutId = b.externalCheckoutId || null;
+        await this.save(o);
+        return ok({ order: publicView(o) });
+      }
+      if (path === "/payment") {
+        const tx = b.tx || {};
+        if (b.eventId && o.payment.events.includes(b.eventId)) return ok({ action: "none", duplicate: true, order: publicView(o) });
+        if (b.eventId) o.payment.events = [...o.payment.events, b.eventId].slice(-EVENTS_KEEP);
+        if (tx.orderId !== o.id || b.provider && b.provider !== o.provider) {
+          await this.save(o);
+          return ok({ action: "none", ignored: "other_order", order: publicView(o) });
+        }
+        if (o.payment.externalId && tx.externalId && tx.externalId !== o.payment.externalId && ["paid", "refunded"].includes(tx.status)) {
+          await this.save(o);
+          return ok({ action: "none", exception: tx.status === "paid" ? "duplicate_payment" : "refund_other_payment", order: publicView(o) });
+        }
+        let action = "none", exception = null;
+        if (tx.status === "paid") {
+          const wrong = [];
+          if (tx.amountMinor !== o.amountMinor) wrong.push("amount");
+          if (tx.currency !== o.currency) wrong.push("currency");
+          if (o.productRef && tx.productRef !== o.productRef) wrong.push("product");
+          if (o.payment.status === "refunded" || o.payment.status === "mismatch") {
+          } else if (wrong.length) {
+            o.payment.status = "mismatch";
+            o.payment.mismatch = { fields: wrong, amountMinor: tx.amountMinor, currency: tx.currency, productRef: tx.productRef };
+            exception = "payment_mismatch";
+          } else {
+            if (o.payment.status !== "paid") {
+              o.payment.status = "paid";
+              o.payment.paidAt = (/* @__PURE__ */ new Date()).toISOString();
+              o.payment.externalId = o.payment.externalId || tx.externalId;
+            }
+            if (o.generation.status === "none") {
+              o.generation.status = "starting";
+              o.generation.attempts = 1;
+              o.generation.jobId = o.id;
+              o.generation.startedAt = (/* @__PURE__ */ new Date()).toISOString();
+              action = "start";
+            }
+          }
+        } else if (tx.status === "refunded") {
+          o.payment.status = "refunded";
+          if (o.generation.status !== "delivered") await this.storage.delete("payload");
+        } else if (["failed", "cancelled"].includes(tx.status)) {
+          if (!["paid", "refunded", "mismatch"].includes(o.payment.status)) o.payment.status = tx.status;
+        } else if (tx.status === "pending" && o.payment.status === "created") {
+          o.payment.status = "pending";
+        }
+        await this.save(o);
+        if (action === "start") await this.storage.setAlarm(Date.now() + START_WATCH_MS);
+        const payload = action === "start" ? await this.storage.get("payload") : void 0;
+        if (action === "start" && !payload) {
+          o.generation.status = "failed";
+          o.generation.lastOutcome = "payload_missing";
+          await this.save(o);
+          return ok({ action: "none", exception: "payload_missing", order: publicView(o) });
+        }
+        return ok({ action, exception, jobId: o.generation.jobId, payload, order: publicView(o), internal: { externalId: o.payment.externalId, provider: o.provider } });
+      }
+      if (path === "/started") {
+        if (b.jobId === o.generation.jobId && o.generation.status === "starting") {
+          o.generation.status = "running";
+          await this.save(o);
+          await this.storage.setAlarm(Date.now() + RUN_WATCH_MS);
+        }
+        return ok({ order: publicView(o) });
+      }
+      if (path === "/generation") {
+        const ownJob = typeof b.jobId === "string" && (b.jobId === o.id || b.jobId.startsWith(o.id + "-r"));
+        if (!ownJob || b.jobId !== o.generation.jobId && b.outcome !== "delivered") return ok({ ignored: true, order: publicView(o) });
+        if (b.outcome === "delivered") {
+          o.generation.jobId = b.jobId;
+          o.generation.status = "delivered";
+          o.generation.deliveredAt = (/* @__PURE__ */ new Date()).toISOString();
+          o.generation.lastOutcome = "delivered";
+          o.retainUntil = Date.now() + RETAIN_MS;
+          await this.storage.setAlarm(o.retainUntil);
+        } else if (o.generation.status !== "delivered") {
+          o.generation.status = "failed";
+          o.generation.lastOutcome = b.outcome || "error";
+        }
+        await this.save(o);
+        return ok({ order: publicView(o), exception: o.generation.status === "failed" ? "generation_failed" : null });
+      }
+      if (path === "/retry") {
+        if (o.payment.status !== "paid" || o.generation.status !== "failed") return ok({ error: "not_retryable", order: publicView(o) }, 409);
+        const payload = await this.storage.get("payload");
+        if (!payload) return ok({ error: "payload_missing", order: publicView(o) }, 409);
+        o.generation.attempts += 1;
+        o.generation.jobId = `${o.id}-r${o.generation.attempts - 1}`;
+        o.generation.status = "starting";
+        o.generation.startedAt = (/* @__PURE__ */ new Date()).toISOString();
+        await this.save(o);
+        return ok({ action: "start", jobId: o.generation.jobId, payload, order: publicView(o) });
+      }
+      if (path === "/mail-prepare") {
+        o.mail = o.mail || { status: "none", tries: 0, tokenHash: null, sentAt: null };
+        if (o.generation.status !== "delivered" || o.payment.status === "refunded" || o.mail.status === "sent" || o.mail.tries >= MAX_MAIL_TRIES) return ok({ skip: true, mail: o.mail });
+        const email = await this.storage.get("email");
+        if (!email) return ok({ skip: true, mail: o.mail });
+        const token = [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, "0")).join("");
+        o.mail.tries += 1;
+        o.mail.status = "sending";
+        o.mail.tokenHash = await sha256Hex(token);
+        await this.save(o);
+        return ok({ email, token, lang: o.lang, tries: o.mail.tries });
+      }
+      if (path === "/mail-result") {
+        if (o.mail) {
+          o.mail.status = b.ok ? "sent" : "failed";
+          if (b.ok) o.mail.sentAt = (/* @__PURE__ */ new Date()).toISOString();
+          await this.save(o);
+        }
+        return ok({ mail: o.mail || null });
+      }
+      if (path === "/check") return ok({ order: publicView(o), attempts: o.generation.attempts, mail: o.mail ? { status: o.mail.status, tries: o.mail.tries } : null, createdAt: o.createdAt, provider: o.provider, paidAt: o.payment.paidAt });
+      if (path === "/refund") {
+        return ok({ order: publicView(o), internal: { externalId: o.payment.externalId, provider: o.provider }, refundable: o.payment.status === "paid" });
+      }
+      return ok({ error: "bad_request" }, 400);
+    });
+  }
+  /**
+   * Alarma del pedido:
+   *  - vigilancia de la generación: si quedó en «starting» o «running» más de lo previsto (el Worker se cortó, el
+   *    trabajo no arrancó), pasa a «failed» y entra en la cola de excepciones para reintentar o reembolsar;
+   *  - vencimiento: a los 7 días, un pedido sin pagar pierde la carta y queda cancelado; un pedido pagado que no se
+   *    entregó también pierde la carta (queda en excepciones para reembolso).
+   */
+  async alarm() {
+    return this.serial(async () => {
+      const o = await this.storage.get("o");
+      if (!o) {
+        await this.storage.deleteAll();
+        return;
+      }
+      const now = Date.now(), started = o.generation.startedAt ? Date.parse(o.generation.startedAt) : 0;
+      if (o.generation.status === "starting" || o.generation.status === "running") {
+        const limit = o.generation.status === "starting" ? START_WATCH_MS : RUN_WATCH_MS;
+        if (now - started >= limit) {
+          o.generation.lastOutcome = o.generation.status === "starting" ? "start_lost" : "timeout";
+          o.generation.status = "failed";
+          await this.save(o);
+          await flag(this.env, o.id, "generation_stuck");
+        } else {
+          await this.storage.setAlarm(started + limit);
+          return;
+        }
+      }
+      const created = Date.parse(o.createdAt), until = Math.max(created + PENDING_TTL_MS, o.retainUntil || 0);
+      if (now < until) {
+        await this.storage.setAlarm(until);
+        return;
+      }
+      if (o.generation.status !== "delivered" && await this.storage.get("payload") && o.payment.status === "paid") await flag(this.env, o.id, "payload_expired");
+      await this.storage.delete(["payload", "email"]);
+      if (o.mail) o.mail.tokenHash = null;
+      if (!["paid", "refunded", "mismatch"].includes(o.payment.status)) {
+        o.payment.status = "cancelled";
+        o.generation.lastOutcome = o.generation.lastOutcome || "expired_unpaid";
+      }
+      await this.save(o);
+    });
+  }
+};
+
+// src/bank.js
+var BANK_MONTHS = 24;
+var BANK_MARK_TTL = 7 * 86400;
+var API = "https://api.github.com";
+var ID_RE = /^AO-[A-Z2-7]{8}$/;
+var bankEnabled = (env) => !!(env && env.BANK_GITHUB_TOKEN && env.BANK_REPO && /^[\w.-]+\/[\w.-]+$/.test(env.BANK_REPO));
+var validBankId = (x) => typeof x === "string" && ID_RE.test(x);
+var B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+async function bankId(report) {
+  const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(report && report.sections || []))));
+  let bits = 0, val = 0, out = "";
+  for (const b of bytes) {
+    val = val << 8 | b;
+    bits += 8;
+    while (bits >= 5 && out.length < 8) {
+      out += B32[val >>> bits - 5 & 31];
+      bits -= 5;
+    }
+    if (out.length >= 8) break;
+  }
+  return "AO-" + out;
+}
+var escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function anonymize(report, firstName) {
+  const r = JSON.parse(JSON.stringify(report));
+  const parts = firstName ? [firstName, ...firstName.split(/[\s'’.-]+/)].map((x) => x.trim()).filter((x) => x.length >= 2) : [];
+  if (!parts.length) return r;
+  const re = new RegExp(`(?<![\\p{L}\\p{M}])(?:${[...new Set(parts)].sort((a, b) => b.length - a.length).map(escapeRe).join("|")})(?![\\p{L}\\p{M}])`, "giu");
+  const fix = (s) => typeof s === "string" ? s.replace(re, "[nombre]") : s;
+  r.title = fix(r.title);
+  for (const s of r.sections || []) {
+    s.heading = fix(s.heading);
+    s.body_markdown = fix(s.body_markdown);
+  }
+  for (const t of r.theses || []) t.claim = fix(t.claim);
+  return r;
+}
+function bankEntry({ id, report, payload, chart, usd, service, model, now = /* @__PURE__ */ new Date() }) {
+  const clean = anonymize(report, payload.person && payload.person.first_name);
+  delete clean.bank_id;
+  const myth = (clean.sections || []).find((s) => s && s.id === "myth");
+  return {
+    schema: "asterorbis.bank/v1",
+    id,
+    month: now.toISOString().slice(0, 7),
+    service,
+    model,
+    language: payload.request.report_language,
+    address_gender: payload.request.address_gender,
+    time_precision: payload.birth.time_precision,
+    had_first_name: !!(payload.person && payload.person.first_name),
+    usd: +(+usd || 0).toFixed(4),
+    myth_heading: myth ? myth.heading : null,
+    chart,
+    report: clean,
+    comments: []
+  };
+}
+var utf8b64 = (s) => {
+  const b = new TextEncoder().encode(s);
+  let bin = "";
+  for (let i = 0; i < b.length; i += 32768) bin += String.fromCharCode(...b.subarray(i, i + 32768));
+  return btoa(bin);
+};
+var gh = (env, path, init = {}) => fetch(`${API}/repos/${env.BANK_REPO}/contents/${path}`, {
+  ...init,
+  headers: { authorization: `Bearer ${env.BANK_GITHUB_TOKEN}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "asterorbis-servicio", ...init.body ? { "content-type": "application/json" } : {} }
+});
+async function putFile(env, path, obj2, message) {
+  const res = await gh(env, path, { method: "PUT", body: JSON.stringify({ message, content: utf8b64(JSON.stringify(obj2, null, 2) + "\n") }) });
+  if (res.ok) return true;
+  if (res.status === 422) return true;
+  throw new Error(`bank_${res.status}`);
+}
+async function deposit(env, entry) {
+  if (!bankEnabled(env)) return false;
+  try {
+    const [y, m] = entry.month.split("-");
+    await putFile(env, `informes/${y}/${m}/${entry.id}.json`, entry, `Informe ${entry.id}`);
+    if (env.ASTRO_KV) await env.ASTRO_KV.put("bank:" + entry.id, entry.month, { expirationTtl: BANK_MARK_TTL }).catch(() => {
+    });
+    return true;
+  } catch (e) {
+    console.log(JSON.stringify({ event: "bank_failed", detail: String(e && e.message || e) }));
+    return false;
+  }
+}
+async function depositComment(env, id, text, at = (/* @__PURE__ */ new Date()).toISOString()) {
+  if (!bankEnabled(env) || !validBankId(id) || !env.ASTRO_KV) return false;
+  const month = await env.ASTRO_KV.get("bank:" + id).catch(() => null);
+  if (!month) return false;
+  try {
+    const [y, m] = month.split("-");
+    await putFile(env, `comentarios/${y}/${m}/${id}-${at.replace(/[^0-9]/g, "").slice(0, 14)}.json`, { id, month, text }, `Comentario ${id}`);
+    return true;
+  } catch (e) {
+    console.log(JSON.stringify({ event: "bank_comment_failed", detail: String(e && e.message || e) }));
+    return false;
+  }
+}
+async function purgeOld(env, nowMs = Date.now()) {
+  if (!bankEnabled(env) || !env.ASTRO_KV) return 0;
+  const now = new Date(nowMs), tag = "bank:purged:" + now.toISOString().slice(0, 7);
+  if (await env.ASTRO_KV.get(tag)) return 0;
+  const cut = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - BANK_MONTHS, 1)).toISOString().slice(0, 7);
+  let removed = 0;
+  const list = async (p) => {
+    const r = await gh(env, p);
+    return r.ok ? r.json() : [];
+  };
+  try {
+    for (const root of ["informes", "comentarios"]) for (const y of await list(root)) {
+      if (y.type !== "dir") continue;
+      for (const mo of await list(`${root}/${y.name}`)) {
+        if (mo.type !== "dir" || `${y.name}-${mo.name}` >= cut) continue;
+        for (const f of await list(`${root}/${y.name}/${mo.name}`)) {
+          if (f.type !== "file") continue;
+          const r = await gh(env, f.path, { method: "DELETE", body: JSON.stringify({ message: `Vencimiento ${BANK_MONTHS} meses`, sha: f.sha }) });
+          if (r.ok) removed++;
+        }
+      }
+    }
+    await env.ASTRO_KV.put(tag, String(removed), { expirationTtl: 40 * 86400 });
+  } catch (e) {
+    console.log(JSON.stringify({ event: "bank_purge_failed", detail: String(e && e.message || e) }));
+  }
+  return removed;
+}
+
+// ../prose_audit.js
+var PROSE_AUDIT_VERSION = "1";
+var strip = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+var PLANETS = { sol: "SUN", luna: "MOON", mercurio: "MERCURY", venus: "VENUS", marte: "MARS", jupiter: "JUPITER", saturno: "SATURN", urano: "URANUS", neptuno: "NEPTUNE", pluton: "PLUTO", quiron: "CHIRON", "nodo norte": "NORTH_NODE" };
+var SIGNS2 = { aries: "ARIES", tauro: "TAURUS", geminis: "GEMINI", cancer: "CANCER", leo: "LEO", virgo: "VIRGO", libra: "LIBRA", escorpio: "SCORPIO", escorpion: "SCORPIO", sagitario: "SAGITTARIUS", capricornio: "CAPRICORN", acuario: "AQUARIUS", piscis: "PISCES" };
+var ANGLES = { ascendente: "ASC", descendente: "DSC", "medio cielo": "MC", "fondo del cielo": "IC", "fondo de cielo": "IC" };
+var ASPECTS = { conjuncion: "CONJUNCTION", oposicion: "OPPOSITION", cuadratura: "SQUARE", trigono: "TRINE", sextil: "SEXTILE", quincuncio: "QUINCUNX" };
+var NUM = { uno: 1, una: 1, primera: 1, dos: 2, segunda: 2, tres: 3, tercera: 3, cuatro: 4, cuarta: 4, cinco: 5, quinta: 5, seis: 6, sexta: 6, siete: 7, septima: 7, setima: 7, ocho: 8, octava: 8, nueve: 9, novena: 9, diez: 10, decima: 10, once: 11, undecima: 11, doce: 12, duodecima: 12 };
+var ROMAN = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10, xi: 11, xii: 12 };
+var OPPOSITE_ANGLE = { DSC: "ASC", IC: "MC" };
+var alt = (o) => Object.keys(o).sort((a, b) => b.length - a.length).join("|");
+var P = alt(PLANETS);
+var S = alt(SIGNS2);
+var A = alt(ANGLES);
+var X = alt(ASPECTS);
+var PT = `(?:${P}|${A})`;
+var HOUSE_NUM = `(\\d{1,2}|${alt(NUM)}|${alt(ROMAN)})`;
+var toHouse = (s) => {
+  const n = /^\d+$/.test(s) ? +s : NUM[s] ?? ROMAN[s];
+  return n >= 1 && n <= 12 ? n : null;
+};
+var idOf = (w) => PLANETS[w] || ANGLES[w] || null;
+var TECH_RE = new RegExp(`\\b(?:${P}|${S}|${A}|${X}|casas?|regente|regencia|stellium|retrogrado|orbe|aspecto|hemisferio|cuspide|nodo)\\b`, "g");
+var techCount = (plain) => (plain.match(TECH_RE) || []).length;
+var TECH_ONE = new RegExp(`^(?:${TECH_RE.source})$`);
+function paragraphsOf(report) {
+  const out = [];
+  for (const s of report.sections || []) {
+    const id = s && s.id || "";
+    for (const p of String(s && s.body_markdown || "").split(/\n\s*\n/)) if (p.trim()) out.push({ section: id, text: p.trim() });
+  }
+  return out;
+}
+var sentencesOf = (t) => t.split(/(?<=[.!?…])\s+(?=[«"¿¡A-ZÁÉÍÓÚÑ])/);
+var short = (t, n = 140) => (t.length > n ? t.slice(0, n - 1) + "\u2026" : t).replace(/\s+/g, " ");
+function chartIndex(payload) {
+  const c = payload.chart || {};
+  const bodies = Object.fromEntries((c.bodies || []).map((b) => [b.id, b]));
+  const unreliable = new Set((c.sensitivity && c.sensitivity.unreliable || []).map((u) => `${u.item}|${u.field}`));
+  const asp = /* @__PURE__ */ new Map();
+  for (const a of c.aspects || []) {
+    asp.set(`${a.a}|${a.b}`, a);
+    asp.set(`${a.b}|${a.a}`, a);
+  }
+  const angleSign = {};
+  if (c.houses) {
+    const sign = (lon) => ["ARIES", "TAURUS", "GEMINI", "CANCER", "LEO", "VIRGO", "LIBRA", "SCORPIO", "SAGITTARIUS", "CAPRICORN", "AQUARIUS", "PISCES"][Math.floor((lon % 360 + 360) % 360 / 30)];
+    angleSign.ASC = sign(c.houses.asc);
+    angleSign.DSC = sign(c.houses.asc + 180);
+    angleSign.MC = sign(c.houses.mc);
+    angleSign.IC = sign(c.houses.mc + 180);
+  }
+  const angular = c.derived && c.derived.angular || [];
+  return { bodies, asp, angleSign, angular, timeKnown: !!c.houses, unreliable };
+}
+function findAspect(ix, a, b, type) {
+  const direct = ix.asp.get(`${a}|${b}`);
+  if (direct && direct.aspect === type) return direct;
+  const flip = { CONJUNCTION: "OPPOSITION", OPPOSITION: "CONJUNCTION" }[type];
+  for (const [p, q] of [[a, b], [b, a]]) if (OPPOSITE_ANGLE[q] && flip) {
+    const r = ix.asp.get(`${p}|${OPPOSITE_ANGLE[q]}`);
+    if (r && r.aspect === flip) return r;
+  }
+  if (type === "SQUARE") {
+    for (const [p, q] of [[a, b], [b, a]]) if (OPPOSITE_ANGLE[q]) {
+      const r = ix.asp.get(`${p}|${OPPOSITE_ANGLE[q]}`);
+      if (r && r.aspect === "SQUARE") return r;
+    }
+  }
+  return null;
+}
+function declaredSet(report) {
+  const s = /* @__PURE__ */ new Set();
+  for (const r of report.technical_references_used || []) {
+    if (!r) continue;
+    if (r.type === "position") {
+      s.add(`pos|${r.body}|${r.sign}`);
+      if (r.house != null) s.add(`house|${r.body}|${r.house}`);
+    }
+    if (r.type === "angle") s.add(`angle|${r.angle}|${r.sign}`);
+    if (r.type === "aspect") {
+      s.add(`asp|${r.a}|${r.b}|${r.aspect}`);
+      s.add(`asp|${r.b}|${r.a}|${r.aspect}`);
+    }
+  }
+  return s;
+}
+var POS_RE = new RegExp(`\\b(${P})\\b(?:\\s+(?:natal|retrogrado|que esta|esta|estaba|queda|cae))?\\s+en\\s+(?:el\\s+signo\\s+de\\s+)?(${S})\\b`, "g");
+var ANGLE_SIGN_RE = new RegExp(`\\b(${A})\\b(?:\\s+(?:esta|cae|queda))?\\s+en\\s+(${S})\\b`, "g");
+var HOUSE_RE = new RegExp(`\\b(${P})\\b([^.;:!?]{0,60}?)\\b(?:en\\s+(?:la\\s+|tu\\s+)?)?casa\\s+${HOUSE_NUM}\\b`, "g");
+var HOUSE_ORD_RE = new RegExp(`\\b(${P})\\b([^.;:!?]{0,60}?)\\ben\\s+(?:la\\s+|tu\\s+)?(${alt(NUM)})\\s+casa\\b`, "g");
+var ASP1_RE = new RegExp(`\\b(${X})\\b\\s+(?:muy\\s+\\w+\\s+|cerrada\\s+|amplia\\s+|exacta\\s+)?(?:entre|de|del|de\\s+la|con)\\s+(?:tu\\s+|el\\s+|la\\s+)?(${PT})\\s+(?:y|con|a)\\s+(?:tu\\s+|el\\s+|la\\s+|al\\s+)?(${PT})\\b`, "g");
+var ASP2_RE = new RegExp(`\\b(${PT})\\b\\s+(?:esta\\s+|forma\\s+|hace\\s+|queda\\s+)?(?:en\\s+|una\\s+|un\\s+)?(${X})\\b\\s+(?:muy\\s+\\w+\\s+|cerrada\\s+|amplia\\s+|exacta\\s+)?(?:con|a)\\s+(?:tu\\s+|el\\s+|la\\s+|al\\s+)?(${PT})\\b`, "g");
+var ASP3_RE = new RegExp(`\\b(${X})\\b\\s+(?:muy\\s+\\w+\\s+|cerrada\\s+|amplia\\s+|exacta\\s+)?(?:con|a)\\s+(?:tu\\s+|el\\s+|la\\s+|al\\s+)?(${PT})\\b`, "g");
+var PT_ANY = new RegExp(`\\b(${PT})\\b`, "g");
+var ANGULAR_RE = new RegExp(`\\b(${P})\\b[^.;:!?]{0,40}?\\b(?:junto\\s+al?|sobre\\s+el|pegad[oa]\\s+al?|cerca\\s+del?|encima\\s+del?)\\s+(${A})\\b`, "g");
+var HOUSE_WORD_RE = /\bcasas?\b|\bascendente\b|\bmedio cielo\b|\bdescendente\b|\bfondo del cielo\b/;
+var BETWEEN_OTHER = new RegExp(`\\b(?:${P})\\b`);
+function claimCheck(report, payload) {
+  const ix = chartIndex(payload);
+  const declared = declaredSet(report);
+  const errors = [], undeclared = [], doubtful = [];
+  let checked = 0;
+  for (const { section, text } of paragraphsOf(report)) {
+    if (section === "myth") continue;
+    const plain = strip(text);
+    const add = (list, kind, detail, key) => list.push({ section, kind, detail, excerpt: key });
+    if (!ix.timeKnown && HOUSE_WORD_RE.test(plain)) add(errors, "time_unknown", "con hora desconocida no hay casas ni \xE1ngulos", short(text));
+    let m;
+    POS_RE.lastIndex = 0;
+    while (m = POS_RE.exec(plain)) {
+      const id = PLANETS[m[1]], sign = SIGNS2[m[2]], b = ix.bodies[id];
+      checked++;
+      if (!b) continue;
+      if (b.sign !== sign) add(errors, "sign", `${m[1]} est\xE1 en ${b.sign}, no en ${sign}`, m[0]);
+      else {
+        if (ix.unreliable.has(`${id}|sign`)) add(doubtful, "sign", `${m[1]}: signo sensible a la hora`, m[0]);
+        if (!declared.has(`pos|${id}|${sign}`)) add(undeclared, "position", `${id} ${sign}`, m[0]);
+      }
+    }
+    ANGLE_SIGN_RE.lastIndex = 0;
+    while (ix.timeKnown && (m = ANGLE_SIGN_RE.exec(plain))) {
+      const id = ANGLES[m[1]], sign = SIGNS2[m[2]];
+      checked++;
+      if (ix.angleSign[id] !== sign) add(errors, "angle", `${m[1]} est\xE1 en ${ix.angleSign[id]}, no en ${sign}`, m[0]);
+    }
+    for (const re of [HOUSE_RE, HOUSE_ORD_RE]) {
+      re.lastIndex = 0;
+      while (ix.timeKnown && (m = re.exec(plain))) {
+        if (BETWEEN_OTHER.test(m[2]) || /\bregente\b|\brige\b|\bgobierna\b|\bcuspide\b/.test(m[2])) continue;
+        const id = PLANETS[m[1]], h = toHouse(m[3]), b = ix.bodies[id];
+        checked++;
+        if (!b || h == null) continue;
+        if (b.house !== h) add(errors, "house", `${m[1]} est\xE1 en la casa ${b.house}, no en la ${h}`, m[0]);
+        else {
+          if (b.reliable === false || ix.unreliable.has(`${id}|house`)) add(doubtful, "house", `${m[1]}: casa sensible a la hora`, m[0]);
+          if (!declared.has(`house|${id}|${h}`)) add(undeclared, "house", `${id} casa ${h}`, m[0]);
+        }
+      }
+    }
+    const used = /* @__PURE__ */ new Set();
+    const subjectBefore = (end) => {
+      const start = Math.max(plain.lastIndexOf(".", end), plain.lastIndexOf(";", end), plain.lastIndexOf("?", end), plain.lastIndexOf("!", end)) + 1;
+      PT_ANY.lastIndex = 0;
+      const mm = PT_ANY.exec(plain.slice(start, end));
+      return mm ? mm[1] : null;
+    };
+    for (const re of [ASP1_RE, ASP2_RE, ASP3_RE]) {
+      re.lastIndex = 0;
+      while (m = re.exec(plain)) {
+        const word = re === ASP2_RE ? m[2] : m[1], at = m.index + m[0].indexOf(word, re === ASP2_RE ? m[1].length : 0);
+        if (re === ASP3_RE && used.has(at)) continue;
+        used.add(at);
+        const [type, a, b] = re === ASP1_RE ? [ASPECTS[m[1]], idOf(m[2]), idOf(m[3])] : re === ASP2_RE ? [ASPECTS[m[2]], idOf(m[1]), idOf(m[3])] : [ASPECTS[m[1]], idOf(subjectBefore(m.index) || ""), idOf(m[2])];
+        if (!a || !b || a === b) continue;
+        if (!ix.timeKnown && (ANGLES[strip(a)] || ["ASC", "DSC", "MC", "IC"].includes(a) || ["ASC", "DSC", "MC", "IC"].includes(b))) continue;
+        checked++;
+        const found = findAspect(ix, a, b, type);
+        if (!found) add(errors, "aspect", `no hay ${type} calculado entre ${a} y ${b}`, m[0]);
+        else {
+          if (found.reliable === false) add(doubtful, "aspect", `${a}-${b}: aspecto sensible a la hora`, m[0]);
+          if (!declared.has(`asp|${found.a}|${found.b}|${found.aspect}`)) add(undeclared, "aspect", `${a} ${type} ${b}`, m[0]);
+        }
+      }
+    }
+    ANGULAR_RE.lastIndex = 0;
+    while (ix.timeKnown && (m = ANGULAR_RE.exec(plain))) {
+      const id = PLANETS[m[1]], ang = ANGLES[m[2]];
+      checked++;
+      const near = ix.angular.some((x) => x.body === id && x.angle === ang) || findAspect(ix, id, ang, "CONJUNCTION");
+      if (!near) add(errors, "angular", `${m[1]} no est\xE1 junto al ${m[2]} en la carta calculada`, m[0]);
+    }
+  }
+  return { checked, errors, undeclared, doubtful };
+}
+var BIO_RE = /\b(tu (?:padre|madre|papa|mama|abuel[oa]|herman[oa])|tus (?:padres|abuelos|hermanos)|tu infancia|tu ninez|de (?:chica|chico|nina|nino|pequen[oa])|cuando eras (?:chica|chico|nina|nino|pequen[oa])|en tu casa de origen|tu familia de origen|traumas?|traumatic[oa]s?|abus(?:o|aron)|te abandonaron|divorcio de tus padres|separacion de tus padres|duelo por)\b/;
+var HEDGE_RE = /\b(puede|pueden|podria|podrian|pudo|pudieron|quiza|quizas|tal vez|acaso|posible|posiblemente|probablemente|parece|pareciera|si |preguntarte|pregunta|imagen|simbolic|vale preguntarse|solo vos|no lo sabe|no puede saber|depende de tu historia)\b|\?/;
+function biographyCheck(report) {
+  const out = [];
+  for (const { section, text } of paragraphsOf(report)) {
+    if (section === "myth") continue;
+    for (const s of sentencesOf(text)) {
+      const p = strip(s);
+      if (BIO_RE.test(p) && !HEDGE_RE.test(p)) out.push({ section, excerpt: short(s) });
+    }
+  }
+  return out;
+}
+function jargonCheck(report) {
+  let words = 0, terms = 0;
+  const dense = [], techOpenings = [];
+  for (const { section, text } of paragraphsOf(report)) {
+    if (section === "myth") continue;
+    const plain = strip(text);
+    const w = plain.split(/\s+/).filter(Boolean).length, t = techCount(plain);
+    words += w;
+    terms += t;
+    if (t >= THRESHOLDS.termsPerParagraph) dense.push({ section, terms: t, excerpt: short(text, 100) });
+    const first = sentencesOf(text)[0] || "";
+    if (techCount(strip(first.split(/\s+/).slice(0, 6).join(" "))) >= 1 && techCount(strip(first)) >= 2) techOpenings.push({ section, excerpt: short(first, 100) });
+  }
+  return { words, terms, per1000: words ? +(terms * 1e3 / words).toFixed(1) : 0, dense, techOpenings };
+}
+var IDIOMS = [
+  /\bno es (?:casual|casualidad|menor|poca cosa)\b/,
+  /\bcabe (?:destacar|senalar|mencionar|preguntarse)\b/,
+  /\b(?:es|resulta) (?:importante|fundamental|clave) (?:senalar|destacar|notar|entender|reconocer)\b/,
+  /\bvale la pena (?:senalar|destacar|notar|detenerse)\b/,
+  /\ben definitiva\b/,
+  /\ben ultima instancia\b/,
+  /\ba fin de cuentas\b/,
+  /\bde alguna manera\b/,
+  /\bde algun modo\b/,
+  /\ben cierto sentido\b/,
+  /\balgo asi como\b/,
+  /\bpor asi decirlo\b/,
+  /\bdicho de otro modo\b/,
+  /\ben otras palabras\b/,
+  /\ben esencia\b/,
+  /\bsin duda\b/,
+  /\bpor supuesto\b/,
+  /\b(?:un|el) delicado equilibrio\b/,
+  /\b(?:una|la) danza\b/,
+  /\btapiz\b/,
+  /\bnavegar\b/,
+  /\bbrujula\b/,
+  /\bfaro\b/,
+  /\bmotor (?:interno|interior)\b/,
+  /\btelon de fondo\b/,
+  /\bla clave (?:esta|es|reside)\b/,
+  /\bel (?:gran )?desafio (?:es|esta|consiste|sera)\b/,
+  /\b(?:una|la) invitacion a\b/,
+  /\bte invita a\b/,
+  /\bpotencial (?:enorme|inmenso)\b/,
+  /\bprofundamente\b/,
+  /\bgenuin[oa]s?\b/,
+  /\bautentic[oa]s?\b/,
+  /\bresuen(?:a|an)\b/,
+  /\bflorec(?:er|e|en)\b/,
+  /\btransitar\b/,
+  /\bespacio seguro\b/,
+  /\blo que (?:verdaderamente|realmente) importa\b/,
+  /\bni mas ni menos\b/,
+  /\bal fin y al cabo\b/,
+  /\bmas alla de\b/,
+  /\bpoderos[oa]s?\b/,
+  /\bfascinante\b/,
+  /\bcomplej[oa] y ric[oa]\b/,
+  /\bric[oa] y complej[oa]\b/,
+  /\bmuy (?:especial|interesante|particular)\b/,
+  /\bun viaje\b/,
+  /\bun camino de\b/
+];
+var NOT_ONLY = /\bno (?:solo|solamente)\b[^.;:!?]{1,80}\bsino (?:tambien|ademas)\b/g;
+var STOP = new Set("a al algo algun alguna algunas alguno algunos ante antes aqui asi aun aunque bajo bien cada casi como con contra cual cuales cuando cuanto de del desde donde dos el ella ellas ellos en entre era eres es esa esas ese eso esos esta estas este esto estos estar fue ha hace hacia han hasta hay la las le les lo los mas me mi mientras mis mismo muy nada ni no nos o otra otras otro otros para pero poco por porque puede pueden que quien se sea ser si sin sino sobre solo son su sus tambien tan tanto te tener tiene tienen toda todas todo todos tu tus un una unas uno unos vos y ya cuya cuyo ese esta parte forma vez lado modo manera".split(" "));
+function enumerationCheck(report) {
+  const out = [];
+  for (const { section, text } of paragraphsOf(report)) {
+    if (section === "myth") continue;
+    const re = /((?:[^\s,.;:!?«»]+(?:\s+[^\s,.;:!?«»]+){0,2},\s+){2,}[^\s,.;:!?«»]+(?:\s+[^\s,.;:!?«»]+){0,2}\s+(?:y|o|ni)\s+[^\s,.;:!?«»]+(?:\s+[^\s,.;:!?«»]+){0,2})/g;
+    let m;
+    while (m = re.exec(text)) {
+      const items = m[1].split(/,\s+|\s+(?:y|o|ni)\s+/).filter(Boolean);
+      if (items.length < 3) continue;
+      const first = (x) => strip(x.split(/\s+/)[0]).replace(/^al$/, "a").replace(/^del$/, "de");
+      const singles = items.filter((x) => !/\s/.test(x)).length;
+      const starts = new Set(items.slice(1).map(first));
+      if (singles >= items.length - 1 || starts.size === 1 && !["y", "o", "ni", "que"].includes([...starts][0])) out.push({ section, items: items.length, excerpt: short(m[1], 120) });
+    }
+  }
+  return out;
+}
+function repetitionWithin(report) {
+  const paras = paragraphsOf(report).filter((p) => p.section !== "myth");
+  const tokens = paras.map((p) => strip(p.text).replace(/[^a-z0-9ñ\s]/g, " ").split(/\s+/).filter(Boolean));
+  const all = tokens.flat();
+  const freq = /* @__PURE__ */ new Map();
+  for (const w of all) if (w.length >= 5 && !STOP.has(w) && !TECH_ONE.test(w)) freq.set(w, (freq.get(w) || 0) + 1);
+  const overused = [...freq].filter(([, n]) => n >= THRESHOLDS.overusedMin && n * 1e3 / Math.max(all.length, 1) >= THRESHOLDS.overusedPer1000).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([word, count]) => ({ word, count }));
+  const grams = /* @__PURE__ */ new Map();
+  for (const t of tokens) for (let i = 0; i + 5 <= t.length; i++) {
+    const g = t.slice(i, i + 5);
+    if (g.filter((w) => !STOP.has(w)).length < 2) continue;
+    const k = g.join(" ");
+    grams.set(k, (grams.get(k) || 0) + 1);
+  }
+  const phrases = [...grams].filter(([, n]) => n >= 2).map(([phrase, count]) => ({ phrase, count })).slice(0, 10);
+  const op = /* @__PURE__ */ new Map();
+  for (const t of tokens) if (t.length >= 2) {
+    const k = t.slice(0, 2).join(" ");
+    op.set(k, (op.get(k) || 0) + 1);
+  }
+  const openings = [...op].filter(([, n]) => n >= 3).map(([opening, count]) => ({ opening, count }));
+  return { overused, phrases, openings };
+}
+function idiomCheck(report) {
+  const hits = [];
+  for (const { section, text } of paragraphsOf(report)) {
+    const p = strip(text);
+    for (const re of IDIOMS) {
+      const m2 = p.match(re);
+      if (m2) hits.push({ section, idiom: m2[0] });
+    }
+    NOT_ONLY.lastIndex = 0;
+    let m;
+    while (m = NOT_ONLY.exec(p)) hits.push({ section, idiom: "no solo\u2026 sino tambi\xE9n" });
+  }
+  return hits;
+}
+var SHINGLE = 7;
+function hash32(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function shingles(report) {
+  const out = [];
+  for (const { section, text } of paragraphsOf(report)) {
+    if (section === "myth") continue;
+    const t = strip(text).replace(/[^a-z0-9ñ\s]/g, " ").split(/\s+/).filter(Boolean);
+    for (let i = 0; i + SHINGLE <= t.length; i++) {
+      const g = t.slice(i, i + SHINGLE), k = g.join(" ");
+      if (g.filter((w) => !STOP.has(w)).length < 3 || techCount(k) > 1 || /\d/.test(k)) continue;
+      out.push({ phrase: k, h: hash32(k) });
+    }
+  }
+  return out;
+}
+function fingerprint(report) {
+  return [...new Set(shingles(report).map((s) => s.h).filter((h) => h % 3 === 0))];
+}
+function crossRepetition(report, recent) {
+  const seen = /* @__PURE__ */ new Map();
+  (recent || []).forEach((fp) => {
+    for (const h of fp || []) seen.set(h, (seen.get(h) || 0) + 1);
+  });
+  const shared = [], done = /* @__PURE__ */ new Set();
+  for (const s of shingles(report)) if (s.h % 3 === 0 && seen.has(s.h) && !done.has(s.h)) {
+    done.add(s.h);
+    shared.push({ phrase: s.phrase, reports: seen.get(s.h) });
+  }
+  return shared;
+}
+var MYTH_STOP = /* @__PURE__ */ new Set(["y", "e", "el", "la", "los", "las", "de", "del", "su", "sus", "en", "a", "con", "mito", "hermana", "hermano", "hijo", "hija", "padre", "madre"]);
+var mythTokens = (name) => new Set(strip(String(name || "")).replace(/[^a-z\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !MYTH_STOP.has(w)));
+function repeatedMyth(name, recent) {
+  const a = mythTokens(name);
+  if (!a.size) return null;
+  for (const r of recent || []) for (const w of mythTokens(r)) if (a.has(w)) return r;
+  return null;
+}
+var GROUP_TERMS = [
+  ["MODALITY", "FIXED", /\bsignos? (?:fij[oa]s?|de (?:la )?constancia|de (?:la )?estabilidad)\b|\b(?:lo|la modalidad) fij[oa]\b/],
+  ["MODALITY", "CARDINAL", /\bsignos? (?:cardinal(?:es)?|de (?:la )?iniciativa|que inician|de inicio)\b|\b(?:lo|la modalidad) cardinal\b/],
+  ["MODALITY", "MUTABLE", /\bsignos? (?:mutables?|de (?:la )?adaptacion)\b|\b(?:lo|la modalidad) mutable\b/],
+  ["ELEMENT", "FIRE", /\b(?:signos? de |el |del |poco |mucho |muy poco )fuego\b/],
+  ["ELEMENT", "EARTH", /\b(?:signos? de |la |de la |poca |mucha |muy poca )tierra\b/],
+  ["ELEMENT", "AIR", /\b(?:signos? de |el |del |poco |mucho |muy poco )aire\b/],
+  ["ELEMENT", "WATER", /\b(?:signos? de |el |del |poca |mucha |muy poca )agua\b/]
+];
+var Q_MOST = /\b(casi tod[oa]s?|la mayoria|la mayor parte|predomin\w*|abunda\w*|domina\w*)\b/;
+var Q_ONE = /\b(solo (?:un|una|uno)|un unico|una unica|uno solo|una sola|unico factor|unico planeta)\b/;
+var Q_NONE = /\b(ningun\w*|no hay (?:planetas?|factores?|nada) en)\b/;
+var Q_FEW = /\b(muy poc[oa]s?|escas[oa]s?|casi no hay|casi nada de)\b/;
+var ANGLE_IDS = /* @__PURE__ */ new Set(["ASC", "MC", "DSC", "IC"]);
+function countClaims(report, payload) {
+  const d = payload.chart && payload.chart.derived || {};
+  const errors = [];
+  let checked = 0;
+  const counts = (group, key) => {
+    const src = group === "ELEMENT" ? d.elements : d.modalities;
+    if (!src) return null;
+    const all = Object.fromEntries(Object.entries(src).map(([k, v]) => [k, v.length]));
+    const pl = Object.fromEntries(Object.entries(src).map(([k, v]) => [k, v.filter((x) => !ANGLE_IDS.has(x)).length]));
+    return [all, pl];
+  };
+  for (const { section, text } of paragraphsOf(report)) {
+    if (section === "myth") continue;
+    for (const sent of sentencesOf(text)) {
+      const p = strip(sent);
+      const hits = GROUP_TERMS.filter(([, , re]) => re.test(p));
+      if (hits.length !== 1) continue;
+      const [group, key] = hits[0];
+      const c = counts(group, key);
+      if (!c) continue;
+      const kind = Q_ONE.test(p) ? "one" : Q_NONE.test(p) ? "none" : Q_MOST.test(p) ? "most" : Q_FEW.test(p) ? "few" : null;
+      if (!kind) continue;
+      checked++;
+      const ok4 = c.some((m) => {
+        const n = m[key] || 0, total = Object.values(m).reduce((a, b) => a + b, 0), max = Math.max(...Object.values(m));
+        return kind === "one" ? n === 1 : kind === "none" ? n === 0 : kind === "few" ? n <= 2 : n > total / 2 || /predomin|domina/.test(p) && n === max;
+      });
+      if (!ok4) errors.push({ section, kind: "count", detail: `recuento: ${group === "ELEMENT" ? "elemento" : "modalidad"} ${key} = ${c[1][key] || 0} planetas (${c[0][key] || 0} con \xE1ngulos)`, excerpt: short(sent) });
+    }
+  }
+  return { checked, errors };
+}
+var TEMPLATE = {
+  questions: { max: 3, re: null },
+  alternatives: { max: 2, re: /\b(otra lectura|admite (?:otra|una) lectura|lectura alternativa|lectura mas amable|tambien puede leerse|otra forma de leer)\b/g },
+  defenses: { max: 2, re: /\bla defensa (?:mas )?(?:probable|tipica|natural|habitual|frecuente)\b/g },
+  costs: { max: 2, re: /\bel costo (?:es|son|posible|puede|de esa|de esta)\b|\bsu costo\b/g },
+  closers: { max: 2, re: /\b(?:sostiene (?:esta|esa) lectura|sostiene ese lado|es su fuente|condensa (?:esa|la|este|ese) \w+|une esas dos ideas|lo indica|lo sugiere(?:n)?)\b/g }
+};
+function templateCheck(report) {
+  const out = { questions: 0, alternatives: 0, defenses: 0, costs: 0, closers: 0 };
+  for (const { section, text } of paragraphsOf(report)) {
+    if (section === "myth") continue;
+    out.questions += (text.match(/\?/g) || []).length;
+    const p = strip(text);
+    for (const k of ["alternatives", "defenses", "costs", "closers"]) out[k] += (p.match(TEMPLATE[k].re) || []).length;
+  }
+  out.over = Object.keys(out).filter((k) => TEMPLATE[k] && out[k] > TEMPLATE[k].max);
+  return out;
+}
+var THRESHOLDS = {
+  termsPerParagraph: 5,
+  // un párrafo con cinco o más términos técnicos es denso
+  jargonPer1000: 20,
+  // por encima, se pide bajar la jerga (la guía v4 dio 11,5 a 17,8)
+  densePara: 3,
+  techOpenings: 4,
+  idioms: 3,
+  notOnly: 1,
+  enumerations: 5,
+  overusedMin: 9,
+  overusedPer1000: 3.5,
+  repeatedPhrases: 2,
+  repeatedOpenings: 1,
+  crossShared: 3
+  // frases de siete palabras compartidas con informes recientes
+};
+function proseAudit(report, payload, recentPrints2 = []) {
+  const claims = claimCheck(report, payload);
+  const biography = biographyCheck(report);
+  const jargon = jargonCheck(report);
+  const idioms = idiomCheck(report);
+  const enumerations = enumerationCheck(report);
+  const within = repetitionWithin(report);
+  const cross = crossRepetition(report, recentPrints2);
+  const counts = countClaims(report, payload);
+  if (counts.errors.length) {
+    claims.errors.push(...counts.errors);
+    claims.checked += counts.checked;
+  } else claims.checked += counts.checked;
+  const template = templateCheck(report);
+  const fix = [];
+  if (claims.errors.length) fix.push("claims");
+  if (biography.length) fix.push("biography");
+  const notes = [];
+  if (jargon.per1000 > THRESHOLDS.jargonPer1000 || jargon.dense.length >= THRESHOLDS.densePara || jargon.techOpenings.length >= THRESHOLDS.techOpenings) notes.push("jargon");
+  if (idioms.length >= THRESHOLDS.idioms || idioms.filter((i) => i.idiom.startsWith("no solo")).length > THRESHOLDS.notOnly) fix.push("idioms");
+  if (enumerations.length >= THRESHOLDS.enumerations) fix.push("enumerations");
+  if (within.phrases.length >= THRESHOLDS.repeatedPhrases || within.openings.length >= THRESHOLDS.repeatedOpenings || within.overused.length) fix.push("repetition");
+  if (cross.length >= THRESHOLDS.crossShared) fix.push("cross_repetition");
+  if (template.over.length) fix.push("template");
+  return { version: PROSE_AUDIT_VERSION, ok: fix.length === 0, claims, biography, jargon, idioms, enumerations, within, cross, template, fix, notes };
+}
+function describeProse(r) {
+  const out = [], ex = (list, f, n = 5) => list.slice(0, n).map((x) => `  \xAB${f(x)}\xBB`).join("\n");
+  if (r.fix.includes("claims")) out.push(`- El texto afirma datos t\xE9cnicos que no coinciden con la carta calculada. Correg\xED o quit\xE1 cada uno:
+${r.claims.errors.slice(0, 8).map((e) => `  ${e.detail} \u2014 \xAB${e.excerpt}\xBB`).join("\n")}`);
+  if (r.fix.includes("biography")) out.push(`- Estas oraciones presentan como hecho algo de la biograf\xEDa que la carta no puede saber. Reformulalas como posibilidad o pregunta, o quitalas:
+${ex(r.biography, (b) => b.excerpt)}`);
+  if (r.fix.includes("jargon")) out.push(`- Hay demasiada jerga astrol\xF3gica (${r.jargon.per1000} t\xE9rminos cada mil palabras; objetivo: 15 o menos). En cada p\xE1rrafo, primero la experiencia; el dato t\xE9cnico, como mucho una vez y al final, solo si sostiene la idea. P\xE1rrafos m\xE1s cargados:
+${ex(r.jargon.dense.concat(r.jargon.techOpenings), (d) => d.excerpt)}`);
+  if (r.fix.includes("idioms")) out.push(`- Muletillas y modismos de texto gen\xE9rico (${r.idioms.length}): ${[...new Set(r.idioms.map((i) => i.idiom))].slice(0, 10).join(", ")}. Reemplazalos por una formulaci\xF3n precisa o eliminalos sin sustituto.`);
+  if (r.fix.includes("enumerations")) out.push(`- Hay ${r.enumerations.length} enumeraciones de tres o m\xE1s elementos. Dej\xE1 solo las que nombran cosas distintas y concretas de esta carta; las dem\xE1s, reducilas a lo que de verdad dice algo:
+${ex(r.enumerations, (e) => e.excerpt)}`);
+  if (r.fix.includes("repetition")) {
+    const parts = [];
+    if (r.within.overused.length) parts.push(`palabras repetidas en exceso: ${r.within.overused.map((o) => `\xAB${o.word}\xBB (${o.count})`).join(", ")}`);
+    if (r.within.phrases.length) parts.push(`frases repetidas: ${r.within.phrases.slice(0, 5).map((p) => `\xAB${p.phrase}\xBB`).join(", ")}`);
+    if (r.within.openings.length) parts.push(`p\xE1rrafos que empiezan igual: ${r.within.openings.map((o) => `\xAB${o.opening}\u2026\xBB (${o.count})`).join(", ")}`);
+    out.push(`- Repeticiones dentro del informe: ${parts.join("; ")}. Vari\xE1 sin buscar sin\xF3nimos de adorno: si una idea ya se dijo, no la repitas.`);
+  }
+  if (r.fix.includes("template")) {
+    const T = r.template, parts = [];
+    if (T.questions > 3) parts.push(`${T.questions} preguntas (m\xE1ximo 3 en todo el informe)`);
+    if (T.alternatives > 2) parts.push(`${T.alternatives} \xABotra lectura\xBB o equivalentes (m\xE1ximo 2)`);
+    if (T.defenses > 2) parts.push(`${T.defenses} \xABla defensa m\xE1s probable/t\xEDpica\xBB (m\xE1ximo 2)`);
+    if (T.costs > 2) parts.push(`${T.costs} \xABel costo\xBB (m\xE1ximo 2)`);
+    if (T.closers > 2) parts.push(`${T.closers} cierres del tipo \xAB\u2026sostiene esta lectura\xBB, \xAB\u2026es su fuente\xBB, \xAB\u2026condensa\u2026\xBB (m\xE1ximo 2)`);
+    out.push(`- La estructura del an\xE1lisis qued\xF3 a la vista como plantilla: ${parts.join("; ")}. Integr\xE1 defensa, costo y alternativas en el relato solo donde importan, quit\xE1 preguntas hasta dejar las m\xE1s necesarias y vari\xE1 c\xF3mo nombr\xE1s el dato t\xE9cnico (no siempre al final del p\xE1rrafo).`);
+  }
+  if (r.fix.includes("cross_repetition")) out.push(`- Estas frases ya aparecieron en otros informes recientes. Reescribilas desde esta carta:
+${ex(r.cross, (c) => c.phrase, 8)}`);
+  return out.join("\n");
+}
+
 // src/style.js
 var CONTRAST = {
   es: [/\bno\s(?!(?:s[oó]lo|solamente|[uú]nicamente)\b)(?![^.;:!?]{0,80}\bsino\s+tambi[eé]n\b)[^.;:!?]{1,80}?\bsino\b/gi, /\besto no significa\b/gi, /\bno significa\b[^.!?]{1,100}?[;:,]\s*significa\b/gi],
@@ -350,11 +1327,20 @@ Le\xE9 la carta calculada que sigue y devolv\xE9 SOLO un objeto JSON, sin texto 
  "mito": {"nombre": "\u2026", "por_que": "\u2026"},
  "pasadas": {"forma_general": "\u2026", "planeta_por_planeta": "\u2026", "diferencias": "\u2026"},
  "forma_de_la_tension": "qu\xE9 forma tiene (oposici\xF3n, cadena, tri\xE1ngulo, desproporci\xF3n, ausencia, ciclo, desfase u otra) y por qu\xE9",
- "tesis": [{"id": "t1", "afirmacion": "\u2026", "central": true, "indicators": ["referencias t\xE9cnicas declaradas como en technical_references_used"], "lectura_alternativa": "\u2026", "que_la_debilitaria": "\u2026"}],
+ "tesis": [{"id": "t1", "afirmacion": "\u2026", "central": true, "indicators": ["referencias t\xE9cnicas declaradas como en technical_references_used"],
+   "mecanismo": "c\xF3mo se vive en una situaci\xF3n concreta: qu\xE9 se siente, qu\xE9 se hace, qu\xE9 se evita",
+   "defensa": "qu\xE9 hace la persona para no sentir el polo inc\xF3modo", "costo": "qu\xE9 pierde o posterga con esa defensa",
+   "recurso": "qu\xE9 capacidad de la misma carta permite sostener la tensi\xF3n", "especificidad": "qu\xE9 combinaci\xF3n de esta carta la separa de la lectura de manual de cada posici\xF3n",
+   "lectura_alternativa": "\u2026", "que_la_debilitaria": "\u2026"}],
+ "lecturas_descartadas": [{"lectura": "interpretaci\xF3n habitual que esta carta no sostiene", "motivo": "\u2026"}],
+ "preguntas_biograficas": ["lo que la carta no puede saber y el informe solo puede preguntar"],
  "mitos_considerados": [{"nombre": "\u2026", "motivo": "\u2026"}]
 }
 Antes de responder, hac\xE9 dos pasadas: forma general de la carta y revisi\xF3n planeta por planeta. Escrib\xED entre tres y cinco tesis. Toda tesis
-central necesita al menos dos indicadores distintos. Prioriz\xE1 los aspectos m\xE1s cerrados y us\xE1 chart.derived.structure si existe. Consider\xE1 tres
+central necesita al menos dos indicadores distintos. Una tesis relaciona factores entre s\xED: una posici\xF3n aislada no es una tesis. Si no pod\xE9s
+completar "especificidad" sin repetir el significado de manual de una posici\xF3n, la tesis es gen\xE9rica: descartala y anotala en
+"lecturas_descartadas". No asocies un s\xEDmbolo con un hecho de la vida (padre, madre, infancia, p\xE9rdidas, enfermedad): eso va en
+"preguntas_biograficas". El mito se elige despu\xE9s de las tesis y debe condensar la tesis central, no un planeta. Prioriz\xE1 los aspectos m\xE1s cerrados y us\xE1 chart.derived.structure si existe. Consider\xE1 tres
 mitos y explic\xE1 por qu\xE9 eleg\xEDs uno.
 Us\xE1 exclusivamente los datos del JSON. Nada de memoria ni c\xE1lculos propios. Si la hora es desconocida, no uses casas ni \xE1ngulos.
 Con hora desconocida, la Luna est\xE1 calculada a las 12:00 y pudo estar unos 6\xB0 antes o despu\xE9s: no la cuentes entre los aspectos m\xE1s cerrados
@@ -384,7 +1370,24 @@ Devolv\xE9 SOLO un objeto JSON v\xE1lido, sin texto antes ni despu\xE9s, con est
  ],
  "theses": [{"id": "t1", "claim": "\u2026", "sections": ["ids de secci\xF3n"], "central": true, "indicators": [referencias con el mismo formato de technical_references_used]}]
 }
-Cada tesis central del an\xE1lisis debe figurar en "theses" y desarrollarse en al menos una secci\xF3n.
+Cada tesis central del an\xE1lisis debe figurar en "theses" y desarrollarse en al menos una secci\xF3n, con su mecanismo, defensa, costo y
+recurso contados como experiencia concreta. Las lecturas descartadas no aparecen en el informe. Las preguntas biogr\xE1ficas se formulan
+como preguntas o posibilidades, nunca como hechos.
+Redacci\xF3n:
+- Jerga: en cada p\xE1rrafo, primero la experiencia; el dato astrol\xF3gico va despu\xE9s, una sola vez y solo si sostiene la idea. Apunt\xE1 a
+  15 t\xE9rminos t\xE9cnicos o menos cada mil palabras. No enumeres posiciones ni recorras cadenas de regencias en el texto.
+- Cada secci\xF3n agrega algo que las anteriores no dijeron. La s\xEDntesis integra sin resumir. Si una idea ya se dijo, no la repitas con otras palabras.
+- Enumeraciones solo cuando cada elemento nombra algo distinto y propio de esta carta; nada de series de tres adjetivos o sustantivos abstractos.
+- Sin muletillas ni modismos de texto gen\xE9rico (por ejemplo: \xABno es casualidad\xBB, \xABen definitiva\xBB, \xABde alguna manera\xBB, \xABla clave est\xE1 en\xBB,
+  \xABte invita a\xBB, \xABun delicado equilibrio\xBB, \xABno solo\u2026 sino tambi\xE9n\xBB). Sin met\xE1foras de viaje, danza, tapiz, br\xFAjula o faro.
+- Mecanismo, defensa, costo, recurso y lectura alternativa son herramientas del an\xE1lisis, no una plantilla de secci\xF3n: contalos
+  solo donde cambian lo que la persona puede entender de s\xED, integrados en el relato. En todo el informe: como mucho tres
+  preguntas y dos lecturas alternativas; no abras p\xE1rrafos con \xABLa defensa\u2026\xBB ni \xABEl costo\u2026\xBB.
+- El dato t\xE9cnico no va siempre al final del p\xE1rrafo ni con la misma f\xF3rmula (\xAB\u2026sostiene esta lectura\xBB, \xAB\u2026es su fuente\xBB,
+  \xAB\u2026condensa\u2026\xBB): vari\xE1 su lugar o omitilo cuando la idea ya qued\xF3 fundada.
+- Recuentos por elemento o modalidad (\xABcasi todo\xBB, \xABsolo un\xBB, \xABpredominio\xBB): solo si coinciden con chart.derived.
+- Mito: la versi\xF3n de las fuentes cl\xE1sicas, solo la escena necesaria. Si dud\xE1s de un detalle, omitilo; no agregues hechos ni motivos.
+  Si "mito_descartado" figura en el an\xE1lisis, us\xE1 el mito de "mito" y no menciones el descartado.
 No incluyas dedicatoria ni ninguna secci\xF3n dirigida a la persona despu\xE9s del corolario mitol\xF3gico.
 Reglas para technical_references_used: inclu\xED cada posici\xF3n, \xE1ngulo y aspecto que el texto menciona, con los valores exactos del
 JSON (deg = grados y minutos de "position"). Omit\xED "house" si no la mencion\xE1s o si la casa figura como no fiable. No incluyas
@@ -421,12 +1424,12 @@ CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
 
 // src/validate.js
-var SIGNS2 = ["ARIES", "TAURUS", "GEMINI", "CANCER", "LEO", "VIRGO", "LIBRA", "SCORPIO", "SAGITTARIUS", "CAPRICORN", "AQUARIUS", "PISCES"];
+var SIGNS3 = ["ARIES", "TAURUS", "GEMINI", "CANCER", "LEO", "VIRGO", "LIBRA", "SCORPIO", "SAGITTARIUS", "CAPRICORN", "AQUARIUS", "PISCES"];
 var CORE = ["SUN", "MOON", "MERCURY", "VENUS", "MARS", "JUPITER", "SATURN", "URANUS", "NEPTUNE", "PLUTO"];
 var BODY_IDS = [...CORE, "CHIRON", "NORTH_NODE"];
-var ANGLES = ["ASC", "DSC", "MC", "IC"];
+var ANGLES2 = ["ASC", "DSC", "MC", "IC"];
 var POINT_IDS = [...BODY_IDS, "ASC", "MC"];
-var ASPECTS = ["CONJUNCTION", "OPPOSITION", "SQUARE", "TRINE", "SEXTILE", "QUINCUNX"];
+var ASPECTS2 = ["CONJUNCTION", "OPPOSITION", "SQUARE", "TRINE", "SEXTILE", "QUINCUNX"];
 var PRECISIONS = { EXACT: "\xB14 min", PM15: "\xB115 min", PM30: "\xB130 min", PM60: "\xB160 min", UNKNOWN: "unknown" };
 var LANGS = { es: "voseo", de: "du", en: "you" };
 var GENDERS = ["FEMININE", "MASCULINE", "NEUTRAL", "UNSPECIFIED"];
@@ -434,7 +1437,7 @@ var WARNINGS = ["PRE_1970_TZ", "AMBIGUOUS_LOCAL_TIME", "MANUAL_OFFSET", "MANUAL_
 var PHASES = ["NEW", "CRESCENT", "FIRST_QUARTER", "GIBBOUS", "FULL", "DISSEMINATING", "LAST_QUARTER", "BALSAMIC"];
 var CONFIG_TYPES = ["T_SQUARE", "GRAND_TRINE", "YOD", "GRAND_CROSS"];
 var SENS_NOTES = ["podr\xEDa entrar en orbe", "podr\xEDa salir de orbe"];
-var ID_RE = /^[A-Za-z0-9._-]{1,30}$/;
+var ID_RE2 = /^[A-Za-z0-9._-]{1,30}$/;
 var DEG_RE = /^(\d{1,2})°(\d{2})'(?:(\d{2})")?$/;
 var LIMITS = { name: 40, nameWords: 3, aspects: 150, configurations: 40, stelliums: 20, unreliable: 120, warnings: 10 };
 var Invalid = class extends Error {
@@ -456,7 +1459,7 @@ var optOneOf = (x, list, where) => x == null ? null : oneOf(x, list, where);
 var house = (x, where) => Number.isInteger(x) && x >= 1 && x <= 12 ? x : fail(where);
 var optHouse = (x, where) => x == null ? null : house(x, where);
 var ids = (x, list, max, where) => arr(x, max, where).map((v) => oneOf(v, list, where));
-var signOf = (lon) => SIGNS2[Math.floor((lon % 360 + 360) % 360 / 30)];
+var signOf = (lon) => SIGNS3[Math.floor((lon % 360 + 360) % 360 / 30)];
 function degString(s, lon, where) {
   const m = typeof s === "string" ? s.match(DEG_RE) : null;
   if (!m || +m[1] > 30 || +m[2] > 59) fail(where);
@@ -479,7 +1482,7 @@ function normBody(b, timeKnown) {
   obj(b, "body");
   const id = oneOf(b.id, BODY_IDS, "body.id");
   const longitude = num(b.longitude, 0, 360, "body.longitude") % 360;
-  const sign = oneOf(b.sign, SIGNS2, "body.sign");
+  const sign = oneOf(b.sign, SIGNS3, "body.sign");
   if (sign !== signOf(longitude)) fail("body.sign\u2260longitude");
   return {
     id,
@@ -509,7 +1512,7 @@ function normHouses(h) {
       obj(c, "cusp");
       const longitude = num(c.longitude, 0, 360, "cusp.longitude") % 360;
       if (c.house !== i + 1) fail("cusp.house");
-      const sign = oneOf(c.sign, SIGNS2, "cusp.sign");
+      const sign = oneOf(c.sign, SIGNS3, "cusp.sign");
       if (sign !== signOf(longitude)) fail("cusp.sign\u2260longitude");
       return { house: i + 1, longitude, sign, position: degString(c.position, longitude, "cusp.position") };
     })
@@ -520,7 +1523,7 @@ function normAspect(a) {
   return {
     a: oneOf(a.a, POINT_IDS, "aspect.a"),
     b: oneOf(a.b, POINT_IDS, "aspect.b"),
-    aspect: oneOf(a.aspect, ASPECTS, "aspect.aspect"),
+    aspect: oneOf(a.aspect, ASPECTS2, "aspect.aspect"),
     orb: num(a.orb, 0, 15, "aspect.orb"),
     max_orb: num(a.max_orb, 0, 15, "aspect.max_orb"),
     orb_class: oneOf(a.orb_class, ["TIGHT", "MEDIUM", "WIDE"], "aspect.orb_class"),
@@ -562,7 +1565,7 @@ function normDerived(d, timeKnown) {
     stelliums: arr(d.stelliums || [], LIMITS.stelliums, "derived.stelliums").map((s) => {
       obj(s, "stellium");
       const by = oneOf(s.by, ["SIGN", "HOUSE"], "stellium.by");
-      return { by, where: by === "SIGN" ? oneOf(s.where, SIGNS2, "stellium.where") : house(s.where, "stellium.where"), bodies: ids(s.bodies, CORE, 10, "stellium.bodies") };
+      return { by, where: by === "SIGN" ? oneOf(s.where, SIGNS3, "stellium.where") : house(s.where, "stellium.where"), bodies: ids(s.bodies, CORE, 10, "stellium.bodies") };
     }),
     dispositors: Object.fromEntries(Object.entries(obj(d.dispositors || {}, "derived.dispositors")).map(([k, v]) => [oneOf(k, CORE, "dispositor"), normRuler(v, "dispositor")])),
     planets_in_domicile: ids(d.planets_in_domicile || [], CORE, 10, "derived.planets_in_domicile"),
@@ -578,7 +1581,7 @@ function normDerived(d, timeKnown) {
     obj(d.structure, "structure");
     const pair = (x, where) => {
       obj(x, where);
-      return { a: oneOf(x.a, CORE, where), b: oneOf(x.b, CORE, where), aspect: oneOf(x.aspect, ASPECTS, where) };
+      return { a: oneOf(x.a, CORE, where), b: oneOf(x.b, CORE, where), aspect: oneOf(x.aspect, ASPECTS2, where) };
     };
     const counts = obj(d.structure.aspect_counts || {}, "structure.counts");
     out.structure = {
@@ -595,16 +1598,16 @@ function normDerived(d, timeKnown) {
   if (timeKnown) {
     out.angular = arr(d.angular || [], 30, "derived.angular").map((x) => {
       obj(x, "angular");
-      return { body: oneOf(x.body, BODY_IDS, "angular.body"), angle: oneOf(x.angle, ANGLES, "angular.angle"), distance: num(x.distance, 0, 10, "angular.distance") };
+      return { body: oneOf(x.body, BODY_IDS, "angular.body"), angle: oneOf(x.angle, ANGLES2, "angular.angle"), distance: num(x.distance, 0, 10, "angular.distance") };
     });
     if (d.angle_rulers != null) out.angle_rulers = Object.fromEntries(Object.entries(obj(d.angle_rulers, "angle_rulers")).map(([k, v]) => {
-      oneOf(k, ANGLES, "angle_rulers.key");
+      oneOf(k, ANGLES2, "angle_rulers.key");
       obj(v, "angle_ruler");
-      return [k, { sign: oneOf(v.sign, SIGNS2, "angle_ruler.sign"), ...normRuler(v, "angle_ruler"), ruler_sign: oneOf(v.ruler_sign, SIGNS2, "angle_ruler.ruler_sign"), ruler_house: optHouse(v.ruler_house, "angle_ruler.ruler_house") }];
+      return [k, { sign: oneOf(v.sign, SIGNS3, "angle_ruler.sign"), ...normRuler(v, "angle_ruler"), ruler_sign: oneOf(v.ruler_sign, SIGNS3, "angle_ruler.ruler_sign"), ruler_house: optHouse(v.ruler_house, "angle_ruler.ruler_house") }];
     }));
     if (d.house_rulers != null) out.house_rulers = arr(d.house_rulers, 12, "house_rulers").map((h) => {
       obj(h, "house_ruler");
-      return { house: house(h.house, "house_ruler.house"), cusp_sign: oneOf(h.cusp_sign, SIGNS2, "house_ruler.cusp_sign"), ...normRuler(h, "house_ruler") };
+      return { house: house(h.house, "house_ruler.house"), cusp_sign: oneOf(h.cusp_sign, SIGNS3, "house_ruler.cusp_sign"), ...normRuler(h, "house_ruler") };
     });
     if (d.houses_occupancy != null) out.houses_occupancy = Object.fromEntries(Object.entries(obj(d.houses_occupancy, "houses_occupancy")).map(([k, v]) => [String(house(+k, "occupancy.key")), ids(v, CORE, 10, "occupancy")]));
     if (d.hemispheres != null) out.hemispheres = groups(d.hemispheres, ["UPPER_7_12", "LOWER_1_6", "EASTERN_10_3", "WESTERN_4_9"], "derived.hemispheres");
@@ -614,7 +1617,7 @@ function normDerived(d, timeKnown) {
 function normSensitivity(s) {
   if (s == null) return { precision: null, window_min: null, unreliable: [] };
   obj(s, "sensitivity");
-  const itemOK = (it) => typeof it === "string" && (POINT_IDS.includes(it) || /^[A-Z_]{2,12}\|[A-Z_]{2,12}\|[A-Z]{4,12}$/.test(it) && it.split("|").every((p, i) => i < 2 ? POINT_IDS.includes(p) : ASPECTS.includes(p)));
+  const itemOK = (it) => typeof it === "string" && (POINT_IDS.includes(it) || /^[A-Z_]{2,12}\|[A-Z_]{2,12}\|[A-Z]{4,12}$/.test(it) && it.split("|").every((p, i) => i < 2 ? POINT_IDS.includes(p) : ASPECTS2.includes(p)));
   return {
     precision: optOneOf(s.precision, Object.keys(PRECISIONS), "sensitivity.precision"),
     window_min: s.window_min === "FULL_DAY" ? "FULL_DAY" : s.window_min == null ? null : num(s.window_min, 0, 1440, "sensitivity.window_min"),
@@ -623,7 +1626,7 @@ function normSensitivity(s) {
       if (!itemOK(u.item)) fail("unreliable.item");
       const field = oneOf(u.field, ["sign", "house", "aspect"], "unreliable.field");
       const out = { item: u.item, field };
-      if (u.alternatives != null) out.alternatives = arr(u.alternatives, 2, "unreliable.alternatives").map((v) => field === "house" ? optHouse(v, "unreliable.alt") : oneOf(v, SIGNS2, "unreliable.alt"));
+      if (u.alternatives != null) out.alternatives = arr(u.alternatives, 2, "unreliable.alternatives").map((v) => field === "house" ? optHouse(v, "unreliable.alt") : oneOf(v, SIGNS3, "unreliable.alt"));
       if (u.note != null) out.note = oneOf(u.note, SENS_NOTES, "unreliable.note");
       return out;
     })
@@ -652,7 +1655,7 @@ function normalizePayload(p) {
     if (c.south_node != null) {
       const sn = obj(c.south_node, "south_node");
       const lon = num(sn.lon ?? sn.longitude, 0, 360, "south_node.lon") % 360;
-      const sign = oneOf(sn.sign, SIGNS2, "south_node.sign");
+      const sign = oneOf(sn.sign, SIGNS3, "south_node.sign");
       if (sign !== signOf(lon)) fail("south_node.sign");
       south_node = { id: "SOUTH_NODE", lon, sign, deg: degString(sn.deg ?? sn.position, lon, "south_node.deg"), derived: "NORTH_NODE+180", house: timeKnown ? house(sn.house, "south_node.house") : null };
     }
@@ -661,14 +1664,16 @@ function normalizePayload(p) {
     const warnings = arr(p.warnings || [], LIMITS.warnings, "warnings").map((w) => ({ code: oneOf(isObj(w) ? w.code : null, WARNINGS, "warning.code") }));
     const payload = {
       schema: "astroinforme.chart/v1",
-      engine: { version: ID_RE.test(engine.version || "") ? engine.version : fail("engine.version"), aspect_policy: oneOf(engine.aspect_policy, ["orbes_v1"], "engine.aspect_policy") },
+      engine: { version: ID_RE2.test(engine.version || "") ? engine.version : fail("engine.version"), aspect_policy: oneOf(engine.aspect_policy, ["orbes_v1"], "engine.aspect_policy") },
       person: { first_name },
       request: {
         kind: oneOf(p.request.kind ?? "NATAL_FULL_REPORT", ["NATAL_FULL_REPORT"], "request.kind"),
         report_language: lang,
         address: LANGS[lang],
         address_gender: p.request.address_gender == null ? "UNSPECIFIED" : oneOf(p.request.address_gender, GENDERS, "request.address_gender"),
-        include_myth: true
+        include_myth: true,
+        // permiso para guardar una copia anónima en el banco de informes (casilla desmarcada por defecto)
+        bank_consent: p.request.bank_consent === true
       },
       birth: { time_precision: precision, time_precision_label: PRECISIONS[precision] },
       chart: { bodies, south_node, houses, aspects, derived: normDerived(c.derived, timeKnown), sensitivity: normSensitivity(c.sensitivity) },
@@ -687,7 +1692,7 @@ function normalizeRequestId(x) {
 // src/ledger.js
 var RESERVE_TTL_MS = 60 * 60 * 1e3;
 var CONSUMED_KEEP = 20;
-var ok = (obj2, status = 200) => new Response(JSON.stringify(obj2), { status, headers: { "content-type": "application/json; charset=utf-8" } });
+var ok2 = (obj2, status = 200) => new Response(JSON.stringify(obj2), { status, headers: { "content-type": "application/json; charset=utf-8" } });
 var CodeLedger = class {
   constructor(state, env) {
     this.state = state;
@@ -717,33 +1722,33 @@ var CodeLedger = class {
     return this.serial(async () => {
       const code = String(b.code || "");
       const s = await this.load(code);
-      if (path === "/get") return ok({ used: s.used, inflight: s.inflight });
+      if (path === "/get") return ok2({ used: s.used, inflight: s.inflight });
       if (path === "/reserve") {
-        if (s.inflight) return ok({ error: "in_progress", same_request: !!b.request_id && s.inflight.request_id === b.request_id, used: s.used }, 409);
-        if (s.used >= +b.limit) return ok({ error: "quota_exhausted", used: s.used }, 403);
+        if (s.inflight) return ok2({ error: "in_progress", same_request: !!b.request_id && s.inflight.request_id === b.request_id, used: s.used }, 409);
+        if (s.used >= +b.limit) return ok2({ error: "quota_exhausted", used: s.used }, 403);
         const token = crypto.randomUUID();
         s.inflight = { request_id: b.request_id || null, token, at: Date.now(), exp: Date.now() + RESERVE_TTL_MS };
         await this.storage.put("s", s);
-        return ok({ reserved: true, token, used: s.used });
+        return ok2({ reserved: true, token, used: s.used });
       }
       if (path === "/consume") {
-        if (b.token && s.consumed.includes(b.token)) return ok({ used: s.used, duplicate: true });
+        if (b.token && s.consumed.includes(b.token)) return ok2({ used: s.used, duplicate: true });
         s.used += 1;
         if (s.inflight && s.inflight.token === b.token) s.inflight = null;
         if (b.token) s.consumed = [...s.consumed, b.token].slice(-CONSUMED_KEEP);
         await this.storage.put("s", s);
         if (this.env && this.env.ASTRO_KV) await this.env.ASTRO_KV.put("used:" + code, String(s.used)).catch(() => {
         });
-        return ok({ used: s.used });
+        return ok2({ used: s.used });
       }
       if (path === "/release") {
         if (s.inflight && s.inflight.token === b.token) {
           s.inflight = null;
           await this.storage.put("s", s);
         }
-        return ok({ released: true, used: s.used });
+        return ok2({ released: true, used: s.used });
       }
-      return ok({ error: "bad_request" }, 400);
+      return ok2({ error: "bad_request" }, 400);
     });
   }
 };
@@ -826,7 +1831,7 @@ var PRODUCT_TITLE = {
 };
 
 // src/payments/mercadopago.js
-var API = "https://api.mercadopago.com";
+var API2 = "https://api.mercadopago.com";
 function orderStatus(o) {
   if (o.status === "processed") return ["accredited", "partially_refunded"].includes(o.status_detail) ? "paid" : "pending";
   return { refunded: "refunded", canceled: "cancelled", failed: "failed" }[o.status] || "pending";
@@ -837,7 +1842,7 @@ var idempotencyUuid = (id) => {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
 };
 async function mp(env, path, init = {}) {
-  const r = await fetch(API + path, { ...init, headers: { "content-type": "application/json", authorization: "Bearer " + env.MP_ACCESS_TOKEN, ...init.headers || {} } });
+  const r = await fetch(API2 + path, { ...init, headers: { "content-type": "application/json", authorization: "Bearer " + env.MP_ACCESS_TOKEN, ...init.headers || {} } });
   const body = await r.json().catch(() => null);
   if (!r.ok) {
     const e = new Error("mercadopago");
@@ -1020,320 +2025,6 @@ function safeEqual(a, b) {
   for (let i = 0; i < Math.max(a.length, b.length); i++) d |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
   return d === 0;
 }
-
-// src/order.js
-var PENDING_TTL_MS = 7 * 24 * 3600 * 1e3;
-var START_WATCH_MS = 10 * 60 * 1e3;
-var RUN_WATCH_MS = 75 * 60 * 1e3;
-var RETAIN_MS = 7 * 24 * 3600 * 1e3;
-var MAX_MAIL_TRIES = 5;
-async function flag(env, id, reason) {
-  if (env && env.ASTRO_KV) await env.ASTRO_KV.put("exc:" + id, JSON.stringify({ order_id: id, reason, at: (/* @__PURE__ */ new Date()).toISOString() })).catch(() => {
-  });
-}
-var EVENTS_KEEP = 50;
-var ok2 = (obj2, status = 200) => new Response(JSON.stringify(obj2), { status, headers: { "content-type": "application/json; charset=utf-8" } });
-async function sha256Hex(s) {
-  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
-  return [...h].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-function publicView(o) {
-  return {
-    order_id: o.id,
-    product: o.product,
-    provider: o.provider,
-    amount: o.amountMinor / 100,
-    currency: o.currency,
-    payment_status: o.payment.status,
-    generation_status: o.generation.status,
-    created_at: o.createdAt,
-    updated_at: o.updatedAt
-  };
-}
-var OrderDO = class {
-  constructor(state, env) {
-    this.state = state;
-    this.storage = state.storage;
-    this.env = env;
-    this.queue = Promise.resolve();
-  }
-  serial(fn) {
-    const run = this.queue.then(fn, fn);
-    this.queue = run.catch(() => {
-    });
-    return run;
-  }
-  async save(o) {
-    o.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-    await this.storage.put("o", o);
-  }
-  async fetch(request) {
-    const path = new URL(request.url).pathname;
-    const b = await request.json().catch(() => ({}));
-    return this.serial(async () => {
-      if (path === "/claim") {
-        const c = await this.storage.get("claim");
-        if (c) return ok2({ ...c, first: false });
-        await this.storage.put("claim", { id: b.id, token: b.token, url: null });
-        await this.storage.setAlarm(Date.now() + PENDING_TTL_MS);
-        return ok2({ id: b.id, token: b.token, url: null, first: true });
-      }
-      if (path === "/claim-url") {
-        const c = await this.storage.get("claim");
-        if (c) {
-          c.url = b.url;
-          await this.storage.put("claim", c);
-        }
-        return ok2({});
-      }
-      if (path === "/claim-release") {
-        await this.storage.delete("claim");
-        return ok2({});
-      }
-      let o = await this.storage.get("o");
-      if (path === "/create") {
-        if (o) return ok2({ existed: true, order: publicView(o) });
-        o = {
-          ...b.order,
-          payment: { status: "created", externalId: null, externalCheckoutId: null, events: [], paidAt: null, mismatch: null },
-          generation: { status: "none", jobId: null, attempts: 0, startedAt: null, deliveredAt: null, lastOutcome: null },
-          createdAt: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        await this.save(o);
-        await this.storage.put("payload", b.payload);
-        if (b.email) await this.storage.put("email", b.email);
-        await this.storage.setAlarm(Date.now() + PENDING_TTL_MS);
-        return ok2({ existed: false, order: publicView(o) });
-      }
-      if (!o) return ok2({ error: "not_found" }, 404);
-      if (path === "/view") {
-        const hash = b.token ? await sha256Hex(b.token) : null;
-        if (!hash || hash !== o.tokenHash && hash !== (o.mail && o.mail.tokenHash)) return ok2({ error: "forbidden" }, 403);
-        const open = o.generation.status === "delivered" && o.payment.status !== "refunded";
-        return ok2({ order: publicView(o), jobId: open ? o.generation.jobId : null, chart: open ? await this.storage.get("payload") || null : null });
-      }
-      if (path === "/checkout") {
-        o.payment.externalCheckoutId = b.externalCheckoutId || null;
-        await this.save(o);
-        return ok2({ order: publicView(o) });
-      }
-      if (path === "/payment") {
-        const tx = b.tx || {};
-        if (b.eventId && o.payment.events.includes(b.eventId)) return ok2({ action: "none", duplicate: true, order: publicView(o) });
-        if (b.eventId) o.payment.events = [...o.payment.events, b.eventId].slice(-EVENTS_KEEP);
-        if (tx.orderId !== o.id || b.provider && b.provider !== o.provider) {
-          await this.save(o);
-          return ok2({ action: "none", ignored: "other_order", order: publicView(o) });
-        }
-        if (o.payment.externalId && tx.externalId && tx.externalId !== o.payment.externalId && ["paid", "refunded"].includes(tx.status)) {
-          await this.save(o);
-          return ok2({ action: "none", exception: tx.status === "paid" ? "duplicate_payment" : "refund_other_payment", order: publicView(o) });
-        }
-        let action = "none", exception = null;
-        if (tx.status === "paid") {
-          const wrong = [];
-          if (tx.amountMinor !== o.amountMinor) wrong.push("amount");
-          if (tx.currency !== o.currency) wrong.push("currency");
-          if (o.productRef && tx.productRef !== o.productRef) wrong.push("product");
-          if (o.payment.status === "refunded" || o.payment.status === "mismatch") {
-          } else if (wrong.length) {
-            o.payment.status = "mismatch";
-            o.payment.mismatch = { fields: wrong, amountMinor: tx.amountMinor, currency: tx.currency, productRef: tx.productRef };
-            exception = "payment_mismatch";
-          } else {
-            if (o.payment.status !== "paid") {
-              o.payment.status = "paid";
-              o.payment.paidAt = (/* @__PURE__ */ new Date()).toISOString();
-              o.payment.externalId = o.payment.externalId || tx.externalId;
-            }
-            if (o.generation.status === "none") {
-              o.generation.status = "starting";
-              o.generation.attempts = 1;
-              o.generation.jobId = o.id;
-              o.generation.startedAt = (/* @__PURE__ */ new Date()).toISOString();
-              action = "start";
-            }
-          }
-        } else if (tx.status === "refunded") {
-          o.payment.status = "refunded";
-          if (o.generation.status !== "delivered") await this.storage.delete("payload");
-        } else if (["failed", "cancelled"].includes(tx.status)) {
-          if (!["paid", "refunded", "mismatch"].includes(o.payment.status)) o.payment.status = tx.status;
-        } else if (tx.status === "pending" && o.payment.status === "created") {
-          o.payment.status = "pending";
-        }
-        await this.save(o);
-        if (action === "start") await this.storage.setAlarm(Date.now() + START_WATCH_MS);
-        const payload = action === "start" ? await this.storage.get("payload") : void 0;
-        if (action === "start" && !payload) {
-          o.generation.status = "failed";
-          o.generation.lastOutcome = "payload_missing";
-          await this.save(o);
-          return ok2({ action: "none", exception: "payload_missing", order: publicView(o) });
-        }
-        return ok2({ action, exception, jobId: o.generation.jobId, payload, order: publicView(o), internal: { externalId: o.payment.externalId, provider: o.provider } });
-      }
-      if (path === "/started") {
-        if (b.jobId === o.generation.jobId && o.generation.status === "starting") {
-          o.generation.status = "running";
-          await this.save(o);
-          await this.storage.setAlarm(Date.now() + RUN_WATCH_MS);
-        }
-        return ok2({ order: publicView(o) });
-      }
-      if (path === "/generation") {
-        const ownJob = typeof b.jobId === "string" && (b.jobId === o.id || b.jobId.startsWith(o.id + "-r"));
-        if (!ownJob || b.jobId !== o.generation.jobId && b.outcome !== "delivered") return ok2({ ignored: true, order: publicView(o) });
-        if (b.outcome === "delivered") {
-          o.generation.jobId = b.jobId;
-          o.generation.status = "delivered";
-          o.generation.deliveredAt = (/* @__PURE__ */ new Date()).toISOString();
-          o.generation.lastOutcome = "delivered";
-          o.retainUntil = Date.now() + RETAIN_MS;
-          await this.storage.setAlarm(o.retainUntil);
-        } else if (o.generation.status !== "delivered") {
-          o.generation.status = "failed";
-          o.generation.lastOutcome = b.outcome || "error";
-        }
-        await this.save(o);
-        return ok2({ order: publicView(o), exception: o.generation.status === "failed" ? "generation_failed" : null });
-      }
-      if (path === "/retry") {
-        if (o.payment.status !== "paid" || o.generation.status !== "failed") return ok2({ error: "not_retryable", order: publicView(o) }, 409);
-        const payload = await this.storage.get("payload");
-        if (!payload) return ok2({ error: "payload_missing", order: publicView(o) }, 409);
-        o.generation.attempts += 1;
-        o.generation.jobId = `${o.id}-r${o.generation.attempts - 1}`;
-        o.generation.status = "starting";
-        o.generation.startedAt = (/* @__PURE__ */ new Date()).toISOString();
-        await this.save(o);
-        return ok2({ action: "start", jobId: o.generation.jobId, payload, order: publicView(o) });
-      }
-      if (path === "/mail-prepare") {
-        o.mail = o.mail || { status: "none", tries: 0, tokenHash: null, sentAt: null };
-        if (o.generation.status !== "delivered" || o.payment.status === "refunded" || o.mail.status === "sent" || o.mail.tries >= MAX_MAIL_TRIES) return ok2({ skip: true, mail: o.mail });
-        const email = await this.storage.get("email");
-        if (!email) return ok2({ skip: true, mail: o.mail });
-        const token = [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, "0")).join("");
-        o.mail.tries += 1;
-        o.mail.status = "sending";
-        o.mail.tokenHash = await sha256Hex(token);
-        await this.save(o);
-        return ok2({ email, token, lang: o.lang, tries: o.mail.tries });
-      }
-      if (path === "/mail-result") {
-        if (o.mail) {
-          o.mail.status = b.ok ? "sent" : "failed";
-          if (b.ok) o.mail.sentAt = (/* @__PURE__ */ new Date()).toISOString();
-          await this.save(o);
-        }
-        return ok2({ mail: o.mail || null });
-      }
-      if (path === "/check") return ok2({ order: publicView(o), attempts: o.generation.attempts, mail: o.mail ? { status: o.mail.status, tries: o.mail.tries } : null, createdAt: o.createdAt, provider: o.provider, paidAt: o.payment.paidAt });
-      if (path === "/refund") {
-        return ok2({ order: publicView(o), internal: { externalId: o.payment.externalId, provider: o.provider }, refundable: o.payment.status === "paid" });
-      }
-      return ok2({ error: "bad_request" }, 400);
-    });
-  }
-  /**
-   * Alarma del pedido:
-   *  - vigilancia de la generación: si quedó en «starting» o «running» más de lo previsto (el Worker se cortó, el
-   *    trabajo no arrancó), pasa a «failed» y entra en la cola de excepciones para reintentar o reembolsar;
-   *  - vencimiento: a los 7 días, un pedido sin pagar pierde la carta y queda cancelado; un pedido pagado que no se
-   *    entregó también pierde la carta (queda en excepciones para reembolso).
-   */
-  async alarm() {
-    return this.serial(async () => {
-      const o = await this.storage.get("o");
-      if (!o) {
-        await this.storage.deleteAll();
-        return;
-      }
-      const now = Date.now(), started = o.generation.startedAt ? Date.parse(o.generation.startedAt) : 0;
-      if (o.generation.status === "starting" || o.generation.status === "running") {
-        const limit = o.generation.status === "starting" ? START_WATCH_MS : RUN_WATCH_MS;
-        if (now - started >= limit) {
-          o.generation.lastOutcome = o.generation.status === "starting" ? "start_lost" : "timeout";
-          o.generation.status = "failed";
-          await this.save(o);
-          await flag(this.env, o.id, "generation_stuck");
-        } else {
-          await this.storage.setAlarm(started + limit);
-          return;
-        }
-      }
-      const created = Date.parse(o.createdAt), until = Math.max(created + PENDING_TTL_MS, o.retainUntil || 0);
-      if (now < until) {
-        await this.storage.setAlarm(until);
-        return;
-      }
-      if (o.generation.status !== "delivered" && await this.storage.get("payload") && o.payment.status === "paid") await flag(this.env, o.id, "payload_expired");
-      await this.storage.delete(["payload", "email"]);
-      if (o.mail) o.mail.tokenHash = null;
-      if (!["paid", "refunded", "mismatch"].includes(o.payment.status)) {
-        o.payment.status = "cancelled";
-        o.generation.lastOutcome = o.generation.lastOutcome || "expired_unpaid";
-      }
-      await this.save(o);
-    });
-  }
-};
-
-// src/mail.js
-var mailEnabled = (env) => !!(env.MAIL_API_KEY && env.MAIL_FROM);
-async function sendMail(env, { to, subject, text, key }) {
-  if (!mailEnabled(env) || !to) return false;
-  try {
-    const r = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: "Bearer " + env.MAIL_API_KEY, ...key ? { "idempotency-key": key } : {} },
-      body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject, text, ...env.ADMIN_EMAIL ? { reply_to: env.ADMIN_EMAIL } : {} })
-    });
-    if (!r.ok) console.log(JSON.stringify({ event: "mail_rejected", status: r.status }));
-    return r.ok;
-  } catch (e) {
-    console.log(JSON.stringify({ event: "mail_error" }));
-    return false;
-  }
-}
-var TEXTS = {
-  es: { subject: "Tu informe de AsterOrbis est\xE1 listo", body: (u, d) => `Tu informe est\xE1 listo.
-
-Abrilo desde este enlace privado:
-${u}
-
-El enlace funciona durante ${d} d\xEDas. Desde ah\xED pod\xE9s guardar el PDF. Despu\xE9s de ese plazo, el informe y tu carta se borran.
-
-No compartas este enlace: quien lo tenga puede leer el informe. Si algo no funciona, respond\xE9 este correo.
-
-B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis` },
-  de: { subject: "Dein AsterOrbis-Bericht ist fertig", body: (u, d) => `Dein Bericht ist fertig.
-
-\xD6ffne ihn \xFCber diesen privaten Link:
-${u}
-
-Der Link gilt ${d} Tage. Dort kannst du das PDF speichern. Nach Ablauf dieser Frist werden Bericht und Horoskop gel\xF6scht.
-
-Teile diesen Link nicht: Wer ihn hat, kann den Bericht lesen. Wenn etwas nicht funktioniert, antworte auf diese E-Mail.
-
-B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis` },
-  en: { subject: "Your AsterOrbis report is ready", body: (u, d) => `Your report is ready.
-
-Open it from this private link:
-${u}
-
-The link works for ${d} days. You can save the PDF from there. After that, the report and your chart are deleted.
-
-Do not share this link: anyone who has it can read the report. If something does not work, reply to this email.
-
-B\xE1rbara Guti\xE9rrez \xB7 AsterOrbis` }
-};
-function reportMail(lang, url, days) {
-  const t = TEXTS[lang] || TEXTS.es;
-  return { subject: t.subject, text: t.body(url, days) };
-}
-var validEmail = (x) => typeof x === "string" && x.length <= 254 && /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;".]{2,}$/.test(x.trim());
 
 // src/orders.js
 var ORDER_CODE_PREFIX = "ORDER:";
@@ -1684,7 +2375,7 @@ async function routeOrders(request, env, cors, url) {
 }
 
 // src/worker.js
-var SERVICE_VERSION = "2.2";
+var SERVICE_VERSION = "2.6.2";
 var DEFAULT_MODEL = "claude-opus-5-5";
 var DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
 var PRICES = {
@@ -1699,7 +2390,7 @@ function corsHeaders(request, env) {
   const origin = request.headers.get("origin") || "";
   const allowed = (env.ALLOWED_ORIGINS || DEFAULT_ORIGINS).split(",").map((s) => s.trim()).filter(Boolean);
   const ok4 = allowed.includes("*") || allowed.includes(origin);
-  return ok4 ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code, x-turnstile-token, x-order-token", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
+  return ok4 ? { "access-control-allow-origin": origin || "*", "access-control-allow-methods": "POST, GET, OPTIONS", "access-control-allow-headers": "content-type, x-astro-code, x-turnstile-token, x-order-token, x-link-key", "access-control-max-age": "86400", vary: "origin" } : { vary: "origin" };
 }
 async function allCodes(env) {
   const extra = env.ASTRO_KV ? parseCodes(await env.ASTRO_KV.get("codes").catch(() => null)) : {};
@@ -1804,7 +2495,8 @@ function chartForModel(p) {
   const n = normalizePayload(p);
   if (!n.ok) throw new Error("bad_request");
   const { person, engine, ...rest } = n.payload;
-  return { ...rest, engine: { aspect_policy: engine.aspect_policy } };
+  const { bank_consent, ...request } = rest.request;
+  return { ...rest, request, engine: { aspect_policy: engine.aspect_policy } };
 }
 function describeArgument(argument) {
   if (argument.ok !== false) return "";
@@ -1830,6 +2522,35 @@ async function rememberMyth(env, analisis) {
     await env.ASTRO_KV.put(MYTHS_KEY, JSON.stringify([name, ...l.filter((x) => x !== name)].slice(0, MYTHS_KEEP)));
   } catch (e) {
   }
+}
+var PRINTS_KEY = "prints:recent";
+var PRINTS_KEEP = 20;
+async function recentPrints(env) {
+  if (!env.ASTRO_KV) return [];
+  try {
+    const l = JSON.parse(await env.ASTRO_KV.get(PRINTS_KEY) || "[]");
+    return Array.isArray(l) ? l.filter(Array.isArray).slice(0, PRINTS_KEEP) : [];
+  } catch (e) {
+    return [];
+  }
+}
+async function rememberPrint(env, report) {
+  if (!env.ASTRO_KV) return;
+  try {
+    const l = await recentPrints(env);
+    await env.ASTRO_KV.put(PRINTS_KEY, JSON.stringify([fingerprint(report), ...l].slice(0, PRINTS_KEEP)));
+  } catch (e) {
+  }
+}
+function avoidRepeatedMyth(analisis, recent) {
+  const m = analisis && analisis.mito;
+  if (!m || typeof m.nombre !== "string") return analisis;
+  const clash = repeatedMyth(m.nombre, recent);
+  if (!clash) return analisis;
+  const alt2 = (Array.isArray(analisis.mitos_considerados) ? analisis.mitos_considerados : []).find((x) => x && typeof x.nombre === "string" && !repeatedMyth(x.nombre, recent));
+  analisis.mito_descartado = { nombre: m.nombre, motivo: `coincide con un mito usado recientemente (${clash})` };
+  analisis.mito = alt2 ? { nombre: alt2.nombre, por_que: alt2.motivo || "" } : { nombre: "", por_que: "Eleg\xED un mito cl\xE1sico que no est\xE9 en la lista de mitos recientes." };
+  return analisis;
 }
 function describeIssues(audit) {
   return audit.issues.map((i) => {
@@ -1983,7 +2704,9 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   const tratamiento = TRATAMIENTO[payload.request.address_gender] || TRATAMIENTO.UNSPECIFIED;
   let analisis = await load("analisis");
   if (!analisis) {
-    analisis = await phase("a", async () => callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, [.../* @__PURE__ */ new Set([...await recentMyths(env), ...REFERENCE_MYTHS])]), maxTokens: MAX_TOKENS_ANALYSIS }), charge, parseJSON, note);
+    const evitar = [.../* @__PURE__ */ new Set([...await recentMyths(env), ...REFERENCE_MYTHS])];
+    analisis = await phase("a", async () => callClaude(env, { system: protocol, user: PROMPT_ANALISIS(carta, evitar), maxTokens: MAX_TOKENS_ANALYSIS }), charge, parseJSON, note);
+    avoidRepeatedMyth(analisis, evitar);
     await save("analisis", analisis);
     await rememberMyth(env, analisis);
   }
@@ -2000,20 +2723,26 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   let audit = auditReport(report, payload);
   let style = styleCheck(report);
   let argument = argumentAudit(report, payload);
+  const prints = await recentPrints(env);
+  let prose = proseAudit(report, payload, prints);
   let corrected = false;
-  if (!audit.ok || !style.ok || argument.ok === false) {
+  if (!audit.ok || !style.ok || argument.ok === false || !prose.ok) {
     try {
-      const fixed = await phase("c", () => callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: style.ok ? "" : describeStyle(style), informe: JSON.stringify(report), carta }), maxTokens: MAX_TOKENS_REPORT }), charge, (reply) => {
+      const proseText = prose.ok ? "" : describeProse(prose);
+      const fixed = await phase("c", () => callClaude(env, { system: protocol, user: PROMPT_CORRECCION({ problemas: [audit.ok ? "" : describeIssues(audit), describeArgument(argument)].filter(Boolean).join("\n"), estilo: [style.ok ? "" : describeStyle(style), proseText].filter(Boolean).join("\n"), informe: JSON.stringify(report), carta }), maxTokens: MAX_TOKENS_REPORT }), charge, (reply) => {
         const r = normalizeReferences(withoutDedication(parseJSON(reply)));
         assertComplete(r);
         return r;
       }, note);
       const fixedAudit = auditReport(fixed, payload);
-      if (fixedAudit.ok || !audit.ok) {
+      const fixedProse = proseAudit(fixed, payload, prints);
+      const prosaPeor = fixedProse.claims.errors.length > prose.claims.errors.length;
+      if (fixedAudit.ok && !prosaPeor || !audit.ok) {
         report = fixed;
         audit = fixedAudit;
         style = styleCheck(fixed);
         argument = argumentAudit(fixed, payload);
+        prose = fixedProse;
         corrected = true;
       }
     } catch (e) {
@@ -2022,6 +2751,21 @@ async function interpret(env, payload, protocol, spent = { usd: 0 }, hooks = {})
   }
   report.engine = { model, protocol_version: "ASTROINFORME", service: SERVICE_VERSION };
   report.argument_audit = { declared: argument.declared, ok: argument.ok, theses: argument.theses.map((t) => ({ id: t.id, central: t.central, status: t.status })) };
+  report.prose_audit = {
+    version: PROSE_AUDIT_VERSION,
+    checked: prose.claims.checked,
+    claim_errors: prose.claims.errors.length,
+    undeclared: prose.claims.undeclared.length,
+    biography: prose.biography.length,
+    jargon_per_1000: prose.jargon.per1000,
+    idioms: prose.idioms.length,
+    enumerations: prose.enumerations.length,
+    repeated_phrases: prose.within.phrases.length,
+    cross_shared: prose.cross.length,
+    pending: prose.fix,
+    notes: prose.notes
+  };
+  await rememberPrint(env, report);
   report.audit = {
     all_references_present_in_chart: audit.ok,
     scope: audit.scope,
@@ -2065,6 +2809,7 @@ async function handleFeedback(request, env, cors, requireCode) {
   const at = (/* @__PURE__ */ new Date()).toISOString();
   const title = String(body && body.report_title || "").slice(0, 200);
   await kv.put(`fb:${at}:${code}`, JSON.stringify({ code, at, report_title: title, text }));
+  if (validBankId(body && body.bank_id)) await depositComment(env, body.bank_id, text, at);
   await kv.put(ck, String(n + 1));
   return json2({ ok: true }, 200, cors);
 }
@@ -2153,12 +2898,14 @@ async function admit(request, env, cors, { requireCode, cap, incoming }) {
     await kv.put(vKey, String(vUsed + 1), { expirationTtl: 172800 });
     await kv.put(dKey, String(dUsed + 1), { expirationTtl: 172800 });
   }
-  return { job: { payload, fp, token, codeKind, order, requestId, useCode, code: useCode ? code : null, limit, mk, vKey, vUsed, dKey, dUsed } };
+  const ne = incoming && typeof incoming.notify_email === "string" ? incoming.notify_email.trim() : "";
+  const notifyEmail = ne && validEmail(ne) && codeKind !== "order" && mailEnabled(env) ? ne : null;
+  return { job: { payload, fp, token, codeKind, order, requestId, useCode, code: useCode ? code : null, limit, mk, vKey, vUsed, dKey, dUsed, notifyEmail } };
 }
 async function finalizeJob(env, job, spent, result, error, extra = {}) {
   const kv = env.ASTRO_KV;
   const { useCode, code, requestId, limit, mk, vKey, vUsed, dKey, dUsed, fp, token } = job;
-  let out, outcome, consumed = false, unsettled = false;
+  let out, outcome, consumed = false, unsettled = false, mailInfo = null;
   if (result) {
     const strict = env.AUDIT_STRICT !== "false";
     if (!result.audit.ok && strict) {
@@ -2166,6 +2913,11 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
       out = { error: "audit_failed" };
       outcome = "audit_failed";
     } else {
+      if (job.payload.request.bank_consent && bankEnabled(env)) {
+        const id = await bankId(result.report);
+        const entry = bankEntry({ id, report: result.report, payload: job.payload, chart: chartForModel(job.payload), usd: spent.usd, service: SERVICE_VERSION, model: env.MODEL || DEFAULT_MODEL });
+        if (await deposit(env, entry)) result.report.bank_id = id;
+      }
       let used = null;
       if (useCode) {
         await kv.put("rep:" + code, JSON.stringify({ request_id: requestId, fp: fp || null, report: result.report, at: (/* @__PURE__ */ new Date()).toISOString() }), { expirationTtl: REPORT_TTL }).catch((e) => console.log(JSON.stringify({ event: "report_copy_failed", detail: String(e && e.message || e) })));
@@ -2184,6 +2936,10 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
       await addToMonth(kv, mk, { usd: spent.usd, reports: 1 }).catch((e) => console.log(JSON.stringify({ event: "month_failed", detail: String(e && e.message || e) })));
       out = { report: result.report, remaining: useCode && used != null ? Math.max(0, limit - used) : null };
       outcome = "delivered";
+      if (job.notifyEmail) {
+        mailInfo = await mailReportLink(env, job, result.report, env.MAIL_RETRY_FAST === "1" ? [0, 0] : MAIL_WAITS_MS).catch(() => ({ status: "rejected", http: null, tries: 0 }));
+        out.mailed = !!(mailInfo && mailInfo.status === "accepted");
+      }
     }
   } else {
     out = { error: "upstream" };
@@ -2217,12 +2973,59 @@ async function finalizeJob(env, job, spent, result, error, extra = {}) {
     quota_unsettled: unsettled || void 0,
     reason: error ? String(error.status || error.detail || error.message || "").slice(0, 60) : void 0,
     attempts: extra.attempts || 1,
-    lang: job.payload.request.report_language
+    lang: job.payload.request.report_language,
+    // correo del informe (2.6.2): aceptado o rechazado por Resend, sin la dirección
+    mail: mailInfo ? mailInfo.status : void 0,
+    mail_http: mailInfo && mailInfo.status !== "accepted" ? mailInfo.http : void 0,
+    mail_tries: mailInfo ? mailInfo.tries : void 0
   }), { expirationTtl: GEN_TTL }).catch(() => {
+  });
+  if (mailInfo && mailInfo.status === "rejected") await alertMailFailure(env, job, genId, mailInfo).catch(() => {
   });
   if (job.codeKind === "order") await notifyOrderGeneration(env, job.orderId, requestId, outcome).catch(() => {
   });
   return out;
+}
+var LINK_TTL = 7 * 86400;
+var LINK_DAYS = 7;
+var linkHex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
+var MAIL_TRIES = 3;
+var MAIL_WAITS_MS = [2e3, 6e3];
+async function mailReportLink(env, job, report, waits = MAIL_WAITS_MS) {
+  if (!env.ASTRO_KV || !job.notifyEmail) return null;
+  const id = linkHex(8), key = linkHex(24);
+  const payload = { ...job.payload, person: { first_name: null } };
+  await env.ASTRO_KV.put("lnk:" + id, JSON.stringify({ keyHash: await sha256Hex(key), report, payload, at: (/* @__PURE__ */ new Date()).toISOString() }), { expirationTtl: LINK_TTL });
+  const url = `${(env.APP_URL || "https://asterorbis.com").replace(/\/$/, "")}/?informe=${id}#k=${key}`;
+  const m = fullReportMail(job.payload.request.report_language, report, url, LINK_DAYS);
+  let r = { ok: false, status: null }, tries = 0;
+  while (tries < MAIL_TRIES) {
+    tries++;
+    r = await sendMailResult(env, { to: job.notifyEmail, subject: m.subject, text: m.text, html: m.html, key: `lnk-${job.requestId || id}` });
+    if (r.ok || !mailRetryable(r.status) || tries >= MAIL_TRIES) break;
+    await new Promise((res) => setTimeout(res, waits[tries - 1] || 0));
+  }
+  return { status: r.ok ? "accepted" : "rejected", http: r.status, tries };
+}
+async function alertMailFailure(env, job, genId, mail) {
+  if (!env.ADMIN_EMAIL) return false;
+  const ref = job.code || job.orderId || "sin c\xF3digo";
+  const text = `No sali\xF3 el correo con el informe.
+
+C\xF3digo: ${ref}
+Registro: gen:${genId}
+Hora: ${(/* @__PURE__ */ new Date()).toISOString()}
+Respuesta de Resend: ${mail.http == null ? "sin respuesta" : mail.http}
+Intentos: ${mail.tries}
+
+El informe se entreg\xF3 en pantalla y se puede recuperar durante 48 horas con el mismo c\xF3digo. La direcci\xF3n de correo no se guarda: para reenviarlo hay que ped\xEDrsela a la persona.`;
+  return sendMail(env, { to: env.ADMIN_EMAIL, subject: `AsterOrbis: no sali\xF3 el correo de un informe (${ref})`, text, key: `mailfail-${genId}` });
+}
+async function handleLink(env, id, keyHeader, cors) {
+  if (!/^[0-9a-f]{16}$/.test(id) || !/^[0-9a-f]{48}$/.test(keyHeader || "")) return json2({ error: "not_found" }, 404, cors);
+  const saved = await kvGetJSON(env.ASTRO_KV, "lnk:" + id, null);
+  if (!saved || saved.keyHash !== await sha256Hex(keyHeader)) return json2({ error: "not_found" }, 404, cors);
+  return json2({ report: saved.report, chart: saved.payload }, 200, { ...cors, "cache-control": "no-store" });
 }
 async function undoAdmission(env, job) {
   if (job.useCode) await ledger(env, job.code).release(job.token).catch(() => {
@@ -2265,7 +3068,9 @@ async function generationAvailable(env) {
 var worker_default = {
   // control periódico de pedidos pagos (Cron); no hace nada fuera del modo "paid"
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(runControls(env, event.scheduledTime || Date.now()));
+    const t = event.scheduledTime || Date.now();
+    ctx.waitUntil(runControls(env, t));
+    ctx.waitUntil(purgeOld(env, t));
   },
   async fetch(request, env, ctx) {
     const cors = corsHeaders(request, env);
@@ -2306,6 +3111,10 @@ var worker_default = {
     if (url.pathname === "/orders" || url.pathname.startsWith("/orders/")) {
       const r = await routeOrders(request, env, cors, url);
       if (r) return r;
+    }
+    if (request.method === "GET" && url.pathname.startsWith("/links/")) {
+      if (!env.ASTRO_KV) return json2({ error: "not_configured" }, 503, cors);
+      return handleLink(env, url.pathname.slice(7), request.headers.get("x-link-key"), cors);
     }
     if (request.method === "GET" && url.pathname.startsWith(JOB_PREFIX + "/")) {
       if (!env.REPORT_JOB) return json2({ error: "not_configured" }, 503, cors);
@@ -2458,6 +3267,7 @@ var ReportJob = class {
   /** Guarda el resultado, borra las fases intermedias y programa la limpieza a las 48 h. */
   async close(meta, out) {
     meta.status = out.error ? "failed" : "done";
+    if (meta.job) delete meta.job.notifyEmail;
     meta.cleanupAt = Date.now() + (meta.job.retainMs || REPORT_TTL * 1e3);
     await this.storage.put("out", out);
     await this.storage.delete(["phase:analisis", "phase:report_b"]);

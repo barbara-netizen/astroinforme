@@ -7,9 +7,15 @@ import worker from "../src/worker.js";
 
 const ok = informeOk(), CODE = "LUZ-3M8Q";
 const env = (over = {}) => { const e = baseEnv({ MAIL_API_KEY: "k", MAIL_FROM: "AsterOrbis <a@asterorbis.com>", ...over }); e.REPORT_JOB = new FakeNamespace(ReportJob); e.REPORT_JOB.env = e; return e; };
-const mails = []; let seq = [];
+const mails = []; let seq = [], resend = [];
 globalThis.fetch = async (url, init) => {
-  if (String(url).includes("api.resend.com")) { mails.push(JSON.parse(init.body)); return new Response("{}"); }
+  if (String(url).includes("api.resend.com")) {
+    const body = JSON.parse(init.body); body.key = init.headers["idempotency-key"];
+    const st = body.to[0] === "admin@example.com" ? 200 : (resend.length ? resend.shift() : 200);
+    if (st === "net") throw new Error("red");
+    if (st === 200) mails.push(body); else mails.push({ ...body, failed: st });
+    return new Response("{}", { status: st });
+  }
   state.calls.push(JSON.parse(init.body)); const text = JSON.stringify(seq.shift());
   return new Response(JSON.stringify({ content: [{ type: "text", text }], usage: { input_tokens: 10, output_tokens: 10 }, stop_reason: "end_turn" }), { headers: { "content-type": "application/json" } });
 };
@@ -58,4 +64,40 @@ for (const [extra, over] of [[{}, {}], [{ notify_email: "no-es-correo" }, {}], [
   assert.equal(st.status, "done"); assert.ok(st.report); assert.equal(st.mailed, undefined); assert.equal(mails.length, 0);
 }
 
-console.log("OK — informe por correo 2.6: 3 grupos");
+// 4 a 6 (2.6.2): el registro anota si Resend aceptó el correo; las fallas pasajeras se reintentan con la misma clave;
+// si no sale, llega un aviso a ADMIN_EMAIL sin la dirección de la persona ni el enlace
+const gen = (e, ID) => JSON.parse(e.ASTRO_KV.m.get("gen:" + ID));
+const run = async (ID, plan) => {
+  const e = env({ MAIL_RETRY_FAST: "1", ADMIN_EMAIL: "admin@example.com" });
+  mails.length = 0; resend = [...plan];
+  await call(post(ID, { notify_email: "ana@example.com" }), e);
+  seq = [ANALISIS, ok]; await e.REPORT_JOB.obj(ID).alarm();
+  return { e, st: (await call(get(ID), e)).body, toAna: mails.filter((m) => m.to[0] === "ana@example.com"), toAdmin: mails.filter((m) => m.to[0] === "admin@example.com") };
+};
+{
+  const ID = "mail-000000000000011", { e, st, toAna, toAdmin } = await run(ID, []);
+  assert.equal(st.mailed, true); assert.equal(gen(e, ID).mail, "accepted"); assert.equal(gen(e, ID).mail_tries, 1); assert.equal(gen(e, ID).mail_http, undefined);
+  assert.equal(toAna.length, 1); assert.equal(toAdmin.length, 0);
+}
+{
+  const ID = "mail-000000000000012", { e, st, toAna, toAdmin } = await run(ID, [500, "net"]);
+  assert.equal(st.mailed, true, "falla pasajera y después sale"); assert.equal(gen(e, ID).mail, "accepted"); assert.equal(gen(e, ID).mail_tries, 3);
+  assert.equal(toAna.length, 2); assert.equal(new Set(toAna.map((m) => m.key)).size, 1, "misma clave de idempotencia en los reintentos");
+  assert.equal(toAdmin.length, 0);
+}
+{
+  const ID = "mail-000000000000013", { e, st, toAna, toAdmin } = await run(ID, [503, 503, 503]);
+  assert.equal(st.status, "done"); assert.ok(st.report, "el informe llega igual"); assert.equal(st.mailed, false);
+  const g = gen(e, ID); assert.equal(g.mail, "rejected"); assert.equal(g.mail_http, 503); assert.equal(g.mail_tries, 3);
+  assert.equal(toAdmin.length, 1); const a = toAdmin[0];
+  assert.match(a.subject, new RegExp(CODE)); assert.match(a.text, new RegExp("gen:" + ID)); assert.match(a.text, /503/);
+  assert.ok(!a.text.includes("ana@example.com") && !/informe=/.test(a.text), "el aviso no lleva la dirección ni el enlace");
+  for (const [k2, v] of e.ASTRO_KV.m) assert.ok(!String(v).includes("ana@example.com"), "el correo no se guarda: " + k2);
+}
+{
+  const ID = "mail-000000000000014", { e, toAna, toAdmin } = await run(ID, [422]);
+  assert.equal(toAna.length, 1, "un rechazo definitivo no se reintenta"); assert.equal(gen(e, ID).mail, "rejected"); assert.equal(gen(e, ID).mail_http, 422);
+  assert.equal(toAdmin.length, 1);
+}
+
+console.log("OK — informe por correo 2.6.2: 7 grupos");

@@ -4,17 +4,23 @@
 
 export const mailEnabled = (env) => !!(env.MAIL_API_KEY && env.MAIL_FROM);
 
-/** Envía un correo de texto. Devuelve true si el proveedor lo aceptó; aceptado no garantiza que llegue a la bandeja. */
-export async function sendMail(env, { to, subject, text, html, key }) {
-  if (!mailEnabled(env) || !to) return false;
+/** Envía un correo y devuelve { ok, status }: status es el código HTTP de Resend, o null si no hubo respuesta.
+ *  Aceptado no garantiza que llegue a la bandeja. */
+export async function sendMailResult(env, { to, subject, text, html, key }) {
+  if (!mailEnabled(env) || !to) return { ok: false, status: null, skipped: true };
   try {
     const r = await fetch("https://api.resend.com/emails", { method: "POST",
       headers: { "content-type": "application/json", authorization: "Bearer " + env.MAIL_API_KEY, ...(key ? { "idempotency-key": key } : {}) },
       body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject, text, ...(html ? { html } : {}), ...(env.ADMIN_EMAIL ? { reply_to: env.ADMIN_EMAIL } : {}) }) });
     if (!r.ok) console.log(JSON.stringify({ event: "mail_rejected", status: r.status }));
-    return r.ok;
-  } catch (e) { console.log(JSON.stringify({ event: "mail_error" })); return false; }
+    return { ok: r.ok, status: r.status };
+  } catch (e) { console.log(JSON.stringify({ event: "mail_error" })); return { ok: false, status: null }; }
 }
+/** Envía un correo de texto. Devuelve true si el proveedor lo aceptó; aceptado no garantiza que llegue a la bandeja. */
+export async function sendMail(env, msg) { return (await sendMailResult(env, msg)).ok; }
+
+/** Vale la pena reintentar: sin respuesta, límite de frecuencia, pedido simultáneo con la misma clave o falla del proveedor. */
+export const mailRetryable = (status) => status == null || status === 429 || status === 409 || status >= 500;
 
 const TEXTS = {
   es: { subject: "Tu informe de AsterOrbis está listo", body: (u, d) => `Tu informe está listo.\n\nAbrilo desde este enlace privado:\n${u}\n\nEl enlace funciona durante ${d} días. Desde ahí podés guardar el PDF. Después de ese plazo, el informe y tu carta se borran.\n\nNo compartas este enlace: quien lo tenga puede leer el informe. Si algo no funciona, respondé este correo.\n\nBárbara Gutiérrez · AsterOrbis` },
