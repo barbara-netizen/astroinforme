@@ -29,7 +29,7 @@
 
 import { auditReport, refText } from "../../audit.js";
 import { argumentAudit } from "../../argument_audit.js";
-import { sendMail as sendMailLink, fullReportMail, mailEnabled as mailOn, validEmail as emailOk } from "./mail.js";
+import { sendMail as sendMailLink, sendMailResult, mailRetryable, fullReportMail, mailEnabled as mailOn, validEmail as emailOk } from "./mail.js";
 import { sha256Hex as sha256OfText } from "./order.js";
 import { bankEnabled, bankId, bankEntry, deposit, depositComment, purgeOld, validBankId } from "./bank.js";
 import { proseAudit, describeProse, fingerprint, repeatedMyth, PROSE_AUDIT_VERSION } from "../../prose_audit.js";
@@ -40,7 +40,7 @@ import { ledger } from "./ledger.js";
 import { routePayments, routeOrders, notifyOrderGeneration, runControls } from "./orders.js";
 import { getProvider, providerNames } from "./payments/provider.js";
 
-export const SERVICE_VERSION = "2.6.1";
+export const SERVICE_VERSION = "2.6.2";
 const DEFAULT_MODEL = "claude-opus-5-5";
 // la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
 const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
@@ -540,7 +540,7 @@ export async function admit(request, env, cors, { requireCode, cap, incoming }) 
 export async function finalizeJob(env, job, spent, result, error, extra = {}) {
   const kv = env.ASTRO_KV;
   const { useCode, code, requestId, limit, mk, vKey, vUsed, dKey, dUsed, fp, token } = job;
-  let out, outcome, consumed = false, unsettled = false;
+  let out, outcome, consumed = false, unsettled = false, mailInfo = null;
   if (result) {
     const strict = env.AUDIT_STRICT !== "false";
     if (!result.audit.ok && strict) {
@@ -569,7 +569,10 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
       await addToMonth(kv, mk, { usd: spent.usd, reports: 1 }).catch((e) => console.log(JSON.stringify({ event: "month_failed", detail: String((e && e.message) || e) })));
       out = { report: result.report, remaining: useCode && used != null ? Math.max(0, limit - used) : null }; outcome = "delivered";
       // informe completo por correo, si la persona dio uno: no depende de que la app siga abierta
-      if (job.notifyEmail) out.mailed = await mailReportLink(env, job, result.report).catch(() => false);
+      if (job.notifyEmail) {
+        mailInfo = await mailReportLink(env, job, result.report, env.MAIL_RETRY_FAST === "1" ? [0, 0] : MAIL_WAITS_MS).catch(() => ({ status: "rejected", http: null, tries: 0 }));
+        out.mailed = !!(mailInfo && mailInfo.status === "accepted");
+      }
     }
   } else {
     out = { error: "upstream" }; outcome = "upstream";
@@ -590,7 +593,10 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
     // referencia para conciliar reclamos: número de orden de la compra (licencias) o el código (códigos de regalo)
     ref: useCode ? (job.codeKind === "license" ? (job.order ? "order:" + job.order : null) : job.codeKind === "order" ? "order:" + job.orderId : job.code) : null, usd: +spent.usd.toFixed(4), phases: spent.phases || {}, calls: spent.calls || [], corrected: !!(result && result.corrected),
     outcome, quota_unsettled: unsettled || undefined, reason: error ? String(error.status || error.detail || error.message || "").slice(0, 60) : undefined, attempts: extra.attempts || 1, lang: job.payload.request.report_language,
+    // correo del informe (2.6.2): aceptado o rechazado por Resend, sin la dirección
+    mail: mailInfo ? mailInfo.status : undefined, mail_http: mailInfo && mailInfo.status !== "accepted" ? mailInfo.http : undefined, mail_tries: mailInfo ? mailInfo.tries : undefined,
   }), { expirationTtl: GEN_TTL }).catch(() => { });
+  if (mailInfo && mailInfo.status === "rejected") await alertMailFailure(env, job, genId, mailInfo).catch(() => { });
   // pedido pago: el pedido registra cómo terminó la generación (entregado o fallido, para la cola de excepciones)
   if (job.codeKind === "order") await notifyOrderGeneration(env, job.orderId, requestId, outcome).catch(() => { });
   return out;
@@ -599,15 +605,34 @@ export async function finalizeJob(env, job, spent, result, error, extra = {}) {
 // ---------------------------------------------------------------- enlace privado del informe (2.6)
 export const LINK_TTL = 7 * 86400, LINK_DAYS = 7;
 const linkHex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
-/** Guarda una copia del informe por 7 días bajo un enlace privado y manda el correo. El correo no se guarda. */
-export async function mailReportLink(env, job, report) {
-  if (!env.ASTRO_KV || !job.notifyEmail) return false;
+export const MAIL_TRIES = 3, MAIL_WAITS_MS = [2000, 6000];
+/** Guarda una copia del informe por 7 días bajo un enlace privado y manda el correo. El correo no se guarda.
+ *  Reintenta las fallas pasajeras con la misma clave de idempotencia (Resend no lo manda dos veces).
+ *  Devuelve { status: "accepted" | "rejected", http, tries }. */
+export async function mailReportLink(env, job, report, waits = MAIL_WAITS_MS) {
+  if (!env.ASTRO_KV || !job.notifyEmail) return null;
   const id = linkHex(8), key = linkHex(24);
   const payload = { ...job.payload, person: { first_name: null } }; // la carta para rearmar la rueda; sin el nombre
   await env.ASTRO_KV.put("lnk:" + id, JSON.stringify({ keyHash: await sha256OfText(key), report, payload, at: new Date().toISOString() }), { expirationTtl: LINK_TTL });
   const url = `${(env.APP_URL || "https://asterorbis.com").replace(/\/$/, "")}/?informe=${id}#k=${key}`;
   const m = fullReportMail(job.payload.request.report_language, report, url, LINK_DAYS);
-  return sendMailLink(env, { to: job.notifyEmail, subject: m.subject, text: m.text, html: m.html, key: `lnk-${job.requestId || id}` });
+  let r = { ok: false, status: null }, tries = 0;
+  while (tries < MAIL_TRIES) {
+    tries++;
+    r = await sendMailResult(env, { to: job.notifyEmail, subject: m.subject, text: m.text, html: m.html, key: `lnk-${job.requestId || id}` });
+    if (r.ok || !mailRetryable(r.status) || tries >= MAIL_TRIES) break;
+    await new Promise((res) => setTimeout(res, waits[tries - 1] || 0));
+  }
+  return { status: r.ok ? "accepted" : "rejected", http: r.status, tries };
+}
+/** Aviso a ADMIN_EMAIL cuando el correo de un informe no salió. Sin la dirección de la persona ni el enlace. */
+export async function alertMailFailure(env, job, genId, mail) {
+  if (!env.ADMIN_EMAIL) return false;
+  const ref = job.code || job.orderId || "sin código";
+  const text = `No salió el correo con el informe.\n\nCódigo: ${ref}\nRegistro: gen:${genId}\nHora: ${new Date().toISOString()}\nRespuesta de Resend: ${mail.http == null ? "sin respuesta" : mail.http}\nIntentos: ${mail.tries}\n\n`
+    + `El informe se entregó en pantalla y se puede recuperar durante 48 horas con el mismo código. `
+    + `La dirección de correo no se guarda: para reenviarlo hay que pedírsela a la persona.`;
+  return sendMailLink(env, { to: env.ADMIN_EMAIL, subject: `AsterOrbis: no salió el correo de un informe (${ref})`, text, key: `mailfail-${genId}` });
 }
 /** GET /links/<id> con la clave en «x-link-key»: devuelve el informe guardado. */
 async function handleLink(env, id, keyHeader, cors) {
