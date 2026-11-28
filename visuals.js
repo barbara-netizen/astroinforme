@@ -19,26 +19,30 @@ const A = {
   desire_meadows: { type: "image", file: "assets/15-deseo-dia-de-saltar-por-las-praderas.jpg", title: "Día de saltar por las praderas", size: [1026, 919], fit: "contain", focal: "50% 50%" },
   relationships_years: { type: "image", file: "assets/16-vinculos-aquellos-anos.jpg", title: "Aquellos años", size: [1080, 752], fit: "cover", focal: "50% 50%" },
   roots_rabbit_year: { type: "image", file: "assets/17-raices-el-ano-del-conejo.jpg", title: "El año del Conejo", size: [1195, 919], fit: "contain", focal: "50% 50%" },
-  closure_serendipity: { type: "image", file: "assets/18-cierre-serendipia-florida.jpg", title: "Serendipia florida", size: [638, 374], fit: "cover", focal: "50% 50%" },
-  desire_living: { type: "image", file: "assets/19-deseo-en-el-living.jpg", title: "En el Living", size: [700, 700], fit: "contain", focal: "50% 50%" },
+  closure_serendipity: { type: "video", file: "assets/18-cierre-serendipia-nubes.mp4", poster: "assets/18-cierre-serendipia-nubes-poster.jpg", title: "Serendipia florida", size: [1080, 632], loop: false, fit: "cover", focal: "50% 50%" },
+  desire_living: { type: "image", file: "assets/19-deseo-en-el-living-completa.jpg", title: "En el Living", size: [960, 700], fit: "contain", focal: "50% 50%" },
   shadow_party: { type: "image", file: "assets/20-sombra-fiesta.jpg", title: "Fiesta", size: [1210, 629], fit: "cover", focal: "50% 50%" },
-  entry_crowd: { type: "image", file: "assets/21-entrada-nadie-sabe-lo-que-vendra.jpg", title: "Nadie sabe lo que vendrá", size: [720, 670], fit: "contain", focal: "50% 50%" },
-  conflict_circus: { type: "image", file: "assets/22-conflicto-el-circo-va-por-dentro.jpg", title: "El circo va por dentro (fragmento)", size: [516, 720], fit: "contain", focal: "50% 50%" },
+  entry_crowd: { type: "image", file: "assets/21-entrada-nadie-sabe-lo-que-vendra-1080.jpg", title: "Nadie sabe lo que vendrá", size: [1080, 933], fit: "contain", focal: "50% 50%" },
+  conflict_circus: { type: "image", file: "assets/22-conflicto-el-circo-va-por-dentro.jpg", title: "Confía", size: [516, 720], fit: "contain", focal: "50% 50%" },
   vocation_neurons: { type: "image", file: "assets/23-vocacion-neuronas-trabajando.jpg", title: "Neuronas trabajando", size: [963, 923], fit: "contain", focal: "50% 50%" },
   resources_divorced: { type: "image", file: "assets/24-recursos-kokoon.jpg", title: "Kokoon", size: [734, 919], fit: "contain", focal: "50% 50%" },
   boundaries_wire: { type: "image", file: "assets/07-limites-glamur-alambre.jpg", title: "Glamur Atado con Alambre", size: [720, 556], fit: "cover", focal: "50% 50%" },
   brand_guardian: { type: "image", file: "assets/02-marca-guardian-del-universo.jpg", title: "Guardián del Universo", size: [604, 460], fit: "contain", focal: "50% 35%" },
   author_work: { type: "image", file: "assets/11-autoria-mary-playa-union.jpg", title: "Mary en Playa Unión", size: [1600, 798], fit: "contain", focal: "50% 50%" },
   pilot_rabbit: { type: "video", file: "assets/10-piloto-conejo-cuantico.mp4", poster: "assets/10-piloto-conejo-cuantico-poster.jpg", title: "Conejo cuántico", size: [360, 326], loop: true, fit: "cover", focal: "50% 50%" },
+  neptune_swimming: { type: "image", file: "assets/25-neptuno-sone-que-nadaba.jpg", title: "Soñé que nadaba", size: [848, 919], fit: "contain", focal: "50% 50%" },
+  saturn_black_book: { type: "image", file: "assets/26-saturno-del-libro-negro.jpg", title: "Del Libro Negro", size: [868, 849], fit: "contain", focal: "50% 50%" },
+  transformation_refuges: { type: "image", file: "assets/27-transformacion-refugios.jpg", title: "Refugios temporales para intemperies permanentes", size: [1103, 845], fit: "contain", focal: "50% 50%" },
+  synthesis_path: { type: "image", file: "assets/28-sintesis-camino.jpg", title: "Camino", size: [689, 919], fit: "contain", focal: "50% 50%" },
   emotional_swimmers: { type: "video", file: "assets/06-emocional-nadadoras.mp4", poster: "assets/06-emocional-nadadoras-poster.jpg", title: "Nadadoras", size: [720, 720], loop: true, fit: "cover", focal: "50% 60%" },
 };
 
 // Ilustración temática por sección del informe (ids del contrato astroinforme.report/v1).
 // Dentro del informe las animaciones se reproducen una vez y quedan en su fotograma fijo.
 export const SECTION_ART = {
-  opening: "opening_derivas", identity: "identity_future", emotional: "emotional_desmadre", saturn: "boundaries_wire",
-  desire: "desire_living", shadow: "shadow_party", central_conflict: "conflict_circus", vocation: "vocation_neurons", resources: "resources_divorced", relationships: "relationships_years", roots: "roots_rabbit_year", neptune: "emotional_swimmers",
-  transformation: "hero_levitar", myth: "brand_guardian",
+  opening: "opening_derivas", identity: "identity_future", emotional: "emotional_desmadre", saturn: "saturn_black_book",
+  desire: "desire_living", shadow: "shadow_party", central_conflict: "conflict_circus", vocation: "vocation_neurons", resources: "resources_divorced", relationships: "relationships_years", roots: "roots_rabbit_year", neptune: "neptune_swimming",
+  transformation: "transformation_refuges", synthesis: "synthesis_path", myth: "brand_guardian",
 };
 
 /** Datos de una pieza para el PDF (de las animaciones, su fotograma fijo). */
