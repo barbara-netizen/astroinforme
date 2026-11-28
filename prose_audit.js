@@ -298,8 +298,20 @@ export function crossRepetition(report, recent) {
 
 // ------------------------------------------------------------------ mitos
 const MYTH_STOP = new Set(["y", "e", "el", "la", "los", "las", "de", "del", "su", "sus", "en", "a", "con", "mito", "hermana", "hermano", "hijo", "hija", "padre", "madre"]);
-const mythTokens = (name) => new Set(strip(String(name || "")).replace(/[^a-z\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !MYTH_STOP.has(w)));
-/** Devuelve el mito reciente con el que coincide (por nombre propio compartido) o null. */
+// La misma figura con su nombre griego, romano o inglés cuenta como la misma (2.6.3): Proserpina = Perséfone, Ulises = Odiseo.
+const MYTH_ALIAS = {
+  proserpina: "persefone", kore: "persefone", core: "persefone", persephone: "persefone", ceres: "demeter",
+  cupido: "eros", cupid: "eros", amor: "eros", psyche: "psique", ulises: "odiseo", odysseus: "odiseo", ulysses: "odiseo",
+  hercules: "heracles", jupiter: "zeus", juno: "hera", minerva: "atenea", athena: "atenea", diana: "artemis", artemisa: "artemis",
+  venus: "afrodita", aphrodite: "afrodita", mercurio: "hermes", mercury: "hermes", baco: "dioniso", dionisos: "dioniso", dionysus: "dioniso",
+  bacchus: "dioniso", pluton: "hades", dis: "hades", neptuno: "poseidon", vulcano: "hefesto", hephaestus: "hefesto", marte: "ares",
+  saturno: "cronos", aurora: "eos", penelope: "penelope", prometheus: "prometeo", daedalus: "dedalo", icarus: "icaro", antigone: "antigona",
+  proteus: "proteo", orpheus: "orfeo", eurydice: "euridice", arethusa: "aretusa", alpheus: "alfeo", narcissus: "narciso", echo: "eco",
+};
+const MYTH_STOP_EN = new Set(["and", "the", "of", "who", "his", "her", "from", "with"]);
+const mythTokens = (name) => new Set(strip(String(name || "")).replace(/[^a-z\s]/g, " ").split(/\s+/)
+  .filter((w) => w.length >= 3 && !MYTH_STOP.has(w) && !MYTH_STOP_EN.has(w)).map((w) => MYTH_ALIAS[w] || w));
+/** Devuelve el mito reciente con el que coincide (por nombre propio compartido, o la misma figura con otro nombre) o null. */
 export function repeatedMyth(name, recent) {
   const a = mythTokens(name);
   if (!a.size) return null;

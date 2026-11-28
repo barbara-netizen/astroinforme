@@ -1072,7 +1072,57 @@ function crossRepetition(report, recent) {
   return shared;
 }
 var MYTH_STOP = /* @__PURE__ */ new Set(["y", "e", "el", "la", "los", "las", "de", "del", "su", "sus", "en", "a", "con", "mito", "hermana", "hermano", "hijo", "hija", "padre", "madre"]);
-var mythTokens = (name) => new Set(strip(String(name || "")).replace(/[^a-z\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !MYTH_STOP.has(w)));
+var MYTH_ALIAS = {
+  proserpina: "persefone",
+  kore: "persefone",
+  core: "persefone",
+  persephone: "persefone",
+  ceres: "demeter",
+  cupido: "eros",
+  cupid: "eros",
+  amor: "eros",
+  psyche: "psique",
+  ulises: "odiseo",
+  odysseus: "odiseo",
+  ulysses: "odiseo",
+  hercules: "heracles",
+  jupiter: "zeus",
+  juno: "hera",
+  minerva: "atenea",
+  athena: "atenea",
+  diana: "artemis",
+  artemisa: "artemis",
+  venus: "afrodita",
+  aphrodite: "afrodita",
+  mercurio: "hermes",
+  mercury: "hermes",
+  baco: "dioniso",
+  dionisos: "dioniso",
+  dionysus: "dioniso",
+  bacchus: "dioniso",
+  pluton: "hades",
+  dis: "hades",
+  neptuno: "poseidon",
+  vulcano: "hefesto",
+  hephaestus: "hefesto",
+  marte: "ares",
+  saturno: "cronos",
+  aurora: "eos",
+  penelope: "penelope",
+  prometheus: "prometeo",
+  daedalus: "dedalo",
+  icarus: "icaro",
+  antigone: "antigona",
+  proteus: "proteo",
+  orpheus: "orfeo",
+  eurydice: "euridice",
+  arethusa: "aretusa",
+  alpheus: "alfeo",
+  narcissus: "narciso",
+  echo: "eco"
+};
+var MYTH_STOP_EN = /* @__PURE__ */ new Set(["and", "the", "of", "who", "his", "her", "from", "with"]);
+var mythTokens = (name) => new Set(strip(String(name || "")).replace(/[^a-z\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !MYTH_STOP.has(w) && !MYTH_STOP_EN.has(w)).map((w) => MYTH_ALIAS[w] || w));
 function repeatedMyth(name, recent) {
   const a = mythTokens(name);
   if (!a.size) return null;
@@ -1324,7 +1374,7 @@ Le\xE9 la carta calculada que sigue y devolv\xE9 SOLO un objeto JSON, sin texto 
  "contradicciones": ["\u2026"],
  "datos_no_fiables": ["elementos marcados reliable:false o en sensitivity.unreliable que no deben sostener conclusiones"],
  "jerarquia_de_secciones": ["ids de secci\xF3n en el orden que conviene"],
- "mito": {"nombre": "\u2026", "por_que": "\u2026"},
+ "mito": {"nombre": "\u2026", "por_que": "\u2026", "repeticion": "vac\xEDo, salvo que el mito figure entre los usados recientemente (ver abajo)"},
  "pasadas": {"forma_general": "\u2026", "planeta_por_planeta": "\u2026", "diferencias": "\u2026"},
  "forma_de_la_tension": "qu\xE9 forma tiene (oposici\xF3n, cadena, tri\xE1ngulo, desproporci\xF3n, ausencia, ciclo, desfase u otra) y por qu\xE9",
  "tesis": [{"id": "t1", "afirmacion": "\u2026", "central": true, "indicators": ["referencias t\xE9cnicas declaradas como en technical_references_used"],
@@ -1349,7 +1399,7 @@ Antes de elegir los temas, revis\xE1 chart.derived.configurations (cuadraturas e
 chart.derived.angular: toda configuraci\xF3n calculada y todo planeta a menos de 3\xB0 de un \xE1ngulo debe figurar en "temas" o, si decid\xEDs
 no desarrollarlo, en una nota breve dentro de "contradicciones" que explique por qu\xE9 pesa menos en esta carta.
 
-${mitosRecientes.length ? `Mitos usados recientemente (evitalos salvo justificaci\xF3n concreta): ${mitosRecientes.join("; ")}.
+${mitosRecientes.length ? `Para el mito, la pertinencia tiene prioridad sobre la novedad. Mitos usados recientemente o en informes de referencia (es informaci\xF3n, no una prohibici\xF3n): ${mitosRecientes.join("; ")}. Si el mito que mejor condensa la tesis central es uno de ellos, o la misma figura con otro nombre (griego o romano), elegilo igual y complet\xE1 "mito.repeticion" con una raz\xF3n de esta carta: qu\xE9 condensa que ninguno de los otros considerados condensa. No elijas un mito menos pertinente solo para no repetir.
 
 ` : ""}CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
@@ -2375,7 +2425,7 @@ async function routeOrders(request, env, cors, url) {
 }
 
 // src/worker.js
-var SERVICE_VERSION = "2.6.2";
+var SERVICE_VERSION = "2.6.3";
 var DEFAULT_MODEL = "claude-opus-5-5";
 var DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
 var PRICES = {
@@ -2542,14 +2592,24 @@ async function rememberPrint(env, report) {
   } catch (e) {
   }
 }
+var MIN_REPEAT_REASON = 30;
 function avoidRepeatedMyth(analisis, recent) {
   const m = analisis && analisis.mito;
   if (!m || typeof m.nombre !== "string") return analisis;
   const clash = repeatedMyth(m.nombre, recent);
   if (!clash) return analisis;
+  const why = typeof m.repeticion === "string" ? m.repeticion.trim() : "";
+  if (why.length >= MIN_REPEAT_REASON) {
+    analisis.mito_repetido = { nombre: m.nombre, coincide_con: clash, justificado: true };
+    return analisis;
+  }
   const alt2 = (Array.isArray(analisis.mitos_considerados) ? analisis.mitos_considerados : []).find((x) => x && typeof x.nombre === "string" && !repeatedMyth(x.nombre, recent));
-  analisis.mito_descartado = { nombre: m.nombre, motivo: `coincide con un mito usado recientemente (${clash})` };
-  analisis.mito = alt2 ? { nombre: alt2.nombre, por_que: alt2.motivo || "" } : { nombre: "", por_que: "Eleg\xED un mito cl\xE1sico que no est\xE9 en la lista de mitos recientes." };
+  if (!alt2) {
+    analisis.mito_repetido = { nombre: m.nombre, coincide_con: clash, justificado: false };
+    return analisis;
+  }
+  analisis.mito_descartado = { nombre: m.nombre, motivo: `coincide con un mito usado recientemente (${clash}) y la fase A no explic\xF3 por qu\xE9 es el m\xE1s pertinente` };
+  analisis.mito = { nombre: alt2.nombre, por_que: alt2.motivo || "" };
   return analisis;
 }
 function describeIssues(audit) {
