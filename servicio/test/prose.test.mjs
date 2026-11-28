@@ -72,9 +72,27 @@ assert.equal(repeatedMyth("Aretusa y Alfeo", ["Antígona", "Prometeo"]), null);
 let an = { mito: { nombre: "Antígona", por_que: "x" }, mitos_considerados: [{ nombre: "Antígona", motivo: "x" }, { nombre: "Alcestis", motivo: "y" }] };
 avoidRepeatedMyth(an, ["Antígona"]);
 assert.equal(an.mito.nombre, "Alcestis"); assert.equal(an.mito_descartado.nombre, "Antígona");
+// sin otro considerado disponible, se conserva el elegido (2.6.3: la pertinencia antes que la novedad)
 an = { mito: { nombre: "Prometeo", por_que: "x" }, mitos_considerados: [{ nombre: "Prometeo y Epimeteo", motivo: "x" }] };
 avoidRepeatedMyth(an, ["Prometeo"]);
-assert.equal(an.mito.nombre, ""); assert.match(an.mito.por_que, /no esté en la lista/);
+assert.equal(an.mito.nombre, "Prometeo"); assert.equal(an.mito_repetido.justificado, false); assert.equal(an.mito_descartado, undefined);
+
+// 11b. mitos 2.6.3: la misma figura con otro nombre cuenta como repetida
+assert.equal(repeatedMyth("Proserpina, reina del mundo de abajo", ["Perséfone"]), "Perséfone");
+assert.equal(repeatedMyth("Ulises y las sirenas", ["Odiseo y las Sirenas"]), "Odiseo y las Sirenas");
+assert.equal(repeatedMyth("Cupido y Psique", ["Psique y Eros"]), "Psique y Eros");
+assert.equal(repeatedMyth("Arethusa, who came up through the earth", ["Aretusa y Alfeo"]), "Aretusa y Alfeo");
+assert.equal(repeatedMyth("Filoctetes y el arco", ["Perséfone", "Odiseo y las Sirenas"]), null);
+// con una razón de esta carta en "mito.repeticion", el mito repetido se conserva
+an = { mito: { nombre: "Psique ante las semillas", por_que: "x", repeticion: "La tarea de separar grano por grano condensa la tesis central mejor que Aracne o Sísifo." },
+  mitos_considerados: [{ nombre: "Psique ante las semillas", motivo: "x" }, { nombre: "Aracne", motivo: "y" }] };
+avoidRepeatedMyth(an, ["Psique y Eros"]);
+assert.equal(an.mito.nombre, "Psique ante las semillas"); assert.equal(an.mito_repetido.justificado, true); assert.equal(an.mito_descartado, undefined);
+// sin razón y con otro considerado disponible, se reemplaza como antes
+an = { mito: { nombre: "Psique ante las semillas", por_que: "x", repeticion: "" },
+  mitos_considerados: [{ nombre: "Psique ante las semillas", motivo: "x" }, { nombre: "Aracne", motivo: "y" }] };
+avoidRepeatedMyth(an, ["Psique y Eros"]);
+assert.equal(an.mito.nombre, "Aracne"); assert.equal(an.mito_descartado.nombre, "Psique ante las semillas");
 
 // 12. recuentos por modalidad o elemento (2.6.1): falso «casi todo en fijos», cierto «solo un cardinal»
 {

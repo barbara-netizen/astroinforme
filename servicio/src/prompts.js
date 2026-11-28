@@ -19,7 +19,7 @@ Leé la carta calculada que sigue y devolvé SOLO un objeto JSON, sin texto ante
  "contradicciones": ["…"],
  "datos_no_fiables": ["elementos marcados reliable:false o en sensitivity.unreliable que no deben sostener conclusiones"],
  "jerarquia_de_secciones": ["ids de sección en el orden que conviene"],
- "mito": {"nombre": "…", "por_que": "…"},
+ "mito": {"nombre": "…", "por_que": "…", "repeticion": "vacío, salvo que el mito figure entre los usados recientemente (ver abajo)"},
  "pasadas": {"forma_general": "…", "planeta_por_planeta": "…", "diferencias": "…"},
  "forma_de_la_tension": "qué forma tiene (oposición, cadena, triángulo, desproporción, ausencia, ciclo, desfase u otra) y por qué",
  "tesis": [{"id": "t1", "afirmacion": "…", "central": true, "indicators": ["referencias técnicas declaradas como en technical_references_used"],
@@ -44,7 +44,7 @@ Antes de elegir los temas, revisá chart.derived.configurations (cuadraturas en 
 chart.derived.angular: toda configuración calculada y todo planeta a menos de 3° de un ángulo debe figurar en "temas" o, si decidís
 no desarrollarlo, en una nota breve dentro de "contradicciones" que explique por qué pesa menos en esta carta.
 
-${mitosRecientes.length ? `Mitos usados recientemente (evitalos salvo justificación concreta): ${mitosRecientes.join("; ")}.\n\n` : ""}CARTA CALCULADA (astroinforme.chart/v1):
+${mitosRecientes.length ? `Para el mito, la pertinencia tiene prioridad sobre la novedad. Mitos usados recientemente o en informes de referencia (es información, no una prohibición): ${mitosRecientes.join("; ")}. Si el mito que mejor condensa la tesis central es uno de ellos, o la misma figura con otro nombre (griego o romano), elegilo igual y completá "mito.repeticion" con una razón de esta carta: qué condensa que ninguno de los otros considerados condensa. No elijas un mito menos pertinente solo para no repetir.\n\n` : ""}CARTA CALCULADA (astroinforme.chart/v1):
 ${carta}`;
 
 export const PROMPT_INFORME = ({ idioma, lang, nombre, tratamiento, analisis, carta }) => `FASE B — REDACCIÓN DEL INFORME.

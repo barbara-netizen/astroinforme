@@ -40,7 +40,7 @@ import { ledger } from "./ledger.js";
 import { routePayments, routeOrders, notifyOrderGeneration, runControls } from "./orders.js";
 import { getProvider, providerNames } from "./payments/provider.js";
 
-export const SERVICE_VERSION = "2.6.2";
+export const SERVICE_VERSION = "2.6.3";
 const DEFAULT_MODEL = "claude-opus-5-5";
 // la app vive en asterorbis.com (desde el 2-nov-2026); la dirección de GitHub Pages redirige allí y se conserva por las dudas
 const DEFAULT_ORIGINS = "https://asterorbis.com,https://www.asterorbis.com,https://barbara-netizen.github.io";
@@ -220,15 +220,22 @@ async function rememberPrint(env, report) {
   if (!env.ASTRO_KV) return;
   try { const l = await recentPrints(env); await env.ASTRO_KV.put(PRINTS_KEY, JSON.stringify([fingerprint(report), ...l].slice(0, PRINTS_KEEP))); } catch (e) { /* no detiene el informe */ }
 }
-/** Si el mito elegido en la fase A ya se usó hace poco, toma otro de los considerados que no se haya usado. Sin llamada extra. */
+/** Mitos (2.6.3): la pertinencia tiene prioridad sobre la novedad. Si el mito elegido en la fase A coincide con uno reciente
+ *  o de referencia (por figura, también con su nombre griego o romano) y la fase A explicó en "mito.repeticion" por qué es el más
+ *  pertinente, se conserva. Sin esa explicación se toma otro de los considerados; si no hay otro, se conserva igual en lugar de
+ *  dejar el mito sin nombre. Sin llamada extra. */
+export const MIN_REPEAT_REASON = 30;
 export function avoidRepeatedMyth(analisis, recent) {
   const m = analisis && analisis.mito;
   if (!m || typeof m.nombre !== "string") return analisis;
   const clash = repeatedMyth(m.nombre, recent);
   if (!clash) return analisis;
+  const why = typeof m.repeticion === "string" ? m.repeticion.trim() : "";
+  if (why.length >= MIN_REPEAT_REASON) { analisis.mito_repetido = { nombre: m.nombre, coincide_con: clash, justificado: true }; return analisis; }
   const alt = (Array.isArray(analisis.mitos_considerados) ? analisis.mitos_considerados : []).find((x) => x && typeof x.nombre === "string" && !repeatedMyth(x.nombre, recent));
-  analisis.mito_descartado = { nombre: m.nombre, motivo: `coincide con un mito usado recientemente (${clash})` };
-  analisis.mito = alt ? { nombre: alt.nombre, por_que: alt.motivo || "" } : { nombre: "", por_que: "Elegí un mito clásico que no esté en la lista de mitos recientes." };
+  if (!alt) { analisis.mito_repetido = { nombre: m.nombre, coincide_con: clash, justificado: false }; return analisis; }
+  analisis.mito_descartado = { nombre: m.nombre, motivo: `coincide con un mito usado recientemente (${clash}) y la fase A no explicó por qué es el más pertinente` };
+  analisis.mito = { nombre: alt.nombre, por_que: alt.motivo || "" };
   return analisis;
 }
 
